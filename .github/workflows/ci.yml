@@ -235,13 +235,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install gitleaks
-        uses: taiki-e/install-action@v2
-        with:
-          tool: gitleaks
-
       - name: Gitleaks secret scan
-        run: gitleaks detect --source=. --verbose --redact
+        run: |
+          GITLEAKS_VERSION="8.24.3"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz
+          ./gitleaks detect --source=. --verbose --redact
 
       - uses: dtolnay/rust-toolchain@stable
 

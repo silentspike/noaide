@@ -222,9 +222,9 @@ fn section_priority_criticality(section_id: &str) -> (Priority, Criticality) {
         // Mandatory at L = Must priority, Critical/High criticality
         let priority = if def.is_mandatory(crate::schema::TailoringLevel::S) {
             Priority::Must
-        } else if def.is_mandatory(crate::schema::TailoringLevel::M) {
-            Priority::Should
-        } else if def.is_mandatory(crate::schema::TailoringLevel::L) {
+        } else if def.is_mandatory(crate::schema::TailoringLevel::M)
+            || def.is_mandatory(crate::schema::TailoringLevel::L)
+        {
             Priority::Should
         } else {
             Priority::Could

@@ -121,19 +121,14 @@ pub enum TailoringLevel {
     L,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlanStatus {
+    #[default]
     Draft,
     #[serde(rename = "In Progress")]
     InProgress,
     Review,
     Final,
-}
-
-impl Default for PlanStatus {
-    fn default() -> Self {
-        Self::Draft
-    }
 }
 
 // --- Gates ----------------------------------------------------------
@@ -148,9 +143,10 @@ pub enum GateStatus {
 
 // --- Sections -------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SectionStatus {
+    #[default]
     Pending,
     #[serde(rename = "in_progress")]
     InProgress,
@@ -158,43 +154,27 @@ pub enum SectionStatus {
     Skipped,
 }
 
-impl Default for SectionStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Priority {
     Must,
+    #[default]
     Should,
     Could,
     Wont,
 }
 
-impl Default for Priority {
-    fn default() -> Self {
-        Self::Should
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Criticality {
     Critical,
     High,
+    #[default]
     Medium,
     Low,
 }
 
-impl Default for Criticality {
-    fn default() -> Self {
-        Self::Medium
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SectionData {
     #[serde(default)]
     pub status: SectionStatus,
@@ -210,24 +190,12 @@ pub struct SectionData {
     pub last_updated: Option<String>,
 }
 
-impl Default for SectionData {
-    fn default() -> Self {
-        Self {
-            status: SectionStatus::Pending,
-            html: None,
-            content: None,
-            priority: Priority::Should,
-            criticality: Criticality::Medium,
-            last_updated: None,
-        }
-    }
-}
-
 // --- Work Packages --------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WPStatus {
+    #[default]
     Backlog,
     Analysis,
     Ready,
@@ -237,12 +205,6 @@ pub enum WPStatus {
     Done,
 }
 
-impl Default for WPStatus {
-    fn default() -> Self {
-        Self::Backlog
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WPSize {
     S,
@@ -250,9 +212,10 @@ pub enum WPSize {
     L,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WPComplexity {
     Simple,
+    #[default]
     Medium,
     Complex,
 }
@@ -280,12 +243,6 @@ pub struct WorkPackage {
     pub complexity: WPComplexity,
 }
 
-impl Default for WPComplexity {
-    fn default() -> Self {
-        Self::Medium
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifyCheck {
     pub description: String,
@@ -306,9 +263,10 @@ pub enum RiskLevel {
     Critical,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RiskStatus {
+    #[default]
     Open,
     Mitigated,
     Accepted,
@@ -330,16 +288,11 @@ pub struct Risk {
     pub status: RiskStatus,
 }
 
-impl Default for RiskStatus {
-    fn default() -> Self {
-        Self::Open
-    }
-}
-
 // --- ADRs -----------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdrStatus {
+    #[default]
     Proposed,
     Accepted,
     Deprecated,
@@ -364,12 +317,6 @@ pub struct Adr {
     pub consequences: String,
 }
 
-impl Default for AdrStatus {
-    fn default() -> Self {
-        Self::Proposed
-    }
-}
-
 // --- Requirements ---------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -379,18 +326,13 @@ pub enum ReqType {
     NonFunc,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReqStatus {
+    #[default]
     Draft,
     Accepted,
     Implemented,
     Verified,
-}
-
-impl Default for ReqStatus {
-    fn default() -> Self {
-        Self::Draft
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
