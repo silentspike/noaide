@@ -1,0 +1,15 @@
+.env
+*.key
+*.pem
+*.db
+*.db-shm
+*.db-wal
+node_modules/
+target/
+dist/
+pkg/
+wasm-pack.lock
+__pycache__/
+.claude-ide/images/
+/tmp/
+*.log
