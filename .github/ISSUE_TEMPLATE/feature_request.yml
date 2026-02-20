@@ -1,0 +1,94 @@
+name: Feature Request
+description: Suggest a new feature
+labels: ["type:feature", "status:backlog", "quality:needs-spec"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Language Policy:** All issue content must be in English.
+
+  - type: dropdown
+    id: scope_mode
+    attributes:
+      label: Scope Mode
+      options:
+        - "scope:full"
+        - "scope:partial"
+        - "scope:experimental"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe inputs, outputs, and integration points
+    validations:
+      required: true
+
+  - type: textarea
+    id: in_scope
+    attributes:
+      label: In Scope
+      description: Exact files and directories
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of Scope
+      description: Explicitly excluded
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: "blocked by #N + what is needed"
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Define AC-1..n with verify method and expected result
+      value: |
+        - AC-1: ...
+          Verify: ...
+          Expected: ...
+        - AC-N1: [must NOT happen]
+          Verify: ...
+          Expected: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_plan
+    attributes:
+      label: Evidence Plan
+      description: Verification strategy for each AC
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other solutions did you consider?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context or screenshots

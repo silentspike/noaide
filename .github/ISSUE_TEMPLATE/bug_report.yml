@@ -1,0 +1,118 @@
+name: Bug Report
+description: Report a bug
+labels: ["type:bug", "status:backlog", "priority:high", "quality:needs-spec"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Language Policy:** All issue content must be in English.
+
+  - type: dropdown
+    id: scope_mode
+    attributes:
+      label: Scope Mode
+      description: Is the delivery full scope or intentionally reduced?
+      options:
+        - "scope:full"
+        - "scope:partial"
+        - "scope:experimental"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Numbered steps, deterministic, no ambiguity
+      value: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: Measurable and testable
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version are you using?
+    validations:
+      required: true
+
+  - type: textarea
+    id: in_scope
+    attributes:
+      label: In Scope
+      description: Which files/components may be changed?
+      placeholder: |
+        - src/path/file.ext
+        - server/src/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of Scope
+      description: What must NOT be changed?
+      placeholder: |
+        - No API contract changes
+        - No new dependencies
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Define AC-1..n with verify method and expected result
+      value: |
+        - AC-1: ...
+          Verify: ...
+          Expected: ...
+        - AC-N1: [must NOT happen]
+          Verify: ...
+          Expected: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_plan
+    attributes:
+      label: Evidence Plan
+      description: Which commands/artifacts prove the fix?
+      placeholder: |
+        - Command: ...
+        - Output file/log: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem

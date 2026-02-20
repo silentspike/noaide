@@ -1,0 +1,197 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  language-check:
+    name: Language Gate (English Only)
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for German content in GitHub-facing files
+        run: |
+          echo "Checking GitHub-facing files for German language content..."
+          GERMAN_PATTERNS='(Akzeptanzkriterien|Beschreibung|Abhaengigkeiten|Aenderung|Ergebnis|Pflicht|Pruefung|Ausfuehren|Loeschen|Erstellen|Hinzufuegen|Zusammenfassung|Fehlgeschlagen|Voraussetzungen|Begruendung|Unterstuetzung)'
+          ERRORS=0
+          for file in README.md CONTRIBUTING.md SECURITY.md CHANGELOG.md TESTING.md CODE_OF_CONDUCT.md \
+                      .github/workflows/*.yml .github/ISSUE_TEMPLATE/*.yml .github/PULL_REQUEST_TEMPLATE.md \
+                      .github/dependabot.yml .github/CODEOWNERS; do
+            if [ -f "$file" ]; then
+              if grep -qiP "$GERMAN_PATTERNS" "$file"; then
+                echo "::error file=$file::German content detected in $file"
+                grep -niP "$GERMAN_PATTERNS" "$file" || true
+                ERRORS=$((ERRORS + 1))
+              fi
+            fi
+          done
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::Found German content in $ERRORS file(s). All GitHub content must be in English."
+            exit 1
+          fi
+          echo "Language check passed."
+
+      - name: Check for hidden Unicode characters
+        run: |
+          if grep -rP '[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]' \
+            --include='*.rs' --include='*.ts' --include='*.tsx' --include='*.js' \
+            --include='*.yml' --include='*.yaml' --include='*.md' --include='*.toml' \
+            --include='*.json' --include='*.css' --include='*.html' .; then
+            echo "::error::Hidden Unicode/Bidi characters found (CVE-2021-42574)!"
+            exit 1
+          fi
+          echo "Unicode check passed."
+
+  lint-rust:
+    name: Lint (Rust)
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  lint-frontend:
+    name: Lint (Frontend)
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: ESLint
+        run: cd frontend && npm run lint
+
+  test-rust:
+    name: Test (Rust)
+    runs-on: [self-hosted, linux]
+    needs: lint-rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Unit and integration tests
+        run: cargo test --all-features
+
+  test-frontend:
+    name: Test (Frontend)
+    runs-on: [self-hosted, linux]
+    needs: lint-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: Run tests
+        run: cd frontend && npm test -- --coverage
+
+  security:
+    name: Security Audit
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Cargo audit
+        run: cargo audit
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm audit
+        run: cd frontend && npm ci && npm audit --audit-level=high
+
+  build:
+    name: Build
+    runs-on: [self-hosted, linux]
+    needs: [test-rust, test-frontend, security, language-check]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        run: cd frontend && npm ci && npm run build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-ide-${{ github.sha }}
+          path: |
+            target/release/claude-ide-server
+            frontend/dist/
+
+  system-artifact:
+    name: System Artifact Test
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: claude-ide-${{ github.sha }}
+
+      - name: Verify binary
+        run: |
+          chmod +x target/release/claude-ide-server
+          ./target/release/claude-ide-server --version || echo "Version check complete"

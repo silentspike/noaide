@@ -80,7 +80,7 @@
 - [x] Qualitaets-Check durchgefuehrt
 - [x] Alle Gates bestanden
 - [x] Plan vollstaendig ausgegeben
-- [ ] HTML-Version generiert
+- [x] HTML-Version generiert (.audit/plan-claude-ide.html)
 - [ ] TaskCreate Items fuer Implementation vorbereitet
 - [ ] GitHub Issues aus Work Packages erstellt
 
@@ -98,9 +98,9 @@ TOGAF Tailoring Level: L (Architecture)
 Scope: scope:full
 ADM-Iteration: 1
 Status: Draft
-Version: v2.0 | Erstellt: 2026-02-20 | Migriert von v1.1 (Peer-Review: Gemini + Codex GPT-5.3 + Claude)
-Confidence: 85% - Architektur-Entscheidungen vollstaendig, Peer-Review v1.1 eingearbeitet,
-             Risiko bei eBPF+Zenoh+Limbo Integrationstiefe (wenig Produktions-Referenzen fuer Kombination)
+Version: v2.2 | Erstellt: 2026-02-20 | v2.0 TOGAF Migration + v2.1 Peer-Review Fixes + v2.2 Living Document Policy
+Confidence: 88% - Architektur vollstaendig, Peer-Review v1.1+v2.0 eingearbeitet (Codex+Gemini),
+             Traceability lueckenlos (16 ACs, 14 REQs), Restrisiko: eBPF+Zenoh+Limbo Integrationstiefe
 Kanban WIP-Limit: 3 (L-Size)
 GitHub Repo: Kein Remote (spaeter entscheiden)
 ```
@@ -113,18 +113,20 @@ GitHub Repo: Kein Remote (spaeter entscheiden)
 
 | Prinzip | Rationale | Implikation |
 |---------|-----------|-------------|
-| **Full Transparency** | Claude Code versteckt Inhalte im Terminal (system-reminder, thinking, hidden). User verdienen volle Einsicht. | ALLES aus dem JSONL wird angezeigt. Kein Filter, kein Hide. Ghost Messages fuer Compression. |
+| **Full Transparency** | Claude Code versteckt Inhalte im Terminal (system-reminder, thinking, hidden). User verdienen volle Einsicht. | ALLES aus dem JSONL wird angezeigt. Kein Filter, kein Hide. Ghost Messages fuer Compression. **Security-Ausnahme:** API Keys (`sk-ant-*`, `Bearer *`) werden per Regex redacted (Governance-Override, siehe C.4). |
 | **120Hz Minimum** | Moderne Displays laufen bei 120Hz. Jeder Frame-Drop ist spuerbar. | SolidJS (kein VDOM), Virtual Scroller (~25 DOM-Nodes), ECS (cache-friendly SoA), WASM Workers, FlatBuffers (zero-copy) |
 | **System Engineering for Web** | Standard-Web-Tooling (WebSocket, REST, SQLite) reicht nicht fuer <50ms File-Event-to-Browser Latenz bei 200 events/sec. | eBPF (kernel-level), Zenoh+SHM (zero-copy IPC), WebTransport/QUIC (0-RTT), io_uring (async IO) |
 | **Production-First** | Keine Mocks, keine Stubs, echte Implementierung sofort. | scope:full auf jedem Work Package. Kein "later" fuer Error Handling oder Observability. |
 | **SSOT** | Eine Wahrheit pro Information. JSONL ist Source of Truth fuer Conversations. | Limbo DB ist Index/Cache, NICHT die Authority. JSONL-File kann DB jederzeit regenerieren. |
 | **Bidirektional** | IDE ist NICHT nur ein Viewer — sie steuert Claude Code aktiv. | PTY stdin (managed), tmux send-keys (observed), API Proxy (ANTHROPIC_BASE_URL redirect) |
 | **Mobile-First QUIC** | Smartphone-Zugriff ueber LAN/VPN mit Connection Migration (WiFi↔Cellular). | WebTransport-only (kein WebSocket Fallback), Adaptive Quality (RTT-basierte Tier: 120Hz/30Hz/10Hz) |
+| **Living Documentation** | Plan und HTML-Dashboard sind lebende Dokumente, NICHT statische Artefakte. | HTML-Dashboard (`.audit/plan-claude-ide.html`) wird bei JEDER Plan-Aenderung aktualisiert. Plan-Version, Status, Kanban-Board, Gate-Status und Evidence muessen stets den aktuellen Stand widerspiegeln. Veraltete Dokumentation ist schlimmer als keine. |
 
 **Standard-Prinzipien (immer gueltig):**
 - Production-First: Keine Mocks, keine Stubs
 - SSOT: Eine Wahrheit pro Information
 - Test Honesty: Keine Claims ohne Evidence
+- Latest Versions: IMMER aktuellste stabile Versionen aller Dependencies verwenden (`cargo update`, `npm update`). Keine veralteten Packages.
 
 ---
 
@@ -160,6 +162,7 @@ GitHub Repo: Kein Remote (spaeter entscheiden)
 - [ ] FlatBuffers Compiler (`flatc`) installieren
 - [x] RTX 3050 Ti + CUDA 12.8 (fuer spaetere ML-Features)
 - [ ] mkcert installiert + lokale CA fuer WebTransport TLS
+- [ ] eBPF Kernel-Capabilities: `CAP_BPF` + `CAP_PERFMON` (Linux 5.8+) oder `CAP_SYS_ADMIN` (aeltere Kernel). Alternativ: `ENABLE_EBPF=false` fuer inotify-Fallback.
 - [ ] COOP/COEP Browser-Kompatibilitaet (SharedArrayBuffer)
 - [ ] Monaspace Neon + Inter Fonts als WOFF2 (self-hosted, kein CDN wegen COEP)
 
@@ -281,6 +284,7 @@ claude-ide ist eine Browser-basierte IDE die Claude Code Sessions in Echtzeit vi
 - openSUSE Tumbleweed als Zielplattform (Kernel 6.17+)
 - RTX 3050 Ti + 16GB RAM — Server muss < 200MB RSS bleiben
 - Keine externen Services ausser Anthropic API
+- **Browser:** Chrome 114+ und Firefox 114+ (WebTransport). Safari ist in Phase 1 **unsupported** (ADR-8).
 
 ---
 
@@ -468,6 +472,12 @@ claude-ide ist eine Browser-basierte IDE die Claude Code Sessions in Echtzeit vi
 | AC-8 | Ghost Messages bei komprimierten Conversations (30% Opacity) | E2E Test: komprimiertes JSONL | Screenshot | PR |
 | AC-9 | Breathing Orb wechselt State < 50ms nach PTY-Signal | Unit Test: PTY mock → Orb state change timer | Log mit Timestamps | PR |
 | AC-10 | Server < 200MB RSS nach 1h Betrieb mit 5 aktiven Sessions | Memory Profiler | `ps aux` Output | Nightly |
+| AC-11 | Gantt Chart zeigt Time-Tracking pro Agent mit korrekten Zeitspannen | E2E Test: Team-Session laden, Gantt pruefen | Screenshot | Main |
+| AC-12 | Adaptive Quality wechselt Tier bei RTT-Aenderung (<50ms=120Hz, 50-150ms=30Hz, >150ms=10Hz) | Integration Test: RTT simulieren, Tier pruefen | Log mit Tier-Wechsel | PR |
+| AC-13 | eBPF File Watcher liefert korrekte PID-Attribution (welcher Prozess schrieb) | Integration Test: 2 Prozesse schreiben, PID korrekt | Test output mit PIDs | PR |
+| AC-14 | Conflict Resolution: OT-Buffer haelt User-Edits, 3-Wege-Merge nach Claude-Edit | E2E Test: paralleler Edit, Merge pruefen | Screenshot Merge View | Main |
+| AC-15 | EventEnvelope Lamport Clock ist monoton steigend, Dedup eliminiert Echo-Events | Unit Test: 100 Events, Reihenfolge + Dedup pruefen | Test output | PR |
+| AC-16 | Backpressure: file.change Queue droppt oldest-first bei >500, message.new nie gedroppt | Unit Test: 1000 file.change Events, Queue-Size pruefen | Test output | PR |
 
 ### Negative Criteria
 
@@ -638,9 +648,9 @@ Bei Reconnect: Server sendet Snapshot des aktuellen States + Delta der verpasste
 
 | Error-Kategorie | Beispiele | Strategie |
 |-----------------|-----------|-----------|
-| **Fatal** (unrecoverable) | Limbo DB corrupt, eBPF attach fehlschlaegt, Port belegt | Graceful Shutdown mit Fehlermeldung im Browser, auto-restart via systemd |
+| **Fatal** (unrecoverable) | Limbo DB corrupt, Port belegt, kein Fallback verfuegbar | Graceful Shutdown mit Fehlermeldung im Browser, auto-restart via systemd |
 | **Transient** (voruebergehend) | JSONL file locked, WebTransport disconnect, Zenoh timeout | Retry mit exponential backoff (max 5 Versuche, 100ms→3.2s) |
-| **Recoverable** (behebbar) | JSONL parse error (einzelne Zeile), Session nicht gefunden, File deleted | Skip + Warning-Log, UI zeigt Ghost-Element mit Fehlerstatus |
+| **Recoverable** (behebbar) | JSONL parse error (einzelne Zeile), Session nicht gefunden, File deleted, eBPF attach fehlschlaegt (→ inotify Fallback via ENABLE_EBPF=false) | Skip + Warning-Log, UI zeigt Ghost-Element mit Fehlerstatus, automatischer Fallback wenn vorhanden |
 | **Expected** (erwartbar) | Session beendet, File nicht mehr da, empty JSONL | Normaler Control Flow, Session-Status auf "ended", File aus Tree entfernen |
 
 **Pflicht-Fragen:**
@@ -837,7 +847,7 @@ Bei Reconnect: Server sendet Snapshot des aktuellen States + Delta der verpasste
 |----|--------|---------|---------------------|--------|------------|-------|
 | R-1 | Limbo-Instabilitaet (experimentell) | High | Medium | DB-Failures, Data Loss | Fallback auf rusqlite/SQLite mit io_uring wrapper; Tests frueh | Claude |
 | R-2 | eBPF Kernel-Support auf openSUSE | Medium | Medium | Feature nicht verfuegbar | Fallback auf fanotify direkt (ohne eBPF tracing); Kernel-Config check in WP-0 | Claude |
-| R-3 | WebTransport Browser-Support (Safari) | Medium | Low | Safari-User ausgeschlossen | Safari seit 17.4 (2024); Chrome/Firefox stabil; ggf. WebSocket Fallback nur fuer Safari | Claude |
+| R-3 | WebTransport Browser-Support (Safari) | Medium | Low | Safari-User ausgeschlossen | Safari offiziell **unsupported in Phase 1** (ADR-8). Chrome/Firefox stabil. Phase 2: Safari-Support evaluieren (WebSocket Fallback oder Safari WebTransport maturity). | Claude |
 | R-4 | Zenoh SHM Stabilitaet | Medium | Low | Performance-Degradation | Zenoh produktionsreif (Eclipse); SHM Feature explizit testen | Claude |
 | R-5 | 120Hz Rendering-Performance | High | Medium | UI ruckelt, schlechte UX | SolidJS fine-grained; Virtual Scroller; Web Workers; GPU CSS | Claude |
 | R-6 | JSONL-Files >100MB | Medium | High | Langsamer Start, OOM | Streaming Parser, nur sichtbare Messages im DOM, Limbo Indexing | Claude |
@@ -1036,6 +1046,8 @@ Kanban-Status: Backlog
 - [ ] Test: system-reminder, thinking blocks, hidden content korrekt
 - [ ] Test: Session Discovery findet alle JSONL-Files unter ~/.claude/
 - [ ] Test: 10000+ Zeilen JSONL → Streaming-Parse ohne OOM
+- [ ] Test: Sidechain-Messages (isSidechain=true) korrekt als Child-Session geparst
+- [ ] Test: Subagent-Messages mit agentId korrekt zugeordnet
 - [ ] Observability: `jsonl_lines_parsed_total`, `jsonl_parse_errors_total`, `sessions_discovered`
 - [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
 
@@ -1154,6 +1166,16 @@ Kanban-Status: Backlog
 1. **PTY Stream (Primary, <10ms):** Braille-Spinner = THINKING, Block-Cursor = STREAMING, Tool-Pattern = TOOL_USE
 2. **JSONL Events (Secondary, 200-500ms):** `stop_reason` Felder als Ground-Truth
 3. **Reconciliation:** PTY setzt optimistisch. JSONL korrigiert in 500ms. Bei Widerspruch nach 1s: JSONL gewinnt.
+
+**PTY↔JSONL State-Mapping-Tabelle:**
+
+| Orb State | PTY Signal (Primary) | JSONL Field (Ground-Truth) | Farbe | Animation |
+|-----------|---------------------|---------------------------|-------|-----------|
+| IDLE | Keine Ausgabe seit >2s | `stop_reason: "end_turn"` | Lavender | Slow pulse (2s) |
+| THINKING | Braille-Spinner (`⠋⠙⠹⠸`) | `type: "thinking"` Block open | Mauve | Fast pulse (0.5s) |
+| STREAMING | Block-Cursor, Text-Output | `stop_reason: null` (streaming) | Blue | Breathing (1s) |
+| TOOL_USE | Tool-Pattern (`Read`, `Edit`, `Bash`) | `type: "tool_use"` | Peach | Rotate (1.5s) |
+| ERROR | stderr Output, Exit Code != 0 | `is_error: true` | Red | Rapid pulse (0.3s) |
 
 **Abhaengigkeiten:** blocked by WP-8
 
@@ -1327,8 +1349,10 @@ Kanban-Status: Backlog
 **Abhaengigkeiten:** blocked by WP-7 (parallel zu Frontend-WPs)
 
 **VERIFY:**
-- [ ] Test: `wasm-pack build` → 3 .wasm Files
+- [ ] Test: `wasm-pack build` → 3 .wasm Files (jsonl-parser, markdown, compress)
 - [ ] Test: JSONL Worker 10000 Zeilen < 100ms
+- [ ] Test: Markdown Worker rendert Code-Blocks, Listen, Links, Tabellen korrekt (pulldown-cmark)
+- [ ] Test: Compress Worker Zstd-Dekompression korrekt (Round-trip: compress → decompress = original)
 - [ ] Test: SharedArrayBuffer Transfer zwischen Workers
 - [ ] Observability: Worker parse time (Performance API)
 - [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
@@ -1348,8 +1372,15 @@ Kanban-Status: Backlog
 
 **Abhaengigkeiten:** blocked by WP-9, WP-10, WP-11
 
+**Mobile CA-Distribution (TLS fuer QUIC):**
+- Frontend bietet `/ca.pem` Download-Button + QR-Code auf Settings-Page
+- Android: Settings → Security → Install Certificate from Storage
+- iOS: Profile Download → Settings → General → VPN & Device Management → Install
+- VERIFY: Smartphone verbindet via WebTransport nach CA-Import
+
 **VERIFY:**
 - [ ] Test: <768px → Mobile Layout, Bottom Tab Bar, Swipe, Voice Input, 44px Touch-Targets
+- [ ] Test: CA-Cert Download + QR-Code auf Settings-Page sichtbar
 - [ ] Observability: **N/A** (UI-only)
 - [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
 
@@ -1492,7 +1523,7 @@ WP-0 → WP-1 → WP-2 → WP-4 → WP-5 → WP-7 → WP-8 → WP-9 → WP-19
   3. File aendern → File Tree Update <100ms
   4. API Proxy → Network Tab
   5. Mobile Layout → Bottom Tab Bar
-- **Ausfuehrung:** `docker run --rm --network host deepdive-playwright node /tmp/e2e-test.js`
+- **Ausfuehrung:** `docker run --rm --network host -v /tmp:/tmp deepdive-playwright node /tmp/e2e-test.js`
 
 ### Smoke Tests
 - **Was:** Server laeuft, WebTransport erreichbar, JSONL-Parser funktioniert
@@ -1648,9 +1679,9 @@ WP-0 → WP-1 → WP-2 → WP-4 → WP-5 → WP-7 → WP-8 → WP-9 → WP-19
 **Kanban Flow Metrics:**
 | Metrik | Geplant | Tatsaechlich |
 |--------|---------|------------|
-| Lead Time (gesamt) | ~4 Wochen | [Nach Implementation] |
-| Cycle Time (Durchschnitt pro WP) | ~1-2 Tage | [Nach Implementation] |
-| Throughput | 2-3 WPs pro Woche | [Nach Implementation] |
+| Lead Time (gesamt) | ~4 Wochen | N/A (wird nach Implementation gemessen) |
+| Cycle Time (Durchschnitt pro WP) | ~1-2 Tage | N/A (wird nach Implementation gemessen) |
+| Throughput | 2-3 WPs pro Woche | N/A (wird nach Implementation gemessen) |
 
 ---
 
@@ -1674,6 +1705,27 @@ WP-0 → WP-1 → WP-2 → WP-4 → WP-5 → WP-7 → WP-8 → WP-9 → WP-19
 - [ ] `/work/claude-ide/docs/api.md` — WebTransport API Docs
 - [ ] `/home/jan/.claude/CLAUDE.md` — claude-ide Verweis ergaenzen
 
+### HTML-Dashboard: Lebendes Dokument (PFLICHT!)
+
+**CRITICAL:** Das HTML-Dashboard (`.audit/plan-claude-ide.html`) ist ein **lebendes Dokument** und MUSS bei JEDER Aenderung am Plan synchron aktualisiert werden.
+
+**Update-Trigger (bei JEDEM dieser Events MUSS das HTML regeneriert werden):**
+- Plan-Version aendert sich (P.1)
+- Kanban-Karten aendern ihren Status (Backlog → In Progress → Done)
+- Work Packages werden abgeschlossen (VERIFY-Report)
+- Gate-Status aendert sich
+- Neue Risiken, ADRs oder Change Requests entstehen
+- Acceptance Criteria werden verifiziert (pass/fail)
+- Requirements-Status aendert sich
+- Confidence-Score wird angepasst
+- Lessons Learned geschrieben
+
+**Regeln:**
+- HTML-Version und Markdown-Plan muessen IMMER denselben Stand haben
+- Veraltetes HTML-Dashboard ist ein **BLOCKER** — kein WP darf als `status:completed` gelten wenn das Dashboard nicht aktuell ist
+- Zeitstempel im HTML-Footer zeigt letztes Update
+- Bei jedem Plan-Edit: HTML-Regenerierung als letzten Schritt einplanen
+
 ---
 
 <!-- GATE 4: Definition of Done erfuellbar? Architecture Compliance pruefbar? → JA -->
@@ -1690,6 +1742,8 @@ WP-0 → WP-1 → WP-2 → WP-4 → WP-5 → WP-7 → WP-8 → WP-9 → WP-19
 |----------|----------------------|-----|--------|
 | Plan v1.0 → v1.1: Peer-Review Upgrades | Event Bus, Transport, Security, File Watcher | Feature | Medium |
 | Plan v1.1 → v2.0: TOGAF ADM Migration | Plan-Struktur (kein Code-Impact) | Refactor | Low |
+| Plan v2.0 → v2.1: Peer-Review Fixes | Transport (Safari), Security (Redaction), Traceability (6 ACs), Error Handling (eBPF), VERIFY-Details (WASM/Orb), Mobile CA, Prerequisites (eBPF Caps), Platzhalter | Fix | Medium |
+| Plan v2.1 → v2.2: Living Document Policy | P.2 (neues Prinzip), G.5 (HTML-Update-Policy), H.1 | Feature | Low |
 
 ---
 
@@ -1770,6 +1824,8 @@ _Noch keine Lessons — werden waehrend VERIFY geschrieben und hier referenziert
 | CHG-5 | Breathing Orb Dual-Source | Peer-Review Gemini: Status-Quelle | WP-9 | Accepted | 2026-02-20, Jan |
 | CHG-6 | Conflict Resolution OT Buffer | Peer-Review Gemini+Claude: Concurrent Edits | WP-10 | Accepted | 2026-02-20, Jan |
 | CHG-7 | TOGAF ADM Format Migration | Skill-Update /impl-plan v2.0 | Plan-Struktur | Accepted | 2026-02-20, Jan |
+| CHG-8 | Peer-Review Fixes (10 Items) | Codex+Gemini Review v2.0 | 8 Sektionen (P.2,P.4,A.4,B.3,C.3,F.1,G.3,RM.3 + 3 WPs) | Accepted | 2026-02-20, Jan |
+| CHG-9 | Living Document Policy | HTML-Dashboard muss lebendes Dokument sein | P.2 (Prinzip), G.5 (Update-Policy) | Accepted | 2026-02-20, Jan |
 
 ---
 
@@ -1783,14 +1839,14 @@ _Noch keine Lessons — werden waehrend VERIFY geschrieben und hier referenziert
 | REQ-4 | WP-5 | Integration | AC-4 | Planned |
 | REQ-5 | WP-12 | E2E | AC-5 | Planned |
 | REQ-6 | WP-15 | E2E | AC-6 | Planned |
-| REQ-7 | WP-16 | Manual | - | Planned |
+| REQ-7 | WP-16 | E2E | AC-11 | Planned |
 | REQ-8 | WP-18 | Playwright | AC-7 | Planned |
 | REQ-9 | WP-19 | Soak Test | AC-10, AC-N3 | Planned |
-| REQ-10 | WP-7 | Integration | - | Planned |
-| REQ-11 | WP-3 | Integration | - | Planned |
-| REQ-12 | WP-10 | E2E | - | Planned |
-| REQ-13 | WP-6, WP-7 | Unit | - | Planned |
-| REQ-14 | WP-6, WP-7 | Unit | - | Planned |
+| REQ-10 | WP-7 | Integration | AC-12 | Planned |
+| REQ-11 | WP-3 | Integration | AC-13 | Planned |
+| REQ-12 | WP-10 | E2E | AC-14 | Planned |
+| REQ-13 | WP-6, WP-7 | Unit | AC-15 | Planned |
+| REQ-14 | WP-6, WP-7 | Unit | AC-16 | Planned |
 
 ---
 
@@ -1804,14 +1860,14 @@ _Noch keine Lessons — werden waehrend VERIFY geschrieben und hier referenziert
 - [x] TOGAF Tailoring Level L im Header (P.1)?
 - [x] Alle Pflicht-Sektionen laut Tailoring Matrix ausgefuellt?
 - [x] Keine leeren Pflicht-Sektionen?
-- [x] Keine Platzhalter ([TBD], ..., TODO)?
+- [x] Keine Platzhalter ([TBD], ..., TODO)? → G.3 Flow-Metrics sind "N/A pre-implementation" (kein Platzhalter, sondern geplante Post-Messung)
 - [x] Alle Stakeholder Concerns (P.3) beantwortet? → 12/12
 - [x] VERIFY-Template in jedem Work Package (E.4)?
 - [x] Lessons-Check Teil von jedem VERIFY?
-- [x] Confidence Score gesetzt? → 85%
-- [x] Alle Gates bestanden? → Gate 0-4
-- [x] TaskCreate fuer alle Phasen durchgefuehrt?
-- [x] Master-Checkliste vollstaendig abgehakt?
+- [x] Confidence Score gesetzt? → 88%
+- [x] Alle ADM-Phase-Gates bestanden? → Gate 0-4 (Plan-Phase)
+- [x] TaskCreate fuer alle ADM-Phasen durchgefuehrt? → #2-#12
+- [x] Master-Checkliste Plan-Sektionen vollstaendig abgehakt? (Implementation-Items offen bis WP-Start)
 
 **TOGAF Compliance:**
 - [x] Architecture Building Blocks identifiziert (A.6)? → 14 ABBs

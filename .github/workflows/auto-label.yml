@@ -1,0 +1,66 @@
+name: Auto Label
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  label-issues:
+    if: github.event_name == 'issues'
+    name: Label Issues
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.issue.title.toLowerCase();
+            const labels = ['status:backlog'];
+            if (title.includes('[bug]') || title.startsWith('fix:'))
+              labels.push('type:bug', 'priority:high');
+            else if (title.includes('[feature]') || title.startsWith('feat:'))
+              labels.push('type:feature');
+            else if (title.includes('[docs]'))
+              labels.push('type:docs');
+            else if (title.includes('[ci]'))
+              labels.push('type:ci');
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels
+            });
+
+  label-prs:
+    if: github.event_name == 'pull_request'
+    name: Label PRs
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title.toLowerCase();
+            const labels = [];
+            if (title.startsWith('feat')) labels.push('type:feature');
+            else if (title.startsWith('fix')) labels.push('type:bug');
+            else if (title.startsWith('docs')) labels.push('type:docs');
+            else if (title.startsWith('ci')) labels.push('type:ci');
+            else if (title.startsWith('deps') || title.startsWith('chore(deps)'))
+              labels.push('type:deps');
+            else if (title.startsWith('refactor')) labels.push('type:refactor');
+            else if (title.startsWith('security')) labels.push('type:security');
+            if (context.payload.pull_request.user.login === 'dependabot[bot]')
+              labels.push('type:deps');
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels
+              });
+            }

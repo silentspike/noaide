@@ -1,0 +1,13 @@
+# Default owner for everything
+* @obtFusi
+
+# CI/CD
+.github/ @obtFusi
+
+# Documentation
+*.md @obtFusi
+docs/ @obtFusi
+
+# Security-sensitive
+SECURITY.md @obtFusi
+.github/workflows/ @obtFusi

@@ -1,0 +1,85 @@
+name: Issue Quality Gate
+
+on:
+  issues:
+    types: [opened, edited, reopened, labeled, unlabeled]
+
+permissions:
+  issues: write
+
+jobs:
+  quality-gate:
+    name: Quality Gate
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = (issue.body || "");
+            const labels = (issue.labels || []).map(l => l.name);
+
+            const requiredSections = [
+              "## In Scope",
+              "## Out of Scope",
+              "Acceptance Criteria",
+            ];
+            const sectionMissing = requiredSections.filter(s => !body.includes(s));
+
+            const hasAcId = /AC-\d+/m.test(body);
+            const hasVerify = /Verify|Verify-Methode|Evidence/i.test(body);
+
+            const hasType = labels.some(l => l.startsWith("type:"));
+            const hasScope = labels.some(l => l.startsWith("scope:"));
+
+            const failures = [];
+            if (sectionMissing.length) failures.push("Missing sections: " + sectionMissing.join(", "));
+            if (!hasAcId) failures.push("Missing AC-ID (AC-1, AC-2, ...)");
+            if (!hasVerify) failures.push("Missing Verify/Evidence plan");
+            if (!hasType) failures.push("Missing type:* label");
+            if (!hasScope) failures.push("Missing scope:* label");
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = issue.number;
+
+            async function ensureLabel(name, color, description) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch {
+                await github.rest.issues.createLabel({ owner, repo, name, color, description });
+              }
+            }
+
+            await ensureLabel("quality:needs-spec", "b60205", "Specification incomplete, not ready");
+            await ensureLabel("quality:ready", "238636", "Spec + AC + verify complete");
+
+            if (failures.length > 0) {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number,
+                labels: ["quality:needs-spec"]
+              });
+              try {
+                await github.rest.issues.removeLabel({
+                  owner, repo, issue_number,
+                  name: "quality:ready"
+                });
+              } catch {}
+              await github.rest.issues.createComment({
+                owner, repo, issue_number,
+                body: "**Issue Quality Gate: FAILED**\n\n" +
+                      failures.map(f => `- ${f}`).join("\n") +
+                      "\n\nPlease address these items before setting this issue to `status:ready`."
+              });
+            } else {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number,
+                labels: ["quality:ready"]
+              });
+              try {
+                await github.rest.issues.removeLabel({
+                  owner, repo, issue_number,
+                  name: "quality:needs-spec"
+                });
+              } catch {}
+            }
