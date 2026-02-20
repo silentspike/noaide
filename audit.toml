@@ -1,0 +1,9 @@
+# cargo-audit configuration
+# https://github.com/rustsec/rustsec/tree/main/cargo-audit
+
+[advisories]
+# Transitive dependency from zenoh -> rsa 0.9.x
+# Marvin Attack timing sidechannel - no direct exposure since we use
+# zenoh for local IPC (SHM), not for RSA key operations.
+# Tracking: https://github.com/RustCrypto/RSA/issues/19
+ignore = ["RUSTSEC-2023-0071"]
