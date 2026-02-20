@@ -25,7 +25,7 @@ jobs:
     outputs:
       has-js-ts: ${{ steps.check.outputs.has-js-ts }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check for JS/TS source files
         id: check
@@ -48,7 +48,7 @@ jobs:
       matrix:
         language: ["javascript-typescript"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: github/codeql-action/init@v3
         with:
