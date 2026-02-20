@@ -108,9 +108,10 @@ jobs:
                       CODE_OF_CONDUCT.md llms.txt scripts/*.sh \
                       .github/workflows/*.yml .github/ISSUE_TEMPLATE/*.yml; do
             if [ -f "$file" ]; then
-              if grep -qP "$INTERNAL_PATTERNS" "$file"; then
+              # Skip lines that define the pattern itself (avoids false positive)
+              if grep -vP "INTERNAL_PATTERNS=" "$file" | grep -qP "$INTERNAL_PATTERNS"; then
                 echo "::error file=$file::Internal reference leaked in $file"
-                grep -nP "$INTERNAL_PATTERNS" "$file" || true
+                grep -vP "INTERNAL_PATTERNS=" "$file" | grep -nP "$INTERNAL_PATTERNS" || true
                 ERRORS=$((ERRORS + 1))
               fi
             fi
