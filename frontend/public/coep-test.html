@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>COOP/COEP Validation</title>
+  <style>
+    body { font-family: system-ui; background: #1e1e2e; color: #cdd6f4; padding: 2rem; }
+    .pass { color: #a6e3a1; }
+    .fail { color: #f38ba8; }
+    pre { background: #313244; padding: 1rem; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>COOP/COEP Validation</h1>
+  <p>This page validates that Cross-Origin Isolation is active, which is
+     required for SharedArrayBuffer (used by WASM Web Workers).</p>
+  <pre id="results">Checking...</pre>
+  <h2>Required Server Headers</h2>
+  <pre>Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp</pre>
+  <p>Without these headers, <code>crossOriginIsolated</code> will be false and
+     SharedArrayBuffer will be unavailable.</p>
+  <script>
+    const el = document.getElementById('results');
+    const isolated = self.crossOriginIsolated;
+    const sab = typeof SharedArrayBuffer !== 'undefined';
+    const lines = [
+      `crossOriginIsolated: ${isolated} ${isolated ? 'PASS' : 'FAIL (need COOP/COEP headers)'}`,
+      `SharedArrayBuffer:   ${sab ? 'available' : 'unavailable'} ${sab ? 'PASS' : 'FAIL'}`,
+    ];
+    el.innerHTML = lines.map(l =>
+      `<span class="${l.includes('PASS') ? 'pass' : 'fail'}">${l}</span>`
+    ).join('\n');
+  </script>
+</body>
+</html>
