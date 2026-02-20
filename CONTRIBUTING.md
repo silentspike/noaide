@@ -108,15 +108,13 @@ refactor/description  # Refactoring
 
 ## Development
 
-### Self-hosted Runner Setup
+### CI/CD Pipeline
 
-The CI/CD pipeline runs on a self-hosted GitHub Actions runner. To set up a new runner:
+The CI/CD pipeline runs on GitHub-hosted runners (`ubuntu-latest`). No local runner
+setup is required. The pipeline includes path-filtered jobs, concurrency management,
+and security scanning (Gitleaks, Semgrep, CodeQL, cargo-audit, npm audit).
 
-```bash
-ssh root@<runner-host> "bash -s" < scripts/setup-runner.sh
-```
-
-Required tools are installed automatically: Rust (stable+nightly), Node.js 22, wasm-pack, flatc, mkcert, gitleaks, cargo-audit, Docker, bpf-linker.
+See the [CI workflow](.github/workflows/ci.yml) for details.
 
 ## Parallel Work (Multi-Agent Development)
 
