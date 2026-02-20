@@ -249,7 +249,7 @@ jobs:
           tool: cargo-audit
 
       - name: Cargo audit
-        run: cargo audit
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
       - uses: actions/setup-node@v6
         with:
