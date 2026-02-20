@@ -16,7 +16,7 @@ $$ |  $$ |\$$$$$$  |$$ |\$$$$$$  |\$$$$$$$\ \$$$$$$$\
 See everything your AI writes. Control every session. Catch every API call.
 
 Requires your AI coding agent running in the background. Not included — you know who's watching. 👀
-<br>The Truman Show × Westworld × The Sims — fully under your control. → [Project Sentinel](https://github.com/silentspike/project-sentinel)
+<br>The Truman Show × Westworld × The Sims — fully under your control.
 
 <br>
 
@@ -29,8 +29,8 @@ Requires your AI coding agent running in the background. Not included — you kn
 
 <br>
 
-> **Pre-Alpha** — Architecture and CI/CD are in place. Implementation of core components has started.
-> APIs and data formats will change. Not ready for production use.
+> **Pre-Alpha** — Architecture and CI/CD are in place. No buildable application code exists yet.
+> Work packages are tracked as [GitHub Issues](../../issues). Not ready for any use.
 
 ---
 
@@ -248,6 +248,8 @@ Verify: `grep CONFIG_BPF /boot/config-$(uname -r)`
 </details>
 
 ## Quick Start
+
+> **Note:** No buildable application code exists yet. These commands will work once Sprint 1 is complete.
 
 ```bash
 # Clone
