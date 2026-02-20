@@ -23,7 +23,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   paths-filter:
     name: Detect Changed Paths
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     outputs:
       docs-only: ${{ steps.filter.outputs.docs-only }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -55,7 +55,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   language-check:
     name: Language Gate (English Only)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     needs: paths-filter
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +120,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   lint-rust:
     name: Lint (Rust)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     needs: paths-filter
     if: >-
       needs.paths-filter.outputs.rust == 'true' ||
@@ -145,7 +145,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   lint-frontend:
     name: Lint (Frontend)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     needs: paths-filter
     if: >-
       needs.paths-filter.outputs.frontend == 'true' ||
@@ -170,7 +170,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   test-rust:
     name: Test (Rust)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     needs: [paths-filter, lint-rust]
     if: >-
       needs.paths-filter.outputs.rust == 'true' ||
@@ -190,7 +190,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   test-frontend:
     name: Test (Frontend)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     needs: [paths-filter, lint-frontend]
     if: >-
       needs.paths-filter.outputs.frontend == 'true' ||
@@ -215,7 +215,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   security:
     name: Security Audit
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     needs: paths-filter
     if: >-
       needs.paths-filter.outputs.rust == 'true' ||
@@ -260,7 +260,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   build:
     name: Build
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     needs: [paths-filter, test-rust, test-frontend, security, language-check]
     if: >-
       !(
@@ -276,6 +276,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install FlatBuffers compiler
+        uses: taiki-e/install-action@v2
+        with:
+          tool: flatc
+
       - name: Generate FlatBuffers
         run: flatc --rust --ts -o generated/ schemas/messages.fbs
 
@@ -283,7 +288,9 @@ jobs:
         run: cargo build --release
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
 
       - name: Build WASM modules
         run: |
@@ -313,7 +320,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   system-artifact:
     name: System Artifact Test
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     needs: build
     steps:
       - uses: actions/checkout@v4
@@ -332,7 +339,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   integration-test:
     name: Integration Tests
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
     steps:
@@ -344,3 +351,51 @@ jobs:
 
       - name: Integration tests
         run: cargo test --test integration
+
+  # ──────────────────────────────────────────────────────────────
+  # CI Gate: Single required check that always runs.
+  # Conditional jobs (lint, test, build) may skip on docs-only
+  # changes. This job aggregates their results so branch
+  # protection only needs one required check: "CI Gate".
+  # ──────────────────────────────────────────────────────────────
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - paths-filter
+      - language-check
+      - lint-rust
+      - lint-frontend
+      - test-rust
+      - test-frontend
+      - security
+      - build
+      - system-artifact
+    steps:
+      - name: Check job results
+        run: |
+          echo "paths-filter: ${{ needs.paths-filter.result }}"
+          echo "language-check: ${{ needs.language-check.result }}"
+          echo "lint-rust: ${{ needs.lint-rust.result }}"
+          echo "lint-frontend: ${{ needs.lint-frontend.result }}"
+          echo "test-rust: ${{ needs.test-rust.result }}"
+          echo "test-frontend: ${{ needs.test-frontend.result }}"
+          echo "security: ${{ needs.security.result }}"
+          echo "build: ${{ needs.build.result }}"
+          echo "system-artifact: ${{ needs.system-artifact.result }}"
+
+          # Fail if any job failed (skipped is OK for conditional jobs)
+          if [[ "${{ needs.paths-filter.result }}" == "failure" ]] ||
+             [[ "${{ needs.language-check.result }}" == "failure" ]] ||
+             [[ "${{ needs.lint-rust.result }}" == "failure" ]] ||
+             [[ "${{ needs.lint-frontend.result }}" == "failure" ]] ||
+             [[ "${{ needs.test-rust.result }}" == "failure" ]] ||
+             [[ "${{ needs.test-frontend.result }}" == "failure" ]] ||
+             [[ "${{ needs.security.result }}" == "failure" ]] ||
+             [[ "${{ needs.build.result }}" == "failure" ]] ||
+             [[ "${{ needs.system-artifact.result }}" == "failure" ]]; then
+            echo "::error::One or more CI jobs failed"
+            exit 1
+          fi
+          echo "All CI jobs passed or were skipped (docs-only)"
