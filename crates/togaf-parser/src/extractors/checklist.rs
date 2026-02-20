@@ -61,9 +61,11 @@ pub fn parse_checklist_line(line: &str) -> ChecklistItem {
     ChecklistItem::Unknown
 }
 
+/// Parsed checklist result: (section_statuses, gate_statuses).
+pub type ChecklistResult = (Vec<(String, SectionStatus)>, Vec<(u8, GateStatus)>);
+
 /// Parse all checklist lines from a block of text.
-/// Returns (section_statuses, gate_statuses).
-pub fn parse_checklist(text: &str) -> (Vec<(String, SectionStatus)>, Vec<(u8, GateStatus)>) {
+pub fn parse_checklist(text: &str) -> ChecklistResult {
     let mut sections = Vec::new();
     let mut gates = Vec::new();
 
