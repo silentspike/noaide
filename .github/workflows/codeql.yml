@@ -20,7 +20,7 @@ concurrency:
 jobs:
   analyze:
     name: CodeQL Analysis
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:

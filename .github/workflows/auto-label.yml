@@ -14,7 +14,7 @@ jobs:
   label-issues:
     if: github.event_name == 'issues'
     name: Label Issues
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
         with:
@@ -39,7 +39,7 @@ jobs:
   label-prs:
     if: github.event_name == 'pull_request'
     name: Label PRs
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
         with:

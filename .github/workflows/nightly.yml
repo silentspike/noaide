@@ -15,7 +15,7 @@ concurrency:
 jobs:
   e2e:
     name: E2E Tests (Playwright)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -66,7 +66,7 @@ jobs:
 
   benchmarks:
     name: Performance Benchmarks
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -85,7 +85,7 @@ jobs:
 
   extended-security:
     name: Extended Security Scan
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 

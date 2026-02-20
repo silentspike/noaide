@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Initial project structure with Rust workspace and SolidJS frontend
+- Project scaffolding and repository structure
 - CI/CD pipeline: 9 jobs with path filters, security scanning, system artifact verification
 - Nightly workflow: E2E tests, benchmarks, extended security audit
 - Release workflow: WASM modules, frontend bundle, SHA256 checksums
