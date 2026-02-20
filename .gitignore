@@ -1,15 +1,92 @@
+# ═══════════════════════════════════════════════════════════════
+# claude-ide .gitignore — Rust + Node.js + WASM + System
+# ═══════════════════════════════════════════════════════════════
+
+# ── Secrets & Credentials ──────────────────────────────────────
 .env
+.env.*
 *.key
 *.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+!certs/README.md
+
+# ── Rust ───────────────────────────────────────────────────────
+/target/
+**/*.rs.bk
+*.pdb
+
+# ── Node.js / Frontend ────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+.npm
+.eslintcache
+
+# ── WASM ───────────────────────────────────────────────────────
+wasm/*/pkg/
+wasm-pack.lock
+frontend/src/wasm/
+
+# ── Database ───────────────────────────────────────────────────
 *.db
 *.db-shm
 *.db-wal
-node_modules/
-target/
-dist/
-pkg/
-wasm-pack.lock
-__pycache__/
-.claude-ide/images/
-/tmp/
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ── Logs ───────────────────────────────────────────────────────
 *.log
+logs/
+
+# ── OS Files ───────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── IDE / Editor ───────────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ── Coverage & Profiling ──────────────────────────────────────
+coverage/
+*.lcov
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+tarpaulin-report.html
+lcov.info
+
+# ── Build Artifacts ────────────────────────────────────────────
+dist/
+build/
+*.wasm.map
+
+# ── FlatBuffers Generated (regenerated from schema) ───────────
+generated/
+
+# ── Docker ─────────────────────────────────────────────────────
+.docker/
+
+# ── Misc ───────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+/tmp/
+.cache/
