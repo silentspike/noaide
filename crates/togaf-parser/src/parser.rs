@@ -6,12 +6,11 @@
 
 use std::collections::HashMap;
 
+use crate::extractors::{adrs, checklist, gates, meta, risks, work_packages};
 use crate::schema::{
-    PlanDocument, PlanMeta, SectionData, SectionStatus, GateStatus,
-    Priority, Criticality,
+    Criticality, GateStatus, PlanDocument, PlanMeta, Priority, SectionData, SectionStatus,
 };
-use crate::sections::{heading_to_section_id, find_section};
-use crate::extractors::{meta, checklist, gates, risks, adrs, work_packages};
+use crate::sections::{find_section, heading_to_section_id};
 
 /// Parse an IMPL-PLAN.md file into a PlanDocument
 pub fn parse(markdown: &str) -> Result<PlanDocument, ParseError> {
@@ -89,14 +88,17 @@ pub fn parse(markdown: &str) -> Result<PlanDocument, ParseError> {
             // Determine priority and criticality from section definition
             let (priority, criticality) = section_priority_criticality(&section_id);
 
-            doc.sections.insert(section_id, SectionData {
-                status,
-                html: Some(html),
-                content: Some(body.to_string()),
-                priority,
-                criticality,
-                last_updated: None,
-            });
+            doc.sections.insert(
+                section_id,
+                SectionData {
+                    status,
+                    html: Some(html),
+                    content: Some(body.to_string()),
+                    priority,
+                    criticality,
+                    last_updated: None,
+                },
+            );
         }
     }
 
@@ -243,18 +245,27 @@ fn section_priority_criticality(section_id: &str) -> (Priority, Criticality) {
 /// Build footer stats string
 fn build_footer_stats(doc: &PlanDocument) -> String {
     let total = doc.sections.len();
-    let done = doc.sections.values()
+    let done = doc
+        .sections
+        .values()
         .filter(|s| matches!(s.status, SectionStatus::Done))
         .count();
-    let gates_passed = doc.gates.values()
+    let gates_passed = doc
+        .gates
+        .values()
         .filter(|g| matches!(g, GateStatus::Pass))
         .count();
     let total_gates = doc.gates.len();
 
     format!(
         "{}/{} Sections done | {}/{} Gates passed | {} WPs | {} Risks | {} ADRs",
-        done, total, gates_passed, total_gates,
-        doc.work_packages.len(), doc.risks.len(), doc.adrs.len()
+        done,
+        total,
+        gates_passed,
+        total_gates,
+        doc.work_packages.len(),
+        doc.risks.len(),
+        doc.adrs.len()
     )
 }
 

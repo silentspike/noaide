@@ -7,8 +7,8 @@
 //! | R-1 | Limbo-Instabilitaet | High | Medium | DB-Failures | Fallback ... | Claude |
 //! ```
 
-use crate::schema::{Risk, RiskLevel, RiskStatus};
 use super::tables;
+use crate::schema::{Risk, RiskLevel, RiskStatus};
 
 /// Extract risks from section content (E.2 Risk Assessment).
 pub fn extract_risks(section_content: &str) -> Vec<Risk> {
@@ -17,50 +17,59 @@ pub fn extract_risks(section_content: &str) -> Vec<Risk> {
         None => return Vec::new(),
     };
 
-    table.rows.iter().filter_map(|row| {
-        let id = row.get("ID")?.trim().to_string();
-        if id.is_empty() {
-            return None;
-        }
+    table
+        .rows
+        .iter()
+        .filter_map(|row| {
+            let id = row.get("ID")?.trim().to_string();
+            if id.is_empty() {
+                return None;
+            }
 
-        let title = row.get("Risiko")
-            .or_else(|| row.get("Risk"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let title = row
+                .get("Risiko")
+                .or_else(|| row.get("Risk"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        let severity = row.get("Schwere")
-            .or_else(|| row.get("Severity"))
-            .map(|s| parse_risk_level(s))
-            .unwrap_or(RiskLevel::Medium);
+            let severity = row
+                .get("Schwere")
+                .or_else(|| row.get("Severity"))
+                .map(|s| parse_risk_level(s))
+                .unwrap_or(RiskLevel::Medium);
 
-        let likelihood = row.get("Wahrscheinlichkeit")
-            .or_else(|| row.get("Likelihood"))
-            .or_else(|| row.get("Probability"))
-            .map(|s| parse_risk_level(s))
-            .unwrap_or(RiskLevel::Medium);
+            let likelihood = row
+                .get("Wahrscheinlichkeit")
+                .or_else(|| row.get("Likelihood"))
+                .or_else(|| row.get("Probability"))
+                .map(|s| parse_risk_level(s))
+                .unwrap_or(RiskLevel::Medium);
 
-        // Impact column is descriptive text, not a level — derive from severity
-        let impact = severity;
+            // Impact column is descriptive text, not a level — derive from severity
+            let impact = severity;
 
-        let mitigation = row.get("Mitigation")
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let mitigation = row
+                .get("Mitigation")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        let owner = row.get("Owner")
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let owner = row
+                .get("Owner")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        Some(Risk {
-            id,
-            title,
-            likelihood,
-            impact,
-            severity,
-            mitigation,
-            owner,
-            status: RiskStatus::Open,
+            Some(Risk {
+                id,
+                title,
+                likelihood,
+                impact,
+                severity,
+                mitigation,
+                owner,
+                status: RiskStatus::Open,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 /// Parse a risk level string like "High", "Medium", "Low", "Critical"

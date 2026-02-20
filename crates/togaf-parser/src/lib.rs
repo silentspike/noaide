@@ -10,9 +10,9 @@
 //! - `extractors`: Specialized extractors (meta, checklist, gates, tables, etc.)
 //! - `emitter`: PlanDocument -> JSON serialization
 
+pub mod diff;
+pub mod emitter;
+pub mod extractors;
+pub mod parser;
 pub mod schema;
 pub mod sections;
-pub mod parser;
-pub mod extractors;
-pub mod emitter;
-pub mod diff;

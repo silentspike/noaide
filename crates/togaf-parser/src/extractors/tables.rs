@@ -25,9 +25,7 @@ pub struct MarkdownTable {
 /// - Separator row with `---` patterns
 /// - Data rows with `|` separators
 pub fn parse_table(text: &str) -> Option<MarkdownTable> {
-    let mut lines = text.lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty());
+    let mut lines = text.lines().map(|l| l.trim()).filter(|l| !l.is_empty());
 
     // Find header row (first line with |)
     let header_line = lines.find(|l| l.contains('|'))?;

@@ -18,45 +18,32 @@ use std::sync::LazyLock;
 
 use crate::schema::{PlanMeta, PlanStatus, TailoringLevel};
 
-static TITLE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^#\s+Plan:\s+(.+)$").unwrap()
-});
+static TITLE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#\s+Plan:\s+(.+)$").unwrap());
 
-static TAILORING_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)TOGAF\s+Tailoring\s+Level:\s*([SML])").unwrap()
-});
+static TAILORING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)TOGAF\s+Tailoring\s+Level:\s*([SML])").unwrap());
 
-static SCOPE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)Scope:\s*(.+)$").unwrap()
-});
+static SCOPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)Scope:\s*(.+)$").unwrap());
 
-static ITERATION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)ADM-Iteration:\s*(\d+)").unwrap()
-});
+static ITERATION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)ADM-Iteration:\s*(\d+)").unwrap());
 
-static STATUS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)Status:\s*(.+)$").unwrap()
-});
+static STATUS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)Status:\s*(.+)$").unwrap());
 
-static VERSION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)Version:\s*(v[\d.]+)").unwrap()
-});
+static VERSION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)Version:\s*(v[\d.]+)").unwrap());
 
-static DATE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Erstellt:\s*(\d{4}-\d{2}-\d{2})").unwrap()
-});
+static DATE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Erstellt:\s*(\d{4}-\d{2}-\d{2})").unwrap());
 
-static CONFIDENCE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)Confidence:\s*(\d+)%").unwrap()
-});
+static CONFIDENCE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)Confidence:\s*(\d+)%").unwrap());
 
-static WIP_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)Kanban\s+WIP-Limit:\s*(\d+)").unwrap()
-});
+static WIP_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)Kanban\s+WIP-Limit:\s*(\d+)").unwrap());
 
-static GITHUB_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)GitHub\s+Repo:\s*(.+)$").unwrap()
-});
+static GITHUB_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)GitHub\s+Repo:\s*(.+)$").unwrap());
 
 /// Extract PlanMeta from a code block (the P.1 content)
 pub fn extract_meta(code_block: &str) -> PlanMeta {
@@ -119,7 +106,9 @@ pub fn extract_meta(code_block: &str) -> PlanMeta {
 /// Try to extract the title from the first line of the markdown
 /// (the `# Plan: ...` heading before any sections)
 pub fn extract_title_from_heading(heading: &str) -> Option<String> {
-    TITLE_RE.captures(heading.trim()).map(|caps| caps[1].trim().to_string())
+    TITLE_RE
+        .captures(heading.trim())
+        .map(|caps| caps[1].trim().to_string())
 }
 
 #[cfg(test)]
@@ -141,7 +130,10 @@ GitHub Repo: silentspike/noaide
     #[test]
     fn extract_meta_full() {
         let meta = extract_meta(SAMPLE_P1);
-        assert_eq!(meta.title, "noaide - Browser-basierte Real-time IDE fuer Claude Code");
+        assert_eq!(
+            meta.title,
+            "noaide - Browser-basierte Real-time IDE fuer Claude Code"
+        );
         assert_eq!(meta.tailoring, TailoringLevel::L);
         assert_eq!(meta.scope, "scope:full");
         assert_eq!(meta.adm_iteration, 1);

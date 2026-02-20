@@ -3,8 +3,8 @@
 //! These structs match the TypeScript interfaces in
 //! `frontend/src/components/togaf/types/plan.ts` 1:1.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Root object: plan.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,10 +81,18 @@ pub struct PlanMeta {
     pub github_repo: Option<String>,
 }
 
-fn default_version() -> String { "v1.0".to_string() }
-fn default_tailoring() -> TailoringLevel { TailoringLevel::L }
-fn default_wip() -> u8 { 3 }
-fn default_iteration() -> u8 { 1 }
+fn default_version() -> String {
+    "v1.0".to_string()
+}
+fn default_tailoring() -> TailoringLevel {
+    TailoringLevel::L
+}
+fn default_wip() -> u8 {
+    3
+}
+fn default_iteration() -> u8 {
+    1
+}
 
 impl Default for PlanMeta {
     fn default() -> Self {
@@ -123,7 +131,9 @@ pub enum PlanStatus {
 }
 
 impl Default for PlanStatus {
-    fn default() -> Self { Self::Draft }
+    fn default() -> Self {
+        Self::Draft
+    }
 }
 
 // --- Gates ----------------------------------------------------------
@@ -149,7 +159,9 @@ pub enum SectionStatus {
 }
 
 impl Default for SectionStatus {
-    fn default() -> Self { Self::Pending }
+    fn default() -> Self {
+        Self::Pending
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,7 +174,9 @@ pub enum Priority {
 }
 
 impl Default for Priority {
-    fn default() -> Self { Self::Should }
+    fn default() -> Self {
+        Self::Should
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -175,7 +189,9 @@ pub enum Criticality {
 }
 
 impl Default for Criticality {
-    fn default() -> Self { Self::Medium }
+    fn default() -> Self {
+        Self::Medium
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -222,7 +238,9 @@ pub enum WPStatus {
 }
 
 impl Default for WPStatus {
-    fn default() -> Self { Self::Backlog }
+    fn default() -> Self {
+        Self::Backlog
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -263,7 +281,9 @@ pub struct WorkPackage {
 }
 
 impl Default for WPComplexity {
-    fn default() -> Self { Self::Medium }
+    fn default() -> Self {
+        Self::Medium
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -311,7 +331,9 @@ pub struct Risk {
 }
 
 impl Default for RiskStatus {
-    fn default() -> Self { Self::Open }
+    fn default() -> Self {
+        Self::Open
+    }
 }
 
 // --- ADRs -----------------------------------------------------------
@@ -343,7 +365,9 @@ pub struct Adr {
 }
 
 impl Default for AdrStatus {
-    fn default() -> Self { Self::Proposed }
+    fn default() -> Self {
+        Self::Proposed
+    }
 }
 
 // --- Requirements ---------------------------------------------------
@@ -364,7 +388,9 @@ pub enum ReqStatus {
 }
 
 impl Default for ReqStatus {
-    fn default() -> Self { Self::Draft }
+    fn default() -> Self {
+        Self::Draft
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

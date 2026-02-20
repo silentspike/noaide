@@ -9,10 +9,10 @@
 //! - risks: E.2 risk table extraction
 //! - adrs: E.3 ADR extraction
 
-pub mod meta;
+pub mod adrs;
 pub mod checklist;
 pub mod gates;
+pub mod meta;
+pub mod risks;
 pub mod tables;
 pub mod work_packages;
-pub mod risks;
-pub mod adrs;

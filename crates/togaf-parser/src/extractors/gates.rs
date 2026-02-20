@@ -4,9 +4,9 @@
 //! This module provides a convenience function to collect gate statuses
 //! into the HashMap<u8, GateStatus> format used by PlanDocument.
 
-use std::collections::HashMap;
-use crate::schema::GateStatus;
 use super::checklist;
+use crate::schema::GateStatus;
+use std::collections::HashMap;
 
 /// Extract gate statuses from a checklist block (typically the Master-Checkliste).
 ///
@@ -18,9 +18,7 @@ pub fn extract_gates(checklist_text: &str) -> HashMap<u8, GateStatus> {
 
 /// Initialize all 5 gates (0-4) as Pending, then overlay parsed results.
 pub fn extract_gates_with_defaults(checklist_text: &str) -> HashMap<u8, GateStatus> {
-    let mut map: HashMap<u8, GateStatus> = (0..=4)
-        .map(|n| (n, GateStatus::Pending))
-        .collect();
+    let mut map: HashMap<u8, GateStatus> = (0..=4).map(|n| (n, GateStatus::Pending)).collect();
 
     let parsed = extract_gates(checklist_text);
     map.extend(parsed);
