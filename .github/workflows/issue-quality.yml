@@ -10,7 +10,7 @@ permissions:
 jobs:
   quality-gate:
     name: Quality Gate
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
         with:
@@ -43,7 +43,7 @@ jobs:
               "## In Scope",
               "## Out of Scope",
               "Acceptance Criteria",
-              "## Testplan",
+              "## Verification",
             ];
             const sectionMissing = requiredSections.filter(s => !body.includes(s));
             if (sectionMissing.length) {
