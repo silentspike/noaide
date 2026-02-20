@@ -29,6 +29,8 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
       ci: ${{ steps.filter.outputs.ci }}
+      has-cargo: ${{ steps.manifests.outputs.has-cargo }}
+      has-frontend: ${{ steps.manifests.outputs.has-frontend }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +51,20 @@ jobs:
               - 'schemas/**'
             ci:
               - '.github/**'
+
+      - name: Check for project manifests
+        id: manifests
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            echo "has-cargo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-cargo=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f "frontend/package.json" ]; then
+            echo "has-frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-frontend=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ──────────────────────────────────────────────────────────────
   # Language Gate: Always runs (checks GitHub-facing files)
@@ -123,7 +139,7 @@ jobs:
     name: Lint (Rust)
     runs-on: ubuntu-latest
     needs: paths-filter
-    if: (needs.paths-filter.outputs.rust == 'true' || needs.paths-filter.outputs.ci == 'true') && hashFiles('Cargo.toml') != ''
+    if: (needs.paths-filter.outputs.rust == 'true' || needs.paths-filter.outputs.ci == 'true') && needs.paths-filter.outputs.has-cargo == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -146,7 +162,7 @@ jobs:
     name: Lint (Frontend)
     runs-on: ubuntu-latest
     needs: paths-filter
-    if: (needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.ci == 'true') && hashFiles('frontend/package.json') != ''
+    if: (needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.ci == 'true') && needs.paths-filter.outputs.has-frontend == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -169,7 +185,7 @@ jobs:
     name: Test (Rust)
     runs-on: ubuntu-latest
     needs: [paths-filter, lint-rust]
-    if: (needs.paths-filter.outputs.rust == 'true' || needs.paths-filter.outputs.ci == 'true') && hashFiles('Cargo.toml') != ''
+    if: (needs.paths-filter.outputs.rust == 'true' || needs.paths-filter.outputs.ci == 'true') && needs.paths-filter.outputs.has-cargo == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -187,7 +203,7 @@ jobs:
     name: Test (Frontend)
     runs-on: ubuntu-latest
     needs: [paths-filter, lint-frontend]
-    if: (needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.ci == 'true') && hashFiles('frontend/package.json') != ''
+    if: (needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.ci == 'true') && needs.paths-filter.outputs.has-frontend == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -210,7 +226,7 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     needs: paths-filter
-    if: (needs.paths-filter.outputs.rust == 'true' || needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.ci == 'true') && (hashFiles('Cargo.toml') != '' || hashFiles('frontend/package.json') != '')
+    if: (needs.paths-filter.outputs.rust == 'true' || needs.paths-filter.outputs.frontend == 'true' || needs.paths-filter.outputs.ci == 'true') && (needs.paths-filter.outputs.has-cargo == 'true' || needs.paths-filter.outputs.has-frontend == 'true')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -252,7 +268,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [paths-filter, test-rust, test-frontend, security, language-check]
-    if: hashFiles('Cargo.toml') != '' && !(needs.paths-filter.outputs.docs-only == 'true' && needs.paths-filter.outputs.rust == 'false' && needs.paths-filter.outputs.frontend == 'false' && needs.paths-filter.outputs.ci == 'false')
+    if: needs.paths-filter.outputs.has-cargo == 'true' && !(needs.paths-filter.outputs.docs-only == 'true' && needs.paths-filter.outputs.rust == 'false' && needs.paths-filter.outputs.frontend == 'false' && needs.paths-filter.outputs.ci == 'false')
     steps:
       - uses: actions/checkout@v4
 
