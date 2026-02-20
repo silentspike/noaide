@@ -18,9 +18,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Check if analyzable source code exists before running CodeQL
+  check-source:
+    name: Check Source Files
+    runs-on: ubuntu-latest
+    outputs:
+      has-js-ts: ${{ steps.check.outputs.has-js-ts }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for JS/TS source files
+        id: check
+        run: |
+          if find frontend/src -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' 2>/dev/null | head -1 | grep -q .; then
+            echo "has-js-ts=true" >> "$GITHUB_OUTPUT"
+            echo "Found JS/TS source files"
+          else
+            echo "has-js-ts=false" >> "$GITHUB_OUTPUT"
+            echo "No JS/TS source files found, skipping CodeQL"
+          fi
+
   analyze:
     name: CodeQL Analysis
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
+    needs: check-source
+    if: needs.check-source.outputs.has-js-ts == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -37,3 +59,22 @@ jobs:
       - uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
+
+  # Gate job: always runs, aggregates results for branch protection.
+  # Branch protection requires "CodeQL Gate" instead of individual analysis jobs.
+  codeql-gate:
+    name: CodeQL Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [check-source, analyze]
+    steps:
+      - name: Check results
+        run: |
+          echo "check-source: ${{ needs.check-source.result }}"
+          echo "analyze: ${{ needs.analyze.result }}"
+          if [[ "${{ needs.check-source.result }}" == "failure" ]] ||
+             [[ "${{ needs.analyze.result }}" == "failure" ]]; then
+            echo "::error::CodeQL failed"
+            exit 1
+          fi
+          echo "CodeQL passed (or skipped — no source code yet)"
