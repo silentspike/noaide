@@ -1,4 +1,4 @@
-use pulldown_cmark::{html, Parser};
+use pulldown_cmark::{Parser, html};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]

@@ -16,68 +16,63 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-use crate::schema::{WorkPackage, WPStatus, WPSize, WPComplexity, VerifyCheck};
+use crate::schema::{VerifyCheck, WPComplexity, WPSize, WPStatus, WorkPackage};
 
-static WP_HEADING_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^###\s+WP-(\d+):\s+(.+)$").unwrap()
-});
+static WP_HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^###\s+WP-(\d+):\s+(.+)$").unwrap());
 
-static METADATA_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Komplexitaet:\s*(\w+)\s*\|\s*Size:\s*(\w+)").unwrap()
-});
+static METADATA_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Komplexitaet:\s*(\w+)\s*\|\s*Size:\s*(\w+)").unwrap());
 
-static GATE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Gate:\s*(Ja|Nein|Yes|No)").unwrap()
-});
+static GATE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Gate:\s*(Ja|Nein|Yes|No)").unwrap());
 
-static KANBAN_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)Kanban-Status:\s*(.+)$").unwrap()
-});
+static KANBAN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)Kanban-Status:\s*(.+)$").unwrap());
 
-static DEPS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\*\*Abhaengigkeiten:\*\*\s*(.+)$").unwrap()
-});
+static DEPS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\*\*Abhaengigkeiten:\*\*\s*(.+)$").unwrap());
 
-static WP_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"WP-(\d+)").unwrap()
-});
+static WP_REF_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"WP-(\d+)").unwrap());
 
-static VERIFY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^-\s+\[([ xX])\]\s+(.+)$").unwrap()
-});
+static VERIFY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^-\s+\[([ xX])\]\s+(.+)$").unwrap());
 
 /// Extract work packages from section content (E.4 Implementation Work Packages).
 pub fn extract_work_packages(section_content: &str) -> Vec<WorkPackage> {
     let wp_chunks = split_on_wp_headings(section_content);
 
-    wp_chunks.into_iter().filter_map(|(heading, body)| {
-        let caps = WP_HEADING_RE.captures(&heading)?;
-        let num = caps[1].parse::<u8>().ok()?;
-        let id = format!("WP-{}", num);
-        let title = caps[2].trim().to_string();
+    wp_chunks
+        .into_iter()
+        .filter_map(|(heading, body)| {
+            let caps = WP_HEADING_RE.captures(&heading)?;
+            let num = caps[1].parse::<u8>().ok()?;
+            let id = format!("WP-{}", num);
+            let title = caps[2].trim().to_string();
 
-        let complexity = extract_complexity(&body);
-        let size = extract_size(&body);
-        let gate_required = extract_gate_required(&body);
-        let status = extract_kanban_status(&body);
-        let dependencies = extract_dependencies(&body);
-        let verify_checks = extract_verify_checks(&body);
-        let scope_files = extract_scope_files(&body);
+            let complexity = extract_complexity(&body);
+            let size = extract_size(&body);
+            let gate_required = extract_gate_required(&body);
+            let status = extract_kanban_status(&body);
+            let dependencies = extract_dependencies(&body);
+            let verify_checks = extract_verify_checks(&body);
+            let scope_files = extract_scope_files(&body);
 
-        Some(WorkPackage {
-            id,
-            title,
-            status,
-            size,
-            sprint: 0,
-            dependencies,
-            assignee: String::new(),
-            scope_files,
-            gate_required,
-            verify_checks,
-            complexity,
+            Some(WorkPackage {
+                id,
+                title,
+                status,
+                size,
+                sprint: 0,
+                dependencies,
+                assignee: String::new(),
+                scope_files,
+                gate_required,
+                verify_checks,
+                complexity,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 /// Split section content into (heading, body) chunks at `### WP-N:` boundaries
@@ -160,7 +155,8 @@ fn extract_dependencies(body: &str) -> Vec<String> {
             {
                 return Vec::new();
             }
-            return WP_REF_RE.captures_iter(deps_text)
+            return WP_REF_RE
+                .captures_iter(deps_text)
                 .map(|c| format!("WP-{}", &c[1]))
                 .collect();
         }
@@ -323,8 +319,11 @@ Kanban-Status: Backlog
 
         assert_eq!(wps[0].verify_checks.len(), 3);
         assert!(!wps[0].verify_checks[0].passed); // [ ] Test: eBPF
-        assert!(wps[0].verify_checks[1].passed);  // [x] Test: Limbo
-        assert_eq!(wps[0].verify_checks[0].description, "Test: eBPF Kernel config");
+        assert!(wps[0].verify_checks[1].passed); // [x] Test: Limbo
+        assert_eq!(
+            wps[0].verify_checks[0].description,
+            "Test: eBPF Kernel config"
+        );
     }
 
     #[test]

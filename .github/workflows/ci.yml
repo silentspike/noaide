@@ -235,10 +235,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install gitleaks
+        uses: taiki-e/install-action@v2
+        with:
+          tool: gitleaks
+
       - name: Gitleaks secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gitleaks detect --source=. --verbose --redact
 
       - uses: dtolnay/rust-toolchain@stable
 
