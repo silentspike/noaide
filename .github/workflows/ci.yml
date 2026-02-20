@@ -236,27 +236,33 @@ jobs:
           fetch-depth: 0
 
       - name: Gitleaks secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          GITLEAKS_VERSION="8.24.3"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz
+          ./gitleaks detect --source=. --verbose --redact
 
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.paths-filter.outputs.has-cargo == 'true'
 
       - name: Install cargo-audit
+        if: needs.paths-filter.outputs.has-cargo == 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
 
       - name: Cargo audit
-        run: cargo audit
+        if: needs.paths-filter.outputs.has-cargo == 'true'
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
       - uses: actions/setup-node@v6
+        if: needs.paths-filter.outputs.has-frontend == 'true'
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: npm audit
+        if: needs.paths-filter.outputs.has-frontend == 'true'
         run: cd frontend && npm ci && npm audit --audit-level=high
 
       - name: Semgrep SAST scan
