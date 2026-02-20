@@ -1,90 +1,157 @@
-# Plan: claude-ide - Browser-basierte IDE fuer Claude Code
-Size: L (Architecture)
-Status: Draft
-Version: v1.0 | Erstellt: 2026-02-20
-Confidence: 85% - Umfangreiches Spec vorhanden, alle Architektur-Entscheidungen getroffen, Peer-Review durch Gemini/Codex/Claude eingearbeitet (v1.1). Risiko liegt in der Integrationstiefe von eBPF/Zenoh/Limbo (wenig Produktions-Referenzen fuer die Kombination)
+# Plan: claude-ide - Browser-basierte Real-time IDE fuer Claude Code
 
 ---
 
-## 0. MASTER-CHECKLISTE
+## MASTER-CHECKLISTE (TOGAF ADM)
 
-### Phase 1: Analyse & Klaerung
-- [x] 1. Header
-- [x] 2. Blocking Questions
-- [x] 3. Prerequisites Check
-- [x] 4. TL;DR
-- [x] 5. Kontext
-- [x] 6. Glossar
+### Preliminary Phase: Framework & Grundlagen
+- [x] P.1 Architecture Engagement Record
+- [x] P.2 Architecture Principles
+- [x] P.3 Stakeholder Concerns
+- [x] P.4 Prerequisites
+- [x] P.5 Glossar
+- [x] → **GATE 0 bestanden**
 
-### Phase 2: Planung & Design
-- [x] 7. Quick Wins
-- [x] 8. Nicht im Scope
-- [x] 9. Abhaengigkeiten & Reihenfolge
-- [x] 10. Risiko-Bewertung + Error Handling
-- [x] 11. Security Checkliste
-- [x] 12. Release Manager
-- [x] 13. Git (lokal)
-- [x] 14. GitHub (remote)
-- [x] 15. Implementierungsschritte (mit VERIFY-Template)
+### Phase A: Architecture Vision
+- [x] A.1 Vision Statement
+- [x] A.2 Business Context
+- [x] A.3 Stakeholder Map
+- [x] A.4 Architecture Scope
+- [x] A.5 Key Requirements
+- [x] A.6 Building Blocks Overview
+- [x] → **GATE 1 bestanden**
 
-### Phase 3: Konfiguration & Tests
-- [x] 16. Dependencies & Packages
-- [x] 17. Environment
-- [x] 18. Feature Flags
-- [x] 19. Test-Strategie + Observability + Performance
-- [x] 20. Acceptance Criteria
-- [x] 21. Decision Log
+### Phase B: Business Architecture
+- [x] B.1 Business Capabilities & Quick Wins
+- [x] B.2 Business Process Flow
+- [x] B.3 Acceptance Criteria
 
-### Phase 4: Validierung & Abschluss
-- [x] 22. Documentation Updates
-- [x] 23. Rollback-Plan
-- [x] 24. Cleanup nach Implementation
-- [x] 25. PR Review Checkliste
-- [x] 26. Erfolgskriterien
-- [x] 27. Definition of Done
-- [x] 28. Summary of Changes
-- [x] 29. Lessons Learned
-- [x] 30. Next Steps
-- [x] 31. TodoWrite Items
+### Phase C: Information Systems Architecture
+- [x] C.1 Data Architecture
+- [x] C.2 Application Architecture
+- [x] C.3 Error Handling Strategy
+- [x] C.4 Security Architecture
+
+### Phase D: Technology Architecture
+- [x] D.1 Technology Stack
+- [x] D.2 Environment Architecture
+- [x] D.3 Feature Flags
+- [x] D.4 Observability Architecture
+- [x] D.5 Infrastructure
+- [x] → **GATE 2 bestanden**
+
+### Phase E: Opportunities & Solutions
+- [x] E.1 Gap Analysis
+- [x] E.2 Risk Assessment
+- [x] E.3 Architecture Decision Records
+- [x] E.4 Implementation Work Packages
+- [x] E.5 Dependency Graph & Ordering
+- [x] E.6 Git & SCM Strategy
+
+### Phase F: Migration Planning
+- [x] F.1 Test-Strategie & CI/CD Gate Architecture
+- [x] F.2 Real-World Testing
+- [x] F.3 Release & Deployment Plan
+- [x] F.4 Rollback Architecture
+- [x] F.5 Kanban Board Setup
+- [x] → **GATE 3 bestanden**
+
+### Phase G: Implementation Governance
+- [x] G.1 Architecture Compliance Review
+- [x] G.2 Definition of Done
+- [x] G.3 Success Metrics
+- [x] G.4 Post-Implementation Cleanup
+- [x] G.5 Documentation Updates
+- [x] → **GATE 4 bestanden**
+
+### Phase H: Architecture Change Management
+- [x] H.1 Architecture Change Log
+- [x] H.2 Lessons Learned
+- [x] H.3 Architecture Repository Updates
+- [x] H.4 Plan-Qualitaet Retrospektive
+- [x] H.5 Next Steps & Change Requests
+
+### Requirements Management
+- [x] RM.1 Requirements Register
+- [x] RM.2 Change Request Log
+- [x] RM.3 Traceability Matrix
+
+### Abschluss
+- [x] Qualitaets-Check durchgefuehrt
+- [x] Alle Gates bestanden
+- [x] Plan vollstaendig ausgegeben
+- [ ] HTML-Version generiert
+- [ ] TaskCreate Items fuer Implementation vorbereitet
+- [ ] GitHub Issues aus Work Packages erstellt
 
 ---
 
-## 1. HEADER
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PRELIMINARY PHASE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+## P.1 Architecture Engagement Record
 
 ```
 # Plan: claude-ide - Browser-basierte Real-time IDE fuer Claude Code
-Size: L (Architecture)
+TOGAF Tailoring Level: L (Architecture)
+Scope: scope:full
+ADM-Iteration: 1
 Status: Draft
-Version: v1.1 | Erstellt: 2026-02-20 | Peer-Review: Gemini + Codex (GPT-5.3) + Claude
-Confidence: 85% - Architektur-Entscheidungen vollstaendig, Peer-Review eingearbeitet, Integrations-Risiko bei eBPF+Zenoh+Limbo
+Version: v2.0 | Erstellt: 2026-02-20 | Migriert von v1.1 (Peer-Review: Gemini + Codex GPT-5.3 + Claude)
+Confidence: 85% - Architektur-Entscheidungen vollstaendig, Peer-Review v1.1 eingearbeitet,
+             Risiko bei eBPF+Zenoh+Limbo Integrationstiefe (wenig Produktions-Referenzen fuer Kombination)
+Kanban WIP-Limit: 3 (L-Size)
+GitHub Repo: Kein Remote (spaeter entscheiden)
 ```
 
----
-
-## 2. BLOCKING QUESTIONS (CRITICAL)
-
-### Blocking Questions
-- [x] Q1: Vollwertige IDE oder Viewer? → **Vollwertige IDE** (bidirektionaler Sync, Write-Scope)
-- [x] Q2: Backend-Sprache? → **Rust** (Tokio + io_uring, axum, quinn)
-- [x] Q3: Frontend-Framework? → **SolidJS** (feingranulare Reaktivitaet, kein VDOM)
-- [x] Q4: Transport? → **HTTP/3 WebTransport only** (QUIC, kein WebSocket Fallback)
-- [x] Q5: Session-Input-Methode? → **PTY stdin** (managed) + **tmux send-keys** (observed). NICHT claude -p --resume (startet Session neu)
-- [x] Q6: Event Bus? → **Zenoh + SHM** (Rust-native, zero-copy lokal, QUIC remote)
-- [x] Q7: Datenbank? → **Limbo** (SQLite-kompatibel, io_uring, async, FTS5)
-- [x] Q8: File Watching? → **eBPF** (fanotify + tracing)
-- [x] Q9: Wire Format? → **FlatBuffers** (hot path) + **MessagePack** (cold path) + **Zstd**
-- [x] Q10: State Management? → **ECS** (hecs crate)
-- [x] Q11: FUSE? → **NEIN** (zu komplex, nicht noetig)
-- [x] Q12: xgrammar? → **Spaeter** (nicht Phase 1)
-
-**Alle Blocking Questions wurden im /ask Interview-Modus geklaert.**
+**Scope-Klassifikation:** `scope:full` — Produktivcode im realen Laufzeitpfad. KEINE Stubs/Mocks/Placeholder.
 
 ---
 
-## 3. PREREQUISITES CHECK
+## P.2 Architecture Principles
+
+| Prinzip | Rationale | Implikation |
+|---------|-----------|-------------|
+| **Full Transparency** | Claude Code versteckt Inhalte im Terminal (system-reminder, thinking, hidden). User verdienen volle Einsicht. | ALLES aus dem JSONL wird angezeigt. Kein Filter, kein Hide. Ghost Messages fuer Compression. |
+| **120Hz Minimum** | Moderne Displays laufen bei 120Hz. Jeder Frame-Drop ist spuerbar. | SolidJS (kein VDOM), Virtual Scroller (~25 DOM-Nodes), ECS (cache-friendly SoA), WASM Workers, FlatBuffers (zero-copy) |
+| **System Engineering for Web** | Standard-Web-Tooling (WebSocket, REST, SQLite) reicht nicht fuer <50ms File-Event-to-Browser Latenz bei 200 events/sec. | eBPF (kernel-level), Zenoh+SHM (zero-copy IPC), WebTransport/QUIC (0-RTT), io_uring (async IO) |
+| **Production-First** | Keine Mocks, keine Stubs, echte Implementierung sofort. | scope:full auf jedem Work Package. Kein "later" fuer Error Handling oder Observability. |
+| **SSOT** | Eine Wahrheit pro Information. JSONL ist Source of Truth fuer Conversations. | Limbo DB ist Index/Cache, NICHT die Authority. JSONL-File kann DB jederzeit regenerieren. |
+| **Bidirektional** | IDE ist NICHT nur ein Viewer — sie steuert Claude Code aktiv. | PTY stdin (managed), tmux send-keys (observed), API Proxy (ANTHROPIC_BASE_URL redirect) |
+| **Mobile-First QUIC** | Smartphone-Zugriff ueber LAN/VPN mit Connection Migration (WiFi↔Cellular). | WebTransport-only (kein WebSocket Fallback), Adaptive Quality (RTT-basierte Tier: 120Hz/30Hz/10Hz) |
+
+**Standard-Prinzipien (immer gueltig):**
+- Production-First: Keine Mocks, keine Stubs
+- SSOT: Eine Wahrheit pro Information
+- Test Honesty: Keine Claims ohne Evidence
+
+---
+
+## P.3 Stakeholder Concerns
+
+### Stakeholder Concerns (alle geklaert)
+- [x] SC-1: Vollwertige IDE oder Viewer? → **Vollwertige IDE** (bidirektionaler Sync, Write-Scope)
+- [x] SC-2: Backend-Sprache? → **Rust** (Tokio + io_uring, axum, quinn)
+- [x] SC-3: Frontend-Framework? → **SolidJS** (feingranulare Reaktivitaet, kein VDOM)
+- [x] SC-4: Transport? → **HTTP/3 WebTransport only** (QUIC, kein WebSocket Fallback)
+- [x] SC-5: Session-Input-Methode? → **PTY stdin** (managed) + **tmux send-keys** (observed). NICHT `claude -p --resume` (startet Session neu!)
+- [x] SC-6: Event Bus? → **Zenoh + SHM** (Rust-native, zero-copy lokal ~1us, QUIC remote)
+- [x] SC-7: Datenbank? → **Limbo** (SQLite-kompatibel, io_uring, async, FTS5)
+- [x] SC-8: File Watching? → **eBPF** (fanotify + process-level tracing welcher PID schreibt)
+- [x] SC-9: Wire Format? → **FlatBuffers** (hot path ~200/sec) + **MessagePack** (cold path ~2/sec) + **Zstd** (~70% bandwidth)
+- [x] SC-10: State Management? → **ECS** (hecs crate, Struct-of-Arrays, cache-friendly)
+- [x] SC-11: FUSE? → **NEIN** (zu komplex, nicht noetig)
+- [x] SC-12: xgrammar? → **Spaeter** (nicht Phase 1)
+
+**Alle Stakeholder Concerns wurden im /ask Interview-Modus geklaert (Session d8479d5f).**
+
+---
+
+## P.4 Prerequisites
 
 - [x] Rust toolchain (rustup, cargo, wasm-pack) installiert
-- [ ] eBPF-Support im Kernel (`CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`) - pruefen auf openSUSE
+- [ ] eBPF-Support im Kernel (`CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`) — pruefen auf openSUSE
 - [ ] Limbo crate Stabilitaet pruefen (experimentell, Stand Feb 2026)
 - [ ] quinn (QUIC) + WebTransport Browser-Kompatibilitaet pruefen (Chrome/Firefox/Safari)
 - [ ] Zenoh crate Version + SHM Feature-Flag testen
@@ -92,66 +159,110 @@ Confidence: 85% - Architektur-Entscheidungen vollstaendig, Peer-Review eingearbe
 - [x] Git konfiguriert (obtFusi / jan.neubauer@live.com)
 - [ ] FlatBuffers Compiler (`flatc`) installieren
 - [x] RTX 3050 Ti + CUDA 12.8 (fuer spaetere ML-Features)
+- [ ] mkcert installiert + lokale CA fuer WebTransport TLS
+- [ ] COOP/COEP Browser-Kompatibilitaet (SharedArrayBuffer)
+- [ ] Monaspace Neon + Inter Fonts als WOFF2 (self-hosted, kein CDN wegen COEP)
 
 ---
 
-## 4. TL;DR
+## P.5 Glossar
 
-claude-ide ist eine Browser-basierte IDE die Claude Code Sessions in Echtzeit visualisiert und steuert. Der Rust-Backend-Server watched JSONL-Files via eBPF, managed Sessions ueber PTY/tmux, proxied API-Calls, und streamt alles ueber HTTP/3 WebTransport an ein SolidJS-Frontend. Kern-Differenzierung: ALLES aus dem JSONL wird angezeigt (inkl. versteckter System-Messages), API-Proxy mit Network-Tab, Multi-Agent Topology-Graph, interaktives Gantt mit Time-Tracking, und ein visuelles Design auf Catppuccin-Mocha-Basis mit Spring-Physics-Animationen und Breathing-Orb AI-Praesenz.
+| Begriff | Definition | TOGAF-Mapping |
+|---------|-----------|---------------|
+| **JSONL** | JSON Lines — Claude Codes Conversation-Format (eine JSON-Zeile pro Event) | Data Entity |
+| **PTY** | Pseudo-Terminal — virtuelle Terminal-Schnittstelle fuer Session-Management | SBB: Session Manager |
+| **Managed Session** | IDE spawnt Claude Code selbst, hat vollen PTY-Zugriff (stdin/stdout) | Business Capability |
+| **Observed Session** | Existierende Terminal-Session, IDE watched JSONL + tmux send-keys | Business Capability |
+| **ECS** | Entity Component System — Cache-freundliches State-Management (Struct-of-Arrays) | ABB: State Engine |
+| **SHM** | Shared Memory — Zero-Copy Inter-Process Communication (~1us Latenz) | SBB: Zenoh SHM |
+| **eBPF** | Extended Berkeley Packet Filter — Kernel-Level File Monitoring ohne Kernel-Module | SBB: File Watcher |
+| **fanotify** | File Access Notification — Linux Kernel API fuer File-Events | SBB: File Watcher |
+| **FlatBuffers** | Zero-Copy Serialisierung (hot path, ~200 events/sec) | SBB: Wire Codec |
+| **MessagePack** | Binaeres JSON-kompaktes Format (cold path, ~2 events/sec) | SBB: Wire Codec |
+| **Limbo** | SQLite-kompatible Rust-DB mit nativem io_uring + async Support | SBB: Database |
+| **Zenoh** | Rust-native Pub/Sub mit SHM Support (Eclipse Foundation, ersetzt NATS) | SBB: Event Bus |
+| **WebTransport** | HTTP/3-basiertes bidirektionales Streaming ueber QUIC (0-RTT, Connection Migration) | SBB: Transport |
+| **Breathing Orb** | Pulsierender Kreis als AI-Aktivitaetsindikator (5 States: IDLE/THINKING/STREAMING/TOOL_USE/ERROR) | UI Component |
+| **Ghost Message** | Komprimierte Message bei 30% Opacity (Original aus JSONL, nach Context-Compression) | UI Component |
+| **Adaptive Quality** | RTT-basierte Tier: <50ms=120Hz full, 50-150ms=30Hz batched, >150ms=10Hz critical | ABB: Quality Adapter |
+| **EventEnvelope** | Wrapper fuer alle System-Events mit Lamport Clock, Source, Dedup-Key | Data Entity |
 
 ---
 
-## 5. KONTEXT
+<!-- GATE 0: Tailoring korrekt? Principles definiert? → JA -->
 
-**Warum:** Claude Code laeuft im Terminal und zeigt nur einen Bruchteil des tatsaechlichen Geschehens. Das JSONL-File enthaelt ALLES - System-Messages, Reasoning-Blocks, versteckte Tool-Calls, Compression-Events - aber das Terminal filtert und versteckt davon vieles. Eine Browser-IDE bietet:
-1. Volle Transparenz: Alles aus dem JSONL sichtbar
-2. Besseres Tooling: Code-Editor, Diff-Views, Git-Integration
-3. Multi-Agent-Uebersicht: Team-Topologie, Gantt, Kanban
-4. Bilder: Native Darstellung statt Terminal-Limitierung
-5. API-Transparenz: Proxy loggt alle Anthropic API Calls
-6. Mobile-Zugriff: QUIC/WebTransport ueber VPN/LAN
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PHASE A: ARCHITECTURE VISION
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+## A.1 Vision Statement
+
+claude-ide ist eine Browser-basierte IDE die Claude Code Sessions in Echtzeit visualisiert und steuert. Der Rust-Backend-Server watched JSONL-Files via eBPF, managed Sessions ueber PTY/tmux, proxied API-Calls, und streamt alles ueber HTTP/3 WebTransport an ein SolidJS-Frontend.
+
+**Kern-Differenzierung:** ALLES aus dem JSONL wird angezeigt (inkl. versteckter System-Messages, Reasoning-Blocks, "dont display to user" Content), API-Proxy mit Network-Tab, Multi-Agent Topology-Graph, interaktives Gantt mit Time-Tracking, und ein visuelles Design auf Catppuccin-Mocha-Basis mit Spring-Physics-Animationen und Breathing-Orb AI-Praesenz.
+
+**Erwartetes Ergebnis:** Die ultimative Developer-Experience fuer Claude Code — volle Transparenz, volle Kontrolle, von Desktop bis Mobile.
+
+---
+
+## A.2 Business Context
+
+**Warum:** Claude Code laeuft im Terminal und zeigt nur einen Bruchteil des tatsaechlichen Geschehens. Das JSONL-File enthaelt ALLES — System-Messages, Reasoning-Blocks, versteckte Tool-Calls, Compression-Events — aber das Terminal filtert und versteckt davon vieles. Eine Browser-IDE bietet:
+
+1. **Volle Transparenz:** Alles aus dem JSONL sichtbar
+2. **Besseres Tooling:** Code-Editor, Diff-Views, Git-Integration
+3. **Multi-Agent-Uebersicht:** Team-Topologie, Gantt, Kanban
+4. **Bilder:** Native Darstellung statt Terminal-Limitierung
+5. **API-Transparenz:** Proxy loggt alle Anthropic API Calls
+6. **Mobile-Zugriff:** QUIC/WebTransport ueber VPN/LAN
 
 **Tech-Philosophie:** Enterprise SOTA 2026. Polyglot wo sinnvoll. Minimaler Ressourcen-Footprint. Low IOPs. 120Hz minimum Refresh.
 
 ---
 
-## 6. GLOSSAR
+## A.3 Stakeholder Map
 
-| Begriff | Bedeutung |
-|---------|-----------|
-| **JSONL** | JSON Lines - Claude Codes Conversation-Format (eine JSON-Zeile pro Event) |
-| **PTY** | Pseudo-Terminal - virtuelle Terminal-Schnittstelle fuer Session-Management |
-| **Managed Session** | IDE spawnt Claude Code selbst, hat vollen PTY-Zugriff |
-| **Observed Session** | Existierende Terminal-Session, IDE watched JSONL + tmux send-keys |
-| **ECS** | Entity Component System - Cache-freundliches State-Management Pattern |
-| **SHM** | Shared Memory - Zero-Copy Inter-Process Communication |
-| **eBPF** | Extended Berkeley Packet Filter - Kernel-Level Monitoring ohne Kernel-Module |
-| **fanotify** | File Access Notification - Linux Kernel API fuer File-Events |
-| **FlatBuffers** | Zero-Copy Serialisierung (hot path, ~200 events/sec) |
-| **MessagePack** | Binaeres JSON-kompaktes Format (cold path, ~2 events/sec) |
-| **Limbo** | SQLite-kompatible Rust-DB mit nativem io_uring + async Support |
-| **Zenoh** | Rust-native Pub/Sub mit SHM Support (ersetzt NATS) |
-| **WebTransport** | HTTP/3-basiertes bidirektionales Streaming ueber QUIC |
-| **Breathing Orb** | Pulsierender Kreis als AI-Aktivitaetsindikator |
-| **Ghost Message** | Komprimierte Message bei 30% Opacity (Original aus JSONL) |
+| Stakeholder | Rolle | Concern | Einfluss |
+|------------|-------|---------|----------|
+| Jan (User/Dev) | Primaer-Nutzer, Allein-Entwickler | Volle Transparenz, Performance, Mobile-Zugang | High |
+| Claude Code | AI Agent (wird gesteuert) | Session-Stabilitaet, kein Session-Neustart | High |
+| Anthropic API | Externer Service | Rate Limits, API-Kompatibilitaet | Medium |
+| Browser (Chrome/Firefox) | Runtime-Umgebung | WebTransport Support, SharedArrayBuffer, COOP/COEP | Medium |
+| Linux Kernel | System-Komponente | eBPF Support, fanotify, io_uring | Medium |
 
----
+**RACI-Matrix:**
 
-<!-- GATE 1: Alle Blocking Questions beantwortet? JA → Weiter zu Phase 2 -->
+| Aktivitaet | Responsible | Accountable | Consulted | Informed |
+|-----------|------------|-------------|-----------|----------|
+| Architecture | Claude (LLM) | Jan | Peer-Review LLMs | - |
+| Implementation | Claude (LLM) | Jan | - | - |
+| Testing | Claude (LLM) | Jan | - | - |
+| Deployment | Jan | Jan | - | - |
 
 ---
 
-## 7. QUICK WINS
+## A.4 Architecture Scope
 
-1. **Git Init + .gitignore** → Sofort erledigt
-2. **Cargo Workspace Scaffolding** → `server/`, `wasm/jsonl-parser/`, `wasm/markdown/`, `wasm/compress/`
-3. **SolidJS Projekt init** → `npm create solid` in `frontend/`
-4. **FlatBuffers Schema** → `schemas/` mit initialen Message-Typen
-5. **Catppuccin Mocha CSS Variables** → Design-Tokens sofort definierbar
+**In Scope (Phase 1):**
+- Rust Backend Server (Tokio + io_uring, axum, quinn WebTransport)
+- SolidJS Frontend (Vite 6, CodeMirror 6, 3-Panel Layout)
+- JSONL Parser (Streaming, ALLE Felder, WASM Worker)
+- Session Management (Managed via PTY, Observed via tmux + JSONL watch)
+- eBPF File Watcher (fanotify + PID tracing, inotify fallback)
+- Zenoh Event Bus (SHM zero-copy lokal, QUIC remote)
+- ECS State Engine (hecs crate)
+- Limbo Database (FTS5, io_uring)
+- API Proxy (ANTHROPIC_BASE_URL redirect, full request/response logging)
+- WebTransport (FlatBuffers hot path, MessagePack cold path, Zstd, Adaptive Quality)
+- 7 Center Tabs: Chat, Editor, Diff, Network, Gallery, Teams, Gantt
+- Multi-Agent Topology Graph + Swimlane Timeline
+- Interactive Gantt + Kanban (Right Panel)
+- Mobile Layout (Bottom Tab Bar, Swipe, Voice Input, Haptic)
+- Catppuccin Mocha Design, Spring Physics, Breathing Orb, Phosphor Icons
 
----
-
-## 8. NICHT IM SCOPE (Phase 1)
+**Out of Scope (Phase 2+):**
 
 | Feature | Phase | Grund |
 |---------|-------|-------|
@@ -165,1170 +276,209 @@ claude-ide ist eine Browser-basierte IDE die Claude Code Sessions in Echtzeit vi
 | Internet Deployment (oeffentlich) | Phase 2+ | Erst LAN, dann Internet |
 | Camera Capture (Mobile) | Phase 2 | Erst Desktop stabil |
 
+**Constraints:**
+- Single-User lokale IDE (kein Multi-Tenant)
+- openSUSE Tumbleweed als Zielplattform (Kernel 6.17+)
+- RTX 3050 Ti + 16GB RAM — Server muss < 200MB RSS bleiben
+- Keine externen Services ausser Anthropic API
+
 ---
 
-## 9. ABHAENGIGKEITEN & REIHENFOLGE
+## A.5 Key Requirements
 
-### Dependency Graph (Mermaid)
+| ID | Requirement | Typ | Prioritaet | Source |
+|----|------------|-----|-----------|--------|
+| REQ-1 | ALLE JSONL-Inhalte anzeigen (inkl. hidden, system-reminder, thinking) | Functional | Must | Jan |
+| REQ-2 | File-Event-to-Browser Latenz < 50ms (p99) | Non-Functional | Must | Tech-Philosophie |
+| REQ-3 | 120Hz Rendering bei 1000+ Messages | Non-Functional | Must | Tech-Philosophie |
+| REQ-4 | Bidirektionale Session-Steuerung (PTY stdin + tmux send-keys) | Functional | Must | Jan |
+| REQ-5 | API Proxy mit vollstaendigem Request/Response Logging | Functional | Must | Jan |
+| REQ-6 | Multi-Agent Topology Graph mit animierten Message-Bubbles | Functional | Must | Jan |
+| REQ-7 | Interactive Gantt mit Time-Tracking pro Agent | Functional | Should | Jan |
+| REQ-8 | Mobile Layout mit Bottom Tab Bar und Swipe | Functional | Should | Jan |
+| REQ-9 | Server < 200MB RSS, Browser < 500MB | Non-Functional | Must | Hardware |
+| REQ-10 | WebTransport mit Adaptive Quality (RTT-basiert) | Functional | Must | Mobile-First |
+| REQ-11 | eBPF File Watching mit PID-Tracing (welcher Prozess schreibt) | Functional | Must | Conflict Resolution |
+| REQ-12 | Conflict Resolution bei gleichzeitigen User+Claude Edits (OT Buffer) | Functional | Should | Peer-Review |
+| REQ-13 | Event-Ordering mit Lamport Clock + Dedup | Non-Functional | Must | Peer-Review |
+| REQ-14 | Backpressure mit bounded channels + Drop-Policy | Non-Functional | Must | Peer-Review |
 
-```mermaid
-graph TD
-    A[Phase 1: Rust Workspace + Grundstruktur] --> B[Phase 2: ECS World + Limbo DB]
-    A --> C[Phase 3: eBPF File Watcher]
-    B --> D[Phase 4: JSONL Parser + Session Discovery]
-    C --> D
-    D --> E[Phase 5: PTY Session Manager]
-    D --> F[Phase 6: Zenoh Event Bus]
-    E --> G[Phase 7: WebTransport Server]
-    F --> G
-    G --> H[Phase 8: SolidJS Frontend Shell]
-    H --> I[Phase 9: Chat Panel + JSONL Rendering]
-    H --> J[Phase 10: File Browser + Editor]
-    H --> K[Phase 11: Session Sidebar]
-    I --> L[Phase 12: API Proxy + Network Tab]
-    I --> M[Phase 13: Tool Visualizations]
-    J --> N[Phase 14: Git Integration]
-    I --> O[Phase 15: Multi-Agent / Teams]
-    O --> P[Phase 16: Gantt + Kanban]
-    G --> Q[Phase 17: WASM Modules]
-    Q --> I
-    ALL[Phase 18: Mobile Responsive] --> DONE[Phase 19: Polish + Performance]
+---
+
+## A.6 Building Blocks Overview
+
+### Architecture Building Blocks (ABBs)
+
+| ABB | Beschreibung | Capability |
+|-----|-------------|------------|
+| **Session Manager** | Verwaltet Claude Code Sessions (spawn, observe, kill, input) | Session Lifecycle |
+| **JSONL Engine** | Parsed und indexiert Claude Code Conversation Files | Data Ingestion |
+| **File Watcher** | Ueberwacht Filesystem-Aenderungen mit PID-Attribution | Real-time Sync |
+| **Event Bus** | Pub/Sub fuer alle internen Events (zero-copy lokal, QUIC remote) | Event Distribution |
+| **State Engine** | ECS-basiertes State Management (cache-friendly, 120Hz-ready) | State Management |
+| **Database** | Persistenz + Volltextsuche fuer Sessions, Messages, Files, Tasks | Data Persistence |
+| **Transport** | Bidirektionales Streaming zum Browser (hot/cold path, adaptive) | Client Communication |
+| **Wire Codec** | Serialisierung/Deserialisierung (zero-copy hot, flexible cold) | Data Encoding |
+| **API Proxy** | Intercepted Anthropic API Calls mit Logging | API Transparency |
+| **Quality Adapter** | RTT-basierte Anpassung der Event-Frequenz | Adaptive Performance |
+| **UI Shell** | 3-Panel Layout mit 7 Center Tabs, Responsive | User Interface |
+| **Chat Renderer** | Full JSONL Rendering mit Virtual Scroll, Tools, Ghost Messages | Conversation Display |
+| **Code Editor** | Syntax Highlighting, Merge View, Git Blame, Conflict Resolution | Code Editing |
+| **Team Visualizer** | Agent Topology, Swimlane, Message Bubbles | Multi-Agent UI |
+
+### Solution Building Blocks (SBBs)
+
+| SBB | Implementiert ABB | Technologie | Status |
+|-----|------------------|-------------|--------|
+| PTY Manager (portable-pty) + tmux | Session Manager | Rust (portable-pty crate) | Neu |
+| Streaming JSONL Parser | JSONL Engine | Rust + WASM (serde_json) | Neu |
+| eBPF/fanotify Watcher (aya crate) | File Watcher | Rust (aya eBPF framework) | Neu |
+| Zenoh + SHM | Event Bus | Rust (zenoh crate, Eclipse) | Neu |
+| hecs ECS World | State Engine | Rust (hecs 0.10) | Neu |
+| Limbo (io_uring + FTS5) | Database | Rust (limbo-core crate) | Neu |
+| quinn WebTransport | Transport | Rust (quinn 0.11, HTTP/3) | Neu |
+| FlatBuffers + MessagePack + Zstd | Wire Codec | Rust/JS (flatbuffers, rmp-serde, zstd) | Neu |
+| axum Reverse Proxy | API Proxy | Rust (axum 0.8, hyper) | Neu |
+| RTT-basierte Tiers | Quality Adapter | Rust (custom) | Neu |
+| SolidJS + Vite 6 | UI Shell | TypeScript (solid-js, vite 6) | Neu |
+| Virtual Scroller + WASM Workers | Chat Renderer | TypeScript + Rust→WASM | Neu |
+| CodeMirror 6 + Merge View | Code Editor | TypeScript (@codemirror/*) | Neu |
+| Force-directed Graph + Swimlane | Team Visualizer | TypeScript (custom SVG/Canvas) | Neu |
+
+---
+
+<!-- GATE 1: Vision klar? Stakeholder Concerns geklaert? → JA (12/12 Concerns resolved) -->
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PHASE B: BUSINESS ARCHITECTURE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+## B.1 Business Capabilities & Quick Wins
+
+**Capabilities:**
+
+| Capability | Beschreibung | Prioritaet |
+|-----------|-------------|-----------|
+| Full JSONL Transparency | Alle Conversation-Inhalte sichtbar, nichts versteckt | Must |
+| Bidirectional Session Control | Input senden via PTY/tmux, Output empfangen in Echtzeit | Must |
+| Real-time File Sync | File-Aenderungen in <50ms im Browser reflektiert | Must |
+| API Request Inspection | Alle Anthropic API Calls mit Request/Response Bodies | Must |
+| Multi-Agent Visualization | Team Topology, Message Flow, Swimlane Timeline | Must |
+| Code Editing + Diff | CodeMirror 6, Merge View, Git Blame, Conflict Resolution | Must |
+| Task Management | Kanban Board + Interactive Gantt mit Time-Tracking | Should |
+| Mobile Access | Bottom Tab Bar, Swipe, Voice Input, Haptic Feedback | Should |
+| Image Gallery | Alle Session-Bilder mit Lightbox | Should |
+| Semantic Search | FTS5 Volltextsuche ueber alle Messages | Should |
+
+**Quick Wins:**
+- [x] Git Init + .gitignore → Sofort erledigt
+- [ ] Cargo Workspace Scaffolding → `server/`, `wasm/jsonl-parser/`, `wasm/markdown/`, `wasm/compress/`
+- [ ] SolidJS Projekt init → `npm create solid` in `frontend/`
+- [ ] FlatBuffers Schema → `schemas/` mit initialen Message-Typen
+- [ ] Catppuccin Mocha CSS Variables → Design-Tokens sofort definierbar
+
+---
+
+## B.2 Business Process Flow
+
+### Hauptprozess: Real-time JSONL Sync
+
+```
+                          ┌──────────────────────────┐
+                          │    Claude Code (Terminal) │
+                          │    schreibt JSONL File    │
+                          └────────────┬─────────────┘
+                                       │
+                          ┌────────────▼─────────────┐
+                          │   eBPF/fanotify Watcher  │
+                          │   erkennt File-Change    │
+                          │   + PID Attribution      │
+                          └────────────┬─────────────┘
+                                       │ FileEvent
+                          ┌────────────▼─────────────┐
+                          │   JSONL Streaming Parser  │
+                          │   extrahiert neue Lines   │
+                          └────────────┬─────────────┘
+                                       │ ClaudeMessage
+                          ┌────────────▼─────────────┐
+                          │   ECS World (hecs)       │
+                          │   updated Entities       │
+                          └────────────┬─────────────┘
+                                       │ StateChange
+                          ┌────────────▼─────────────┐
+                          │   Zenoh Event Bus (SHM)  │
+                          │   publishes to topics    │
+                          └────────────┬─────────────┘
+                                       │ Event
+                          ┌────────────▼─────────────┐
+                          │   WebTransport Server    │
+                          │   encodes (FlatBuf/MsgPk)│
+                          │   + Zstd compress        │
+                          │   + Adaptive Quality     │
+                          └────────────┬─────────────┘
+                                       │ Binary Stream
+                          ┌────────────▼─────────────┐
+                          │   SolidJS Browser Client │
+                          │   decodes + renders      │
+                          │   at 120Hz               │
+                          └──────────────────────────┘
 ```
 
-### Parallelisierbar
-- Phase 3 (eBPF) + Phase 2 (ECS/Limbo) koennen parallel
-- Phase 9 (Chat) + Phase 10 (Editor) + Phase 11 (Sessions) koennen parallel nach Phase 8
-- Phase 12 (API Proxy) + Phase 13 (Tool Viz) koennen parallel
-- Phase 17 (WASM) kann parallel zu Frontend-Phasen
+### Bidirektionaler Input
 
-### Kritischer Pfad
 ```
-Rust Workspace → ECS/Limbo → JSONL Parser → Session Manager → Zenoh → WebTransport → Frontend Shell → Chat Panel
+[User] → InputField → WebTransport → Server
+                                       ├─→ Managed: PTY stdin write
+                                       └─→ Observed: tmux send-keys
 ```
 
----
+### API Proxy Flow
 
-## 10. RISIKO-BEWERTUNG + ERROR HANDLING
-
-### Risiken
-
-| Risiko | Schwere | Wahrscheinlichkeit | Mitigation |
-|--------|---------|---------------------|------------|
-| Limbo-Instabilitaet (experimentell) | High | Medium | Fallback auf rusqlite/SQLite mit io_uring wrapper; Limbo-Tests frueh ausfuehren |
-| eBPF Kernel-Support auf openSUSE | Medium | Medium | Fallback auf fanotify direkt (ohne eBPF tracing); Kernel-Config pruefen in Phase 0 |
-| WebTransport Browser-Support (Safari) | Medium | Low | Safari seit 17.4 (2024); Chrome/Firefox stabil; Safari-only Fallback: WebSocket |
-| Zenoh SHM Stabilitaet | Medium | Low | Zenoh ist produktionsreif (Eclipse Foundation); SHM Feature explizit testen |
-| 120Hz Rendering-Performance | High | Medium | SolidJS fine-grained reactivity; Virtual Scroller; Web Workers fuer WASM; GPU-accelerated CSS |
-| JSONL-Files sehr gross (>100MB) | Medium | High | Streaming Parser, nur sichtbare Messages im DOM, Limbo fuer Indexing |
-| PTY-Management Komplexitaet | Medium | Medium | portable-pty crate; tmux als Fallback fuer observed sessions |
-| FlatBuffers Schema-Evolution | Low | Low | Schema-Versionierung von Anfang an; backwards-compatible changes only |
-| Scope Creep durch Feature-Reichtum | High | High | Strikte Phase 1 Scope-Grenze; Features priorisieren |
-| WebTransport Self-Signed Cert Rejection | High | High | Browser lehnen self-signed Certs fuer QUIC/WebTransport ab (anders als HTTPS). Loesung: `--origin-to-force-quic-on` Chrome-Flag ODER lokale CA mit mkcert generieren + Trust Store. Phase 0 pruefen |
-| Event-Ordering Race Conditions | Medium | Medium | Mehrere Quellen (JSONL, PTY, Proxy, Watcher) koennen inkonsistente Reihenfolgen erzeugen. Loesung: Event-Protokoll mit event_id + source + sequence + logical_timestamp (Lamport Clock) |
-| Backpressure bei Event-Spikes | Medium | Medium | Langsamer Client oder massive File-Changes koennen Event-Queue ueberfluten. Loesung: Bounded channels + Drop-Policy nach Event-Klasse (file.change droppable, message.new nicht) |
-| File Conflict (User + Claude gleichzeitig) | Medium | Low | User editiert im IDE-Editor waehrend Claude via Tool dieselbe Datei schreibt. Loesung: Optimistic Locking + visuelle Warnung "Claude is writing to this file..." + auto-merge via OT/CRDT |
-| COOP/COEP fuer SharedArrayBuffer | Medium | High | SharedArrayBuffer (WASM Workers) erfordert Cross-Origin-Isolation Header. Externe Ressourcen (Fonts, CDN) muessen self-hosted oder CORS-faehig sein |
-
-### Event-Ordering Protokoll (NEU - aus Peer-Review)
-
-Jedes Event im System bekommt:
-```rust
-pub struct EventEnvelope {
-    pub event_id: Uuid,          // Globale Eindeutigkeit
-    pub source: EventSource,      // JSONL | PTY | Proxy | Watcher | User
-    pub sequence: u64,            // Monoton steigend pro Source
-    pub logical_ts: u64,          // Lamport Clock (globale Ordnung)
-    pub wall_ts: i64,             // Unix Timestamp (Darstellung)
-    pub session_id: SessionId,    // Zuordnung
-    pub dedup_key: Option<String>,// Fuer Dedup bei Echo-Events (PTY-Input → JSONL-Echo)
-}
 ```
-**Dedup-Regel:** Wenn ein JSONL-Event mit `dedup_key` empfangen wird das einem kuerzlich gesendeten PTY-Input entspricht, wird das JSONL-Event als "already seen" markiert (kein UI-Double).
-
-### Backpressure-Strategie (NEU - aus Peer-Review)
-
-| Event-Klasse | Queue-Groesse | Drop-Policy | Recovery |
-|--------------|---------------|-------------|----------|
-| message.new | Unbounded | Nie droppen | - |
-| tool.result | 1000 | Nie droppen | - |
-| file.change | 500 | Oldest-first drop | Snapshot nach reconnect |
-| cursor.move | 10 | Latest-only (replace) | Kein Recovery noetig |
-| metrics.update | 50 | Latest-only (replace) | Kein Recovery noetig |
-| system.event | 100 | Nie droppen | - |
-
-Bei Reconnect: Server sendet Snapshot des aktuellen States + Delta der verpassten non-droppable Events.
-
-### Error Handling Strategie
-
-| Error-Kategorie | Beispiele | Strategie |
-|-----------------|-----------|-----------|
-| **Fatal** | Limbo DB corrupt, eBPF attach fehlschlaegt, Port belegt | Graceful Shutdown mit Fehlermeldung im Browser, auto-restart via systemd |
-| **Transient** | JSONL file locked, WebTransport disconnect, Zenoh timeout | Retry mit exponential backoff (max 5 Versuche, 100ms→3.2s) |
-| **Recoverable** | JSONL parse error (einzelne Zeile), Session nicht gefunden, File deleted | Skip + Warning-Log, UI zeigt Ghost-Element mit Fehlerstatus |
-| **Expected** | Session beendet, File nicht mehr da, empty JSONL | Normaler Control Flow, Session-Status auf "ended", File aus Tree entfernen |
-
-**Pflicht-Fragen:**
-- [x] Welche Fehler koennen auftreten? → 9+ Risiken identifiziert (siehe Tabelle)
-- [x] Retry-Logik noetig? → Ja: WebTransport reconnect (exp. backoff), Zenoh reconnect, File watcher re-attach
-- [x] User-Feedback bei Fehlern? → Inline-Toasts (Catppuccin Red), Statusbar-Indikator, Breathing-Orb ERROR State (rot pulsierend)
-- [x] Fehler-Propagation? → eBPF/Watcher-Fehler → ECS Event → Zenoh broadcast → Frontend Toast. Fatal → Server shutdown → Browser "Disconnected" overlay
-- [x] Logging? → Structured JSON (tracing crate), ERROR/WARN/INFO/DEBUG levels → Limbo DB + stdout
-
----
-
-## 11. SECURITY CHECKLISTE
-
-- [x] **Input Validation**: User-Input ueber WebTransport wird validiert (Message-Length-Limits, UTF-8 Check, keine Raw-Bytes an PTY ohne Sanitization)
-- [x] **Auth/AuthZ**: JWT Token + API Key; Token-Refresh; Rate-Limiting pro Session
-- [x] **Sensitive Data**: API Keys werden NICHT im JSONL angezeigt (Regex-Redaction: `sk-ant-*`, `Bearer *`); .env nie committet
-- [x] **OWASP Top 10**: XSS (SolidJS escaped by default + CSP Header), Injection (PTY input sanitized, no shell=true), SSRF (API Proxy nur zu api.anthropic.com whitelist)
-- [x] **TLS**: Selbstsigniertes Cert fuer LAN (quinn QUIC); Let's Encrypt fuer Internet-Phase
-- [x] **eBPF Security**: BPF Programme laufen im Kernel - nur vorverifizierte Programme, kein dynamisches Laden von User-Input
-- [x] **CORS**: Strict same-origin; API Proxy fuegt keine offenen CORS-Header hinzu
-- [x] **COOP/COEP** (NEU): Cross-Origin-Isolation fuer SharedArrayBuffer (WASM Workers). Server sendet `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp`. Konsequenz: Monaspace Neon + Inter Fonts MUESSEN self-hosted werden (kein Google Fonts CDN). Phosphor Icons ebenfalls lokal bundlen
-- [x] **WebTransport TLS** (NEU): Self-signed Certs werden von Browsern fuer QUIC/WebTransport abgelehnt (anders als HTTPS "accept risk"). Loesung Phase 0: `mkcert` lokale CA erstellen + im OS Trust Store installieren. Fuer LAN: CA-Cert auf Mobile-Geraete verteilen. Fuer Internet: Let's Encrypt
-
----
-
-## 12. RELEASE MANAGER
-
-### Glossar
-| Begriff | Bedeutung |
-|---------|-----------|
-| **Check-in** | Status-Update (Was getan / Naechstes / Blocker / Confidence) |
-| **Gate** | Schritt der explizites User-Approval braucht |
-| **Blocker** | Problem das Weiterarbeit verhindert |
-| **Discovery** | Ungeplante Entdeckung waehrend Implementation |
-
-### Check-ins
-**Frequenz:** `Pro Phase` (18 Phasen = 18 Check-ins)
-
-### Gates
-- [x] Phase 0 - Prerequisites pruefen (eBPF Kernel, Limbo, Zenoh SHM) → User Approval
-- [ ] Phase 7 - WebTransport Server funktioniert end-to-end → User Demo
-- [ ] Phase 9 - Chat Panel zeigt JSONL komplett → User Review (CRITICAL: "alles anzeigen")
-- [ ] Phase 12 - API Proxy + Network Tab → User Review
-- [ ] Phase 15 - Multi-Agent Teams → User Review
-- [ ] Phase 19 - Final Polish → User Abnahme
-
-### Discoveries
-| Typ | Handling |
-|-----|----------|
-| Security | `Sofort fixen` |
-| Bugs | `Sofort fixen` wenn blocking, sonst `Sammeln` |
-| Performance | `Sammeln` (Performance-Phase ist 19) |
-| Tech-Debt | `Sammeln` (Cleanup-Phase nach Implementation) |
-
----
-
-## 13. GIT (lokal - IMMER)
-
-**Status:** `Bereits initialisiert`
-
-### Repository
-- **Init noetig?** Nein (bereits `git init` ausgefuehrt)
-- **Pfad:** `/work/claude-ide`
-
-### Branch
-- **Name:** `main` (direkt auf main da Greenfield-Projekt, Feature-Branches ab Phase 2)
-- **Base:** n/a (neues Repo)
-
-### Commits
-- **Strategie:** `Atomar` - ein Commit pro abgeschlossener Phase/Schritt
-- **Praefix:** `feat:` | `fix:` | `docs:` | `refactor:` | `test:` | `chore:`
-
-### .gitignore
-`.env`, `*.key`, `*.pem`, `*.db`, `*.db-shm`, `*.db-wal`, `node_modules/`, `target/`, `dist/`, `pkg/`, `__pycache__/`, `.claude-ide/images/`, `*.log`
-
----
-
-## 14. GITHUB (remote) - OPTIONAL
-
-**Status:** `Spaeter entscheiden`
-
-### Issue
-- **Typ:** `Epic` - claude-ide Gesamtprojekt
-- **LLM-Regel:** Phasen sind pro Session abschliessbar
-
-### PR
-- **Titel:** `feat: claude-ide Phase N - [Beschreibung]`
-- **Draft zuerst?** Ja
-
----
-
-## 15. IMPLEMENTIERUNGSSCHRITTE
-
----
-
-#### Schritt 0: Prerequisites pruefen
-Komplexitaet: Simple
-Gate: Ja (User Approval nach Ergebnis)
-
-**Was:** eBPF Kernel-Support, Limbo Stabilitaet, Zenoh SHM Feature, quinn WebTransport, FlatBuffers Compiler, **WebTransport TLS Setup**, **COOP/COEP Kompatibilitaet** pruefen.
-
-**Dateien:**
-- `certs/` (NEU) - Verzeichnis fuer lokale CA + Certs (via mkcert)
-- Keine weiteren Dateien - Bash-Commands
-
-**VERIFY:**
-- [ ] Test: `cat /boot/config-$(uname -r) | grep -E "CONFIG_BPF=|CONFIG_BPF_SYSCALL="` → beide `=y`
-- [ ] Test: Minimaler Limbo-Test (create table, insert, select, FTS5 query)
-- [ ] Test: Zenoh SHM Feature compiliert (`cargo check` mit `zenoh/shm` feature)
-- [ ] Test: `flatc --version` → installiert
-- [ ] Manuell: Quinn WebTransport Example compilieren und im Browser testen
-- [ ] **NEU - WebTransport TLS:** `mkcert -install && mkcert localhost 127.0.0.1 ::1` → Cert im OS Trust Store, Browser akzeptiert WebTransport ohne Flags
-- [ ] **NEU - COOP/COEP:** Test-HTML mit `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp` → `SharedArrayBuffer` verfuegbar in DevTools Console (`typeof SharedArrayBuffer !== 'undefined'`)
-- [ ] **NEU - Font Self-Hosting:** Monaspace Neon + Inter Variable Font als WOFF2 herunterladen → `frontend/public/fonts/` → kein externer CDN-Zugriff noetig unter COEP
-- [ ] Observability-Check: **N/A** (nur Prerequisite-Pruefung)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 1: Rust Workspace + Cargo Scaffolding
-Komplexitaet: Simple
-Gate: Nein
-
-**Was:** Cargo Workspace mit allen Crates anlegen. Noch kein Code, nur Struktur.
-
-**Dateien:**
-- `Cargo.toml` (NEU) - Workspace root
-- `server/Cargo.toml` (NEU) - Haupt-Server
-- `server/src/main.rs` (NEU) - Entry point (minimal)
-- `server/src/lib.rs` (NEU) - Library root
-- `wasm/jsonl-parser/Cargo.toml` (NEU) - WASM JSONL Parser
-- `wasm/jsonl-parser/src/lib.rs` (NEU) - WASM entry
-- `wasm/markdown/Cargo.toml` (NEU) - WASM Markdown
-- `wasm/markdown/src/lib.rs` (NEU) - WASM entry
-- `wasm/compress/Cargo.toml` (NEU) - WASM Zstd
-- `wasm/compress/src/lib.rs` (NEU) - WASM entry
-- `schemas/messages.fbs` (NEU) - FlatBuffers Schema
-- `.cargo-remote.toml` (NEU) - Remote Build Config
-
-**Code (Diff-Style):**
-```toml
-# Cargo.toml (Workspace Root)
-[workspace]
-resolver = "2"
-members = [
-    "server",
-    "wasm/jsonl-parser",
-    "wasm/markdown",
-    "wasm/compress",
-]
-
-[workspace.dependencies]
-tokio = { version = "1", features = ["full", "io-uring"] }
-axum = "0.8"
-quinn = "0.11"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-rmp-serde = "1"
-flatbuffers = "24"
-zenoh = { version = "1", features = ["shm"] }
-hecs = "0.10"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json"] }
+[Claude Code] → ANTHROPIC_BASE_URL=localhost:4434
+                       │
+              ┌────────▼────────┐
+              │  Rust API Proxy │
+              │  logs req/resp  │
+              │  to Limbo DB    │
+              └────────┬────────┘
+                       │ forward
+              ┌────────▼────────┐
+              │ api.anthropic.com│
+              └─────────────────┘
 ```
 
-**VERIFY:**
-- [ ] Test: `cargo remote -- check` → compiles
-- [ ] Manuell: Verzeichnisstruktur korrekt
-- [ ] Observability-Check: **N/A** (nur Scaffolding)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
 ---
 
-#### Schritt 2: ECS World + Limbo DB Setup
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** ECS World (hecs) mit allen Entity-Typen definieren. Limbo DB initialisieren mit Schema fuer Sessions, Messages, Files, Tasks, Agents. Grundlegende CRUD-Operationen.
-
-**Dateien:**
-- `server/src/ecs/mod.rs` (NEU) - ECS module
-- `server/src/ecs/components.rs` (NEU) - Component definitions
-- `server/src/ecs/systems.rs` (NEU) - System stubs
-- `server/src/ecs/world.rs` (NEU) - World setup
-- `server/src/db/mod.rs` (NEU) - Limbo module
-- `server/src/db/schema.rs` (NEU) - SQL schema
-- `server/src/db/queries.rs` (NEU) - Prepared statements
-
-**Code (Diff-Style):**
-```rust
-// ecs/components.rs
-+ pub struct SessionId(pub u64);
-+ pub struct SessionState { pub status: Status, pub model: String, pub cost: f64 }
-+ pub struct AgentInfo { pub name: String, pub agent_type: String, pub parent: Option<Entity> }
-+ pub struct FileEntry { pub path: PathBuf, pub modified: SystemTime, pub size: u64 }
-+ pub struct Message { pub role: Role, pub content: Content, pub timestamp: i64, pub tokens: u32 }
-+ pub struct TaskItem { pub subject: String, pub status: TaskStatus, pub owner: Option<String> }
-+ pub struct Metrics { pub cpu: f32, pub mem: u64, pub io_read: u64, pub io_write: u64 }
-```
-
-```sql
--- db/schema.rs (Limbo)
-CREATE TABLE sessions (id INTEGER PRIMARY KEY, path TEXT, status TEXT, model TEXT, started_at INTEGER, cost REAL);
-CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), role TEXT, content TEXT, timestamp INTEGER, tokens INTEGER, hidden INTEGER DEFAULT 0);
-CREATE TABLE files (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), path TEXT, modified INTEGER, size INTEGER);
-CREATE TABLE tasks (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), subject TEXT, status TEXT, owner TEXT);
-CREATE TABLE agents (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), name TEXT, agent_type TEXT, parent_id INTEGER);
-CREATE TABLE api_requests (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), method TEXT, url TEXT, request_body TEXT, response_body TEXT, status_code INTEGER, latency_ms INTEGER, timestamp INTEGER);
-CREATE VIRTUAL TABLE messages_fts USING fts5(content, content=messages, content_rowid=id);
-```
-
-**VERIFY:**
-- [ ] Test: `cargo remote -- test -p server -- ecs` → ECS World erstellt, Entities inserted/queried
-- [ ] Test: `cargo remote -- test -p server -- db` → Limbo schema created, CRUD works, FTS5 query works
-- [ ] Manuell: Limbo io_uring Backend aktiv (nicht fallback)
-- [ ] Observability-Check:
-  - Logging: DB-Initialisierung und Schema-Migration auf INFO-Level
-  - Metriken: **N/A** (noch kein Runtime)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 3: eBPF File Watcher
-Komplexitaet: Complex
-Gate: Nein
-
-**Was:** eBPF-basiertes File Watching mit fanotify fuer File-Events und optionalem eBPF tracing fuer Process-Level-Insights. Emittiert Events an ECS World.
-
-**Dateien:**
-- `server/src/watcher/mod.rs` (NEU) - Watcher module
-- `server/src/watcher/ebpf.rs` (NEU) - eBPF setup + fanotify
-- `server/src/watcher/events.rs` (NEU) - Event types
-- `server/src/watcher/fallback.rs` (NEU) - inotify Fallback
-
-**Code (Diff-Style):**
-```rust
-// watcher/events.rs
-+ pub enum FileEvent {
-+     Created { path: PathBuf, pid: Option<u32> },
-+     Modified { path: PathBuf, pid: Option<u32>, bytes_written: u64 },
-+     Deleted { path: PathBuf, pid: Option<u32> },
-+     Renamed { from: PathBuf, to: PathBuf },
-+ }
-
-// watcher/ebpf.rs
-+ pub struct EbpfWatcher {
-+     fanotify_fd: RawFd,
-+     watch_paths: Vec<PathBuf>,
-+     event_tx: tokio::sync::mpsc::Sender<FileEvent>,
-+ }
-```
-
-**VERIFY:**
-- [ ] Test: `cargo remote -- test -p server -- watcher` → File create/modify/delete Events erkannt
-- [ ] Test: Benchmark - 1000 File-Changes in 1s → alle Events empfangen, <1ms Latenz
-- [ ] Manuell: fanotify auf `/tmp/test-watch/` → Datei anlegen → Event kommt
-- [ ] Manuell: Fallback auf inotify wenn eBPF nicht verfuegbar
-- [ ] Observability-Check:
-  - Logging: Watch-Path hinzugefuegt (INFO), File-Event (DEBUG), Fehler (ERROR)
-  - Metriken: `file_events_total` Counter, `file_event_latency_ms` Histogram
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 4: JSONL Parser + Session Discovery
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** Streaming JSONL Parser der Claude Code Conversation-Files parst. Session Discovery die `~/.claude/` rekursiv scannt und neue JSONL-Files erkennt. Parser muss ALLE Felder extrahieren - inkl. hidden, system-reminder, reasoning blocks.
-
-**Dateien:**
-- `server/src/parser/mod.rs` (NEU) - Parser module
-- `server/src/parser/jsonl.rs` (NEU) - JSONL streaming parser
-- `server/src/parser/types.rs` (NEU) - Claude Code Message types (alle!)
-- `server/src/discovery/mod.rs` (NEU) - Session discovery
-- `server/src/discovery/scanner.rs` (NEU) - ~/.claude/ scanner
-
-**Code (Diff-Style):**
-```rust
-// parser/types.rs - ALLE Claude Code Message-Typen
-+ pub enum MessageType {
-+     User, Assistant, System, SystemReminder,
-+     ToolUse, ToolResult,
-+     Progress, // hook progress, streaming
-+     Summary,  // context compression summary
-+ }
-+ pub struct ClaudeMessage {
-+     pub uuid: String,
-+     pub parent_uuid: Option<String>,
-+     pub role: String,
-+     pub message_type: MessageType,
-+     pub content: Vec<ContentBlock>,
-+     pub model: Option<String>,
-+     pub usage: Option<Usage>,
-+     pub timestamp: String,
-+     pub is_sidechain: bool,
-+     pub agent_id: Option<String>,
-+     pub session_id: String,
-+     pub git_branch: Option<String>,
-+     pub cwd: Option<String>,
-+ }
-+ pub struct ContentBlock {
-+     pub block_type: String, // text, tool_use, tool_result, thinking, image, etc.
-+     pub text: Option<String>,
-+     pub tool_name: Option<String>,
-+     pub tool_input: Option<serde_json::Value>,
-+     pub tool_result: Option<String>,
-+     pub is_error: Option<bool>,
-+     pub image_data: Option<String>, // base64
-+ }
-+ pub struct Usage {
-+     pub input_tokens: u32,
-+     pub output_tokens: u32,
-+     pub cache_read_input_tokens: Option<u32>,
-+     pub cache_creation_input_tokens: Option<u32>,
-+ }
-```
-
-**VERIFY:**
-- [ ] Test: Echtes Claude Code JSONL parsen → alle Messages extrahiert, keine fehlenden Felder
-- [ ] Test: Sidechain-Messages (Subagents) korrekt als solche markiert
-- [ ] Test: system-reminder, thinking blocks, hidden content korrekt extrahiert
-- [ ] Test: Session Discovery findet alle JSONL-Files unter ~/.claude/
-- [ ] Manuell: JSONL mit 10000+ Zeilen → Streaming-Parse ohne OOM
-- [ ] Observability-Check:
-  - Logging: Session discovered (INFO), Parse error auf einzelner Zeile (WARN, mit Zeilennummer)
-  - Metriken: `jsonl_lines_parsed_total`, `jsonl_parse_errors_total`, `sessions_discovered`
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 5: PTY Session Manager
-Komplexitaet: Complex
-Gate: Nein
-
-**Was:** Managed Sessions: IDE spawnt Claude Code mit vollem PTY-Zugriff (stdin/stdout). Observed Sessions: JSONL Watch + tmux send-keys fuer Input. NICHT claude -p --resume (startet Session neu!).
-
-**Dateien:**
-- `server/src/session/mod.rs` (NEU) - Session module
-- `server/src/session/managed.rs` (NEU) - PTY-basierte managed sessions
-- `server/src/session/observed.rs` (NEU) - tmux-basierte observed sessions
-- `server/src/session/types.rs` (NEU) - Session types + state machine
-
-**Code (Diff-Style):**
-```rust
-// session/managed.rs
-+ pub struct ManagedSession {
-+     pub id: SessionId,
-+     pub pty: PtyMaster,    // portable-pty
-+     pub child: Child,
-+     pub env: HashMap<String, String>, // ANTHROPIC_BASE_URL → Proxy
-+ }
-+ impl ManagedSession {
-+     pub async fn spawn(config: SessionConfig) -> Result<Self>;
-+     pub async fn send_input(&self, text: &str) -> Result<()>; // PTY stdin write
-+     pub async fn read_output(&self) -> Result<String>; // PTY stdout read
-+     pub async fn kill(&self) -> Result<()>;
-+ }
-
-// session/observed.rs
-+ pub struct ObservedSession {
-+     pub id: SessionId,
-+     pub jsonl_path: PathBuf,
-+     pub tmux_session: Option<String>,
-+ }
-+ impl ObservedSession {
-+     pub async fn send_input(&self, text: &str) -> Result<()> {
-+         // tmux send-keys -t {session} "{text}" Enter
-+     }
-+ }
-```
-
-**VERIFY:**
-- [ ] Test: Managed Session spawnt `claude` und liest stdout → Token-Stream empfangen
-- [ ] Test: Managed Session `send_input("hello")` → Claude antwortet
-- [ ] Test: ANTHROPIC_BASE_URL korrekt gesetzt (Proxy)
-- [ ] Test: Observed Session erkennt existierende Claude-Session
-- [ ] Test: tmux send-keys Input → Claude empfaengt im Terminal
-- [ ] Manuell: Session kill → Process terminated, JSONL-Datei bleibt
-- [ ] Observability-Check:
-  - Logging: Session spawned/killed (INFO), Input sent (DEBUG), PTY error (ERROR)
-  - Metriken: `sessions_active` Gauge, `session_input_count`, `pty_errors_total`
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 6: Zenoh Event Bus
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** Zenoh als In-Process Event Bus mit SHM fuer lokale Zero-Copy Kommunikation. Topics: session/{id}/messages, files/{path}/changes, tasks/{team}/updates, agents/{id}/metrics.
-
-**Dateien:**
-- `server/src/bus/mod.rs` (NEU) - Event bus module
-- `server/src/bus/zenoh_bus.rs` (NEU) - Zenoh setup + SHM config
-- `server/src/bus/topics.rs` (NEU) - Topic definitions
-
-**Code (Diff-Style):**
-```rust
-// bus/topics.rs
-+ pub const SESSION_MESSAGES: &str = "session/{id}/messages";
-+ pub const FILE_CHANGES: &str = "files/{path}/changes";
-+ pub const TASK_UPDATES: &str = "tasks/{team}/updates";
-+ pub const AGENT_METRICS: &str = "agents/{id}/metrics";
-+ pub const SYSTEM_EVENTS: &str = "system/events";
-```
-
-**VERIFY:**
-- [ ] Test: Publish + Subscribe auf topic → Message empfangen in <1ms (SHM)
-- [ ] Test: 10000 Messages/sec throughput → kein Verlust
-- [ ] Test: SHM aktiv (nicht TCP fallback) - `zenoh::config::whatami::PEER`
-- [ ] Manuell: Zwei Subscriber auf gleichem Topic → beide empfangen
-- [ ] Observability-Check:
-  - Logging: Zenoh session opened (INFO), SHM attached (INFO), Publish error (ERROR)
-  - Metriken: `zenoh_messages_published`, `zenoh_messages_received`, `zenoh_shm_bytes`
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 7: WebTransport Server (quinn)
-Komplexitaet: Complex
-Gate: Ja (End-to-End Demo fuer User)
-
-**Was:** HTTP/3 WebTransport Server mit quinn. Bidirektionale Streams. FlatBuffers fuer hot path (file.change, cursor.move), MessagePack fuer cold path (messages, tool_calls). Zstd Compression. Adaptive Quality (RTT-basiert).
-
-**Dateien:**
-- `server/src/transport/mod.rs` (NEU) - Transport module
-- `server/src/transport/webtransport.rs` (NEU) - WebTransport setup via quinn
-- `server/src/transport/codec.rs` (NEU) - FlatBuffers + MessagePack encoding
-- `server/src/transport/adaptive.rs` (NEU) - RTT-basierte Quality-Tiers
-- `server/src/main.rs` - Integration aller Komponenten
-
-**Code (Diff-Style):**
-```rust
-// transport/adaptive.rs
-+ pub enum QualityTier {
-+     Full,    // <50ms RTT → 120Hz, alle Events
-+     Batched, // 50-150ms RTT → 30Hz, Events batched
-+     Critical,// >150ms RTT → 10Hz, nur kritische Events
-+ }
-+ pub fn determine_tier(rtt_ms: u32) -> QualityTier {
-+     match rtt_ms {
-+         0..=50 => QualityTier::Full,
-+         51..=150 => QualityTier::Batched,
-+         _ => QualityTier::Critical,
-+     }
-+ }
-```
-
-**VERIFY:**
-- [ ] Test: Browser oeffnet WebTransport Connection → Handshake erfolgreich
-- [ ] Test: Server sendet FlatBuffer Message → Browser dekodiert korrekt
-- [ ] Test: Browser sendet MessagePack → Server dekodiert korrekt
-- [ ] Test: Zstd Compression aktiv → Bandwidth ~70% reduziert
-- [ ] Test: Adaptive Quality → RTT >150ms → Events werden gebatched
-- [ ] Test: Reconnect nach Disconnect → Delta Sync (verpasste Events nachholen)
-- [ ] Manuell: WebTransport im Chrome DevTools sichtbar
-- [ ] Observability-Check:
-  - Logging: Connection opened/closed (INFO), Quality tier change (INFO), Codec error (ERROR)
-  - Metriken: `connections_active` Gauge, `bytes_sent/received`, `rtt_ms` Histogram, `quality_tier` Gauge
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 8: SolidJS Frontend Shell
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** SolidJS Projekt mit Vite 6, 3-Panel Layout, Catppuccin Mocha Design Tokens, Router, WebTransport Client. Grundstruktur aller Panels ohne Inhalt.
-
-**Dateien:**
-- `frontend/package.json` (NEU) - SolidJS + Vite 6 + Dependencies
-- `frontend/vite.config.ts` (NEU) - Vite 6 Config + SWC
-- `frontend/index.html` (NEU) - Entry HTML
-- `frontend/src/App.tsx` (NEU) - 3-Panel Layout Root
-- `frontend/src/styles/tokens.css` (NEU) - Catppuccin Mocha CSS Variables
-- `frontend/src/styles/global.css` (NEU) - Global styles (gaps, scrollbar, fonts)
-- `frontend/src/layouts/ThreePanel.tsx` (NEU) - Resizable 3-Panel
-- `frontend/src/transport/client.ts` (NEU) - WebTransport Client
-- `frontend/src/transport/codec.ts` (NEU) - FlatBuffers + MessagePack decoder
-- `frontend/src/stores/session.ts` (NEU) - Session store (SolidJS signals)
-
-**Code (Diff-Style):**
-```css
-/* styles/tokens.css - Catppuccin Mocha */
-+ :root {
-+   --ctp-rosewater: #f5e0dc; --ctp-flamingo: #f2cdcd;
-+   --ctp-pink: #f5c2e7; --ctp-mauve: #cba6f7;
-+   --ctp-red: #f38ba8; --ctp-maroon: #eba0ac;
-+   --ctp-peach: #fab387; --ctp-yellow: #f9e2af;
-+   --ctp-green: #a6e3a1; --ctp-teal: #94e2d5;
-+   --ctp-sky: #89dceb; --ctp-sapphire: #74c7ec;
-+   --ctp-blue: #89b4fa; --ctp-lavender: #b4befe;
-+   --ctp-text: #cdd6f4; --ctp-subtext1: #bac2de;
-+   --ctp-subtext0: #a6adc8; --ctp-overlay2: #9399b2;
-+   --ctp-overlay1: #7f849c; --ctp-overlay0: #6c7086;
-+   --ctp-surface2: #585b70; --ctp-surface1: #45475a;
-+   --ctp-surface0: #313244; --ctp-base: #1e1e2e;
-+   --ctp-mantle: #181825; --ctp-crust: #11111b;
-+   --gap: 4px;
-+   --font-code: 'Monaspace Neon', monospace;
-+   --font-ui: 'Inter', sans-serif;
-+   --scrollbar-width: 6px;
-+ }
-```
-
-```tsx
-// layouts/ThreePanel.tsx
-+ <div class="three-panel">
-+   <aside class="panel-left" style={{ width: `${leftWidth()}px` }}>
-+     <Slot name="left" />
-+   </aside>
-+   <div class="resize-handle" onPointerDown={startResizeLeft} />
-+   <main class="panel-center">
-+     <TabBar tabs={centerTabs()} active={activeTab()} />
-+     <Slot name="center" />
-+   </main>
-+   <div class="resize-handle" onPointerDown={startResizeRight} />
-+   <aside class="panel-right" style={{ width: `${rightWidth()}px` }}>
-+     <Slot name="right" />
-+   </aside>
-+   <Statusbar />
-+ </div>
-```
-
-**VERIFY:**
-- [ ] Test: `npm run dev` → Browser oeffnet, 3-Panel sichtbar
-- [ ] Test: Resize-Handles funktionieren (Drag)
-- [ ] Test: Catppuccin Mocha Farben korrekt
-- [ ] Test: WebTransport Client verbindet sich zum Server
-- [ ] Test: Monaspace Neon + Inter Fonts laden
-- [ ] Manuell: Custom Scrollbar (6px, auto-hide)
-- [ ] Manuell: Gap-Borders (4px, kein Border)
-- [ ] Observability-Check:
-  - Logging: Connection status in Browser Console (INFO)
-  - Metriken: **N/A** (Frontend-Shell)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 9: Chat Panel + JSONL Rendering
-Komplexitaet: Complex
-Gate: Ja (CRITICAL: User muss pruefen dass ALLES angezeigt wird)
-
-**Was:** Vollstaendiges Chat-Panel das ALLE JSONL-Inhalte rendert. Custom Virtual Scroller (~25 DOM-Nodes). Collapsible Cards pro Tool-Call. Token Heatmap. Ghost Messages fuer Compression. Model Badge. Context Meter. Breathing Orb. NICHTS verstecken.
-
-**Dateien:**
-- `frontend/src/components/chat/ChatPanel.tsx` (NEU)
-- `frontend/src/components/chat/MessageCard.tsx` (NEU)
-- `frontend/src/components/chat/ToolCard.tsx` (NEU)
-- `frontend/src/components/chat/SystemMessage.tsx` (NEU) - system-reminder, hidden content
-- `frontend/src/components/chat/ThinkingBlock.tsx` (NEU) - reasoning/thinking blocks
-- `frontend/src/components/chat/GhostMessage.tsx` (NEU) - compressed messages (30% opacity)
-- `frontend/src/components/chat/VirtualScroller.tsx` (NEU) - custom virtual scroll
-- `frontend/src/components/chat/TokenHeatmap.tsx` (NEU) - token usage visualization
-- `frontend/src/components/chat/ContextMeter.tsx` (NEU) - context window bar
-- `frontend/src/components/chat/BreathingOrb.tsx` (NEU) - AI presence indicator
-- `frontend/src/components/chat/ModelBadge.tsx` (NEU) - model name + switch
-- `frontend/src/components/chat/InputField.tsx` (NEU) - message input
-
-**Breathing Orb - Status-Source-Hierarchie (Peer-Review Upgrade v1.1):**
-Der Orb leitet seinen State aus BEIDEN Quellen ab, mit klarer Prioritaet:
-1. **PTY Stream (Primary, Low-Latency):** ANSI-Escape-Sequenzen + Spinner-Patterns im stdout erkennen.
-   Parser sucht nach: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` (Braille-Spinner = THINKING), `▍` (Block-Cursor = STREAMING),
-   Tool-Output-Patterns (= TOOL_USE). PTY liefert State-Changes in <10ms.
-2. **JSONL Events (Secondary, Authoritative):** `type: "assistant"` mit `stop_reason` Feld = Status-Bestaetigungen.
-   JSONL Events sind 200-500ms verzoegert gegenueber PTY, dienen aber als Ground-Truth fuer den finalen State.
-3. **Reconciliation:** PTY setzt State sofort (optimistisch). JSONL korrigiert innerhalb von 500ms falls abweichend.
-   Bei Widerspruch nach 1s Timeout: JSONL gewinnt (authoritative source).
-
-| PTY Signal | JSONL Confirmation | Orb State |
-|------------|-------------------|-----------|
-| Braille Spinner detected | `type: "assistant"` ohne content | THINKING |
-| Block cursor + streaming text | `type: "assistant"` mit content delta | STREAMING |
-| Tool output pattern | `type: "assistant"` mit `tool_use` | TOOL_USE |
-| Error ANSI codes (red) | `type: "assistant"` mit `stop_reason: "error"` | ERROR |
-| Keine Aktivitaet >2s | Letztes Event ist `stop_reason: "end_turn"` | IDLE |
-
-**VERIFY:**
-- [ ] Test: Echtes JSONL laden → ALLE Messages sichtbar (inkl. system-reminder, hidden, thinking)
-- [ ] Test: Virtual Scroller → nur ~25 DOM-Nodes bei 1000+ Messages
-- [ ] Test: Token Heatmap zeigt Farb-Intensitaet pro Message
-- [ ] Test: Ghost Messages bei komprimierten Conversations (30% Opacity)
-- [ ] Test: Breathing Orb reagiert auf Session-Status (IDLE/THINKING/STREAMING/TOOL_USE/ERROR)
-- [ ] Test: Breathing Orb wechselt State innerhalb <50ms nach PTY-Signal (optimistisch)
-- [ ] Test: JSONL-Reconciliation korrigiert Orb-State innerhalb 500ms bei Divergenz
-- [ ] Test: Model Badge zeigt korrekten Modellnamen (opus-4-6, sonnet-4-6, etc.)
-- [ ] Test: Context Meter zeigt verbrauchten Anteil des Context Windows
-- [ ] Manuell: Spring-Physics Animationen smooth bei 120Hz
-- [ ] Manuell: Markdown-Rendering (WASM pulldown-cmark) korrekt
-- [ ] Observability-Check:
-  - Logging: Render errors (WARN), WASM parse errors (ERROR)
-  - Metriken: FPS Counter (sichtbar in Profiler), DOM node count
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 10: File Browser + Editor
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** Live-animierter File Tree im Left Panel. CodeMirror 6 Editor mit Syntax Highlighting, Git Blame inline, Merge View. File-Changes werden via eBPF/Zenoh in Echtzeit reflektiert.
-
-**Conflict Resolution - Gleichzeitige Edits (Peer-Review Upgrade v1.1):**
-Wenn der User im CodeMirror Editor tippt waehrend Claude Code (via Tool-Call) dieselbe Datei bearbeitet:
-
-1. **Authority-Regel:** Claude Code ist IMMER die Authority fuer Tool-basierte Edits.
-   Der User editiert in einer "Overlay-Session" - seine Aenderungen werden als Patch gehalten.
-2. **Detection:** eBPF meldet welcher Prozess (PID) die Datei geschrieben hat.
-   - Claude Code PID → `source: "claude"` → Editor akzeptiert sofort (autoritativ)
-   - Anderer PID → `source: "external"` → normaler File-Watch-Update
-3. **User-Edit-Schutz:**
-   - Wenn User aktiv im Editor tippt (Keystroke <2s alt) UND Claude schreibt dieselbe Datei:
-     → **Gelber Banner:** "Claude bearbeitet diese Datei - deine Aenderungen werden nach Abschluss gemerged"
-     → User-Patches werden in einem OT (Operational Transform) Buffer gehalten
-     → Nach Claude's Edit: 3-Wege-Merge (Base → Claude's Version + User's Patches)
-     → Bei Merge-Konflikt: CodeMirror Merge View oeffnet sich automatisch
-4. **Optimistic Lock:** Editor setzt `editing_lock: { user: true, file: "path", since: timestamp }`
-   im ECS-State. Kann von Claude-Events ueberschrieben werden (Claude > User Authority).
-
-**Dateien:**
-- `frontend/src/components/files/FileTree.tsx` (NEU) - animierter File Browser
-- `frontend/src/components/files/FileNode.tsx` (NEU) - einzelner File/Folder Node
-- `frontend/src/components/editor/EditorPanel.tsx` (NEU) - CodeMirror 6 wrapper
-- `frontend/src/components/editor/DiffView.tsx` (NEU) - CodeMirror Merge View
-- `frontend/src/components/editor/BlameGutter.tsx` (NEU) - Git blame annotations
-- `frontend/src/components/editor/ConflictBanner.tsx` (NEU) - "Claude bearbeitet..." Banner
-- `frontend/src/lib/ot-buffer.ts` (NEU) - Operational Transform Buffer fuer User-Patches
-
-**VERIFY:**
-- [ ] Test: File Tree zeigt Working Directory korrekt
-- [ ] Test: File aendern → Tree-Update in <100ms (animiert)
-- [ ] Test: File oeffnen → CodeMirror 6 mit Syntax Highlighting
-- [ ] Test: Merge View zeigt Diff korrekt (gruen/rot)
-- [ ] Test: Conflict Banner erscheint wenn Claude und User gleichzeitig editieren
-- [ ] Test: User-Patches werden nach Claude-Edit korrekt gemerged (3-Wege-Merge)
-- [ ] Test: Bei Merge-Konflikt → automatischer Merge View
-- [ ] Manuell: Catppuccin File Icons korrekt nach Dateityp
-- [ ] Manuell: Phosphor Icons mit Weight Morphing
-- [ ] Observability-Check:
-  - Logging: File tree update events (DEBUG), Conflict events (WARN), Merge results (INFO)
-  - Metriken: conflict_count (Counter), merge_success_rate (Gauge)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 11: Session Sidebar
-Komplexitaet: Simple
-Gate: Nein
-
-**Was:** Left Panel: Liste aller aktiven und archivierten Sessions. Session-Status (Breathing Orb pro Session). Klick oeffnet Session im Chat Panel. Resume-Button fuer archivierte Sessions.
-
-**Dateien:**
-- `frontend/src/components/sessions/SessionList.tsx` (NEU)
-- `frontend/src/components/sessions/SessionCard.tsx` (NEU)
-- `frontend/src/components/sessions/SessionStatus.tsx` (NEU)
-
-**VERIFY:**
-- [ ] Test: Alle aktiven Sessions sichtbar mit Status
-- [ ] Test: Archivierte Sessions mit Resume-Option
-- [ ] Test: Session-Wechsel → Chat Panel aktualisiert
-- [ ] Manuell: Session-Orb-Farben korrekt (Lavender=active, Overlay=archived)
-- [ ] Observability-Check: **N/A** (UI-only)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 12: API Proxy + Network Tab
-Komplexitaet: Medium
-Gate: Ja (User Review)
-
-**Was:** Rust Proxy der ANTHROPIC_BASE_URL abfaengt. Loggt alle API Requests/Responses in Limbo. Frontend Network Tab mit Waterfall-Ansicht, Request/Response Bodies, Timing.
-
-**Dateien:**
-- `server/src/proxy/mod.rs` (NEU) - API Proxy module
-- `server/src/proxy/handler.rs` (NEU) - Request/Response logging
-- `server/src/proxy/mitm.rs` (NEU) - HTTPS forwarding to api.anthropic.com
-- `frontend/src/components/network/NetworkPanel.tsx` (NEU)
-- `frontend/src/components/network/RequestRow.tsx` (NEU)
-- `frontend/src/components/network/RequestDetail.tsx` (NEU)
-
-**VERIFY:**
-- [ ] Test: Claude Code mit ANTHROPIC_BASE_URL=localhost:PORT → Proxy empfaengt
-- [ ] Test: Request + Response Bodies korrekt in Limbo gespeichert
-- [ ] Test: Network Tab zeigt Waterfall mit Timing
-- [ ] Test: Request-Body (Token-Count, Model, Messages) sichtbar
-- [ ] Test: Response-Body (Generated Text, Usage) sichtbar
-- [ ] Manuell: Latenz-Overhead des Proxy <5ms
-- [ ] Observability-Check:
-  - Logging: Proxy request (INFO), Upstream error (ERROR)
-  - Metriken: `proxy_requests_total`, `proxy_latency_ms`, `proxy_bytes_sent/received`
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 13: Tool Visualizations
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** Jeder Claude Code Tool-Typ bekommt eine spezielle Visualisierung als Collapsible Card im Chat.
-
-**Dateien:**
-- `frontend/src/components/tools/EditCard.tsx` (NEU) - Inline Diff (gruen/rot)
-- `frontend/src/components/tools/BashCard.tsx` (NEU) - Terminal-Output
-- `frontend/src/components/tools/ReadCard.tsx` (NEU) - Syntax-highlighted Preview
-- `frontend/src/components/tools/GrepCard.tsx` (NEU) - Klickbare Match-Liste
-- `frontend/src/components/tools/GlobCard.tsx` (NEU) - File-Liste mit Icons
-- `frontend/src/components/tools/WebSearchCard.tsx` (NEU) - Suchergebnis-Cards
-- `frontend/src/components/tools/WebFetchCard.tsx` (NEU) - Mini Page-Preview
-- `frontend/src/components/tools/LspCard.tsx` (NEU) - Go-to-Definition Links
-- `frontend/src/components/tools/NotebookCard.tsx` (NEU) - Jupyter Cell Render
-- `frontend/src/components/tools/PdfCard.tsx` (NEU) - Inline Page-Viewer
-- `frontend/src/components/tools/PermissionCard.tsx` (NEU) - Permission Modal (Y/N/A)
-
-**VERIFY:**
-- [ ] Test: Jeder Tool-Typ wird mit korrekter Visualisierung gerendert
-- [ ] Test: Edit-Card zeigt Inline-Diff korrekt
-- [ ] Test: Bash-Card zeigt Terminal-Output mit ANSI-Farben
-- [ ] Test: Cards sind collapsible (animiert)
-- [ ] Manuell: Alle 11 Tool-Typen visuell pruefen
-- [ ] Observability-Check: **N/A** (pure UI components)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 14: Git Integration
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** Git Blame, Branches, Staging-Area, Commit-History live im Editor. Server-seitig via libgit2 (git2 crate).
-
-**Dateien:**
-- `server/src/git/mod.rs` (NEU) - Git module
-- `server/src/git/blame.rs` (NEU) - Blame per file
-- `server/src/git/status.rs` (NEU) - Staging, branches, log
-- `frontend/src/components/git/BranchSelector.tsx` (NEU)
-- `frontend/src/components/git/StagingArea.tsx` (NEU)
-- `frontend/src/components/git/CommitHistory.tsx` (NEU)
-
-**VERIFY:**
-- [ ] Test: Git blame fuer File → Zeilen-Annotationen korrekt
-- [ ] Test: Branch-Wechsel → File Tree aktualisiert
-- [ ] Test: Staging Area zeigt geaenderte Files
-- [ ] Test: Commit History mit Diff-Ansicht
-- [ ] Manuell: Real-time Update wenn Claude Code einen Commit macht
-- [ ] Observability-Check:
-  - Logging: Git operation errors (WARN)
-  - Metriken: **N/A**
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 15: Multi-Agent / Teams
-Komplexitaet: Complex
-Gate: Ja (User Review)
-
-**Was:** Agent Topology Graph (force-directed, animiert). Animated Message Bubbles zwischen Agents. Swimlane Timeline. Team-Konfiguration aus ~/.claude/teams/ lesen.
-
-**Dateien:**
-- `server/src/teams/mod.rs` (NEU) - Teams module
-- `server/src/teams/discovery.rs` (NEU) - Team config reader
-- `server/src/teams/topology.rs` (NEU) - Agent-Beziehungen
-- `frontend/src/components/teams/TeamsPanel.tsx` (NEU) - Center Tab
-- `frontend/src/components/teams/TopologyGraph.tsx` (NEU) - Force-directed Graph
-- `frontend/src/components/teams/MessageBubble.tsx` (NEU) - Animated bubbles
-- `frontend/src/components/teams/SwimlaneTL.tsx` (NEU) - Swimlane Timeline
-- `frontend/src/components/teams/AgentCard.tsx` (NEU) - Agent Info Card
-
-**VERIFY:**
-- [ ] Test: Team-Config gelesen → Agents als Nodes im Graph
-- [ ] Test: Messages zwischen Agents → Animierte Bubbles auf Graph-Edges
-- [ ] Test: Swimlane Timeline zeigt parallele Agent-Aktivitaet
-- [ ] Test: Sidechain-Messages korrekt dem Parent-Agent zugeordnet
-- [ ] Manuell: Force-directed Layout reagiert auf neue Agents dynamisch
-- [ ] Manuell: Spring-Physics Animationen smooth
-- [ ] Observability-Check:
-  - Logging: Team discovered (INFO), Agent spawn/kill (INFO)
-  - Metriken: `agents_active` Gauge, `team_messages_total`
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 16: Gantt + Kanban
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** Right Panel: Tasks als Kanban-Board (Pending/InProgress/Completed) mit Toggle zu interaktivem Gantt. Gantt zeigt Zeitachse pro Agent mit Time-Tracking. Gantt-Balken sind draggable.
-
-**Dateien:**
-- `frontend/src/components/tasks/TaskPanel.tsx` (NEU) - Right Sidebar Tasks
-- `frontend/src/components/tasks/KanbanBoard.tsx` (NEU) - Kanban View
-- `frontend/src/components/tasks/KanbanColumn.tsx` (NEU) - Kanban Column
-- `frontend/src/components/tasks/KanbanCard.tsx` (NEU) - Draggable Task Card
-- `frontend/src/components/gantt/GanttPanel.tsx` (NEU) - Center Tab Gantt
-- `frontend/src/components/gantt/GanttChart.tsx` (NEU) - Interactive Gantt
-- `frontend/src/components/gantt/GanttBar.tsx` (NEU) - Draggable Bar
-- `frontend/src/components/gantt/TimeTracker.tsx` (NEU) - Agent time tracking
-
-**VERIFY:**
-- [ ] Test: Tasks erscheinen im Kanban korrekt nach Status
-- [ ] Test: Drag&Drop zwischen Kanban-Spalten funktioniert
-- [ ] Test: Gantt zeigt Zeitachse pro Agent
-- [ ] Test: Time-Tracking Daten korrekt (Start/End/Duration)
-- [ ] Test: Gantt-Balken draggable fuer manuelle Anpassung
-- [ ] Manuell: Toggle Kanban ↔ Gantt im Right Panel
-- [ ] Observability-Check: **N/A** (UI-only)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 17: WASM Modules
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** Drei Rust→WASM Module fuer Performance-kritische Frontend-Operationen. Laufen in Web Workers mit SharedArrayBuffer.
-
-**Dateien:**
-- `wasm/jsonl-parser/src/lib.rs` - JSONL Streaming Parser
-- `wasm/markdown/src/lib.rs` - pulldown-cmark Markdown Renderer
-- `wasm/compress/src/lib.rs` - Zstd Decoder
-- `frontend/src/workers/jsonl.worker.ts` (NEU) - Web Worker fuer JSONL
-- `frontend/src/workers/markdown.worker.ts` (NEU) - Web Worker fuer Markdown
-- `frontend/src/workers/compress.worker.ts` (NEU) - Web Worker fuer Zstd
-
-**VERIFY:**
-- [ ] Test: `wasm-pack build` fuer alle 3 Module → .wasm Files erzeugt
-- [ ] Test: JSONL Worker parst 10000 Zeilen in <100ms
-- [ ] Test: Markdown Worker rendert komplexes MD korrekt
-- [ ] Test: Zstd Worker dekomprimiert Nachrichten korrekt
-- [ ] Test: SharedArrayBuffer Transfer zwischen Main Thread und Workers
-- [ ] Manuell: Main Thread bleibt bei 120Hz waehrend WASM parst
-- [ ] Observability-Check:
-  - Logging: WASM init (DEBUG), Parse errors (WARN)
-  - Metriken: Worker parse time (Performance API)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 18: Mobile Responsive
-Komplexitaet: Medium
-Gate: Nein
-
-**Was:** Bottom Tab Bar fuer Mobile (Chat, Files, Tasks, Teams, More). Swipe zwischen Sub-Views. Simplified Gantt (Portrait) + Full (Landscape). Adaptive Quality basiert auf RTT. QUIC Connection Migration (WiFi↔Cellular).
-
-**Dateien:**
-- `frontend/src/layouts/MobileLayout.tsx` (NEU) - Mobile Layout
-- `frontend/src/components/mobile/BottomTabBar.tsx` (NEU) - Tab Navigation
-- `frontend/src/components/mobile/SwipeView.tsx` (NEU) - Swipe Container
-- `frontend/src/components/mobile/VoiceInput.tsx` (NEU) - Web Speech API
-- `frontend/src/hooks/useMediaQuery.ts` (NEU) - Responsive hooks
-- `frontend/src/hooks/useHaptic.ts` (NEU) - Vibration API
-
-**VERIFY:**
-- [ ] Test: Viewport <768px → Mobile Layout aktiv
-- [ ] Test: Bottom Tab Bar navigiert zwischen Panels
-- [ ] Test: Swipe links/rechts zwischen Chat/Editor/Diff
-- [ ] Test: Voice Input oeffnet Web Speech API
-- [ ] Test: Landscape → Gantt zeigt volle Ansicht
-- [ ] Manuell: Touch-Targets mindestens 44px
-- [ ] Manuell: Haptic Feedback bei Button-Taps
-- [ ] Observability-Check: **N/A** (UI-only)
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-#### Schritt 19: Polish + Performance
-Komplexitaet: Complex
-Gate: Ja (User Abnahme)
-
-**Was:** Performance Profiler (FPS, Latenz, Memory, Events/sec). Gallery Tab (Images). Keyboard Shortcuts (VS Code kompatibel). Command Palette (Spotlight-Style). Glassmorphism Context Menu. Skeleton Loading. Browser Notifications. Performance-Optimierung auf 120Hz.
-
-**Dateien:**
-- `frontend/src/components/profiler/ProfilerPanel.tsx` (NEU)
-- `frontend/src/components/gallery/GalleryPanel.tsx` (NEU)
-- `frontend/src/components/gallery/Lightbox.tsx` (NEU)
-- `frontend/src/components/shared/CommandPalette.tsx` (NEU)
-- `frontend/src/components/shared/ContextMenu.tsx` (NEU)
-- `frontend/src/components/shared/SkeletonLoader.tsx` (NEU)
-- `frontend/src/components/settings/SettingsPanel.tsx` (NEU) - MCP/Hooks/Worktrees
-- `frontend/src/shortcuts/keymap.ts` (NEU) - VS Code compatible shortcuts
-
-**VERIFY:**
-- [ ] Test: FPS Counter zeigt konstant 120Hz bei normalem Usage
-- [ ] Test: Gallery zeigt alle Session-Bilder mit Lightbox
-- [ ] Test: Cmd+K oeffnet Command Palette mit Fuzzy Search
-- [ ] Test: Rechtsklick → Glassmorphism Context Menu
-- [ ] Test: Skeleton Loading beim App-Start
-- [ ] Test: Browser Notifications bei wichtigen Events
-- [ ] Manuell: Spring-Physics Animationen ueberall smooth
-- [ ] Manuell: Phosphor Icon Weight Morphing bei Hover
-- [ ] Manuell: Alle 7 Curated Effects visuell pruefen
-- [ ] Observability-Check:
-  - Logging: Performance warnings (WARN wenn FPS <60)
-  - Metriken: FPS, Memory Usage, Event throughput, Render time
-- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
-
----
-
-## 16. DEPENDENCIES & PACKAGES
-
-### Rust (server/Cargo.toml)
-
-| Package | Version | Grund |
-|---------|---------|-------|
-| tokio | 1.x (io-uring feature) | Async Runtime + io_uring |
-| axum | 0.8 | HTTP Server |
-| quinn | 0.11 | QUIC / WebTransport |
-| hecs | 0.10 | ECS World |
-| zenoh | 1.x (shm feature) | Event Bus + SHM |
-| limbo-core | latest | SQLite-kompatible DB |
-| serde / serde_json | 1.x | JSON Serialisierung |
-| rmp-serde | 1.x | MessagePack Serialisierung |
-| flatbuffers | 24.x | FlatBuffers Runtime |
-| tracing / tracing-subscriber | 0.1/0.3 | Structured Logging |
-| portable-pty | latest | PTY Management |
-| git2 | latest | libgit2 Bindings |
-| zstd | latest | Zstd Compression |
-| jsonwebtoken | latest | JWT Auth |
-| aya | latest | eBPF Framework (Rust) |
-
-### Rust (wasm/*/Cargo.toml)
-
-| Package | Version | Grund |
-|---------|---------|-------|
-| wasm-bindgen | latest | Rust→WASM Bindings |
-| serde_json | 1.x | JSONL Parsing |
-| pulldown-cmark | latest | Markdown→HTML |
-| zstd | latest (wasm feature) | Zstd Decoder |
-
-### Frontend (frontend/package.json)
-
-| Package | Version | Grund |
-|---------|---------|-------|
-| solid-js | latest | UI Framework |
-| @solidjs/router | latest | Routing |
-| vite | 6.x | Build Tool |
-| @codemirror/view | 6.x | Code Editor |
-| @codemirror/merge | 6.x | Merge/Diff View |
-| @codemirror/lang-* | 6.x | Syntax Highlighting |
-| @phosphor-icons/web | latest | Icon Library |
-| flatbuffers | latest | FlatBuffers JS Runtime |
-| @msgpack/msgpack | latest | MessagePack JS |
-
----
-
-## 17. ENVIRONMENT
-
-| Variable | Beschreibung | Default |
-|----------|-------------|---------|
-| `CLAUDE_IDE_PORT` | WebTransport Server Port | `4433` |
-| `CLAUDE_IDE_HTTP_PORT` | HTTP Fallback / Static Files | `8080` |
-| `CLAUDE_IDE_DB_PATH` | Limbo DB Pfad | `/data/claude-ide/ide.db` |
-| `CLAUDE_IDE_WATCH_PATHS` | Komma-separierte Watch-Pfade | `~/.claude/` |
-| `CLAUDE_IDE_JWT_SECRET` | JWT Signing Secret | (generiert) |
-| `CLAUDE_IDE_TLS_CERT` | TLS Certificate Path | `./certs/cert.pem` |
-| `CLAUDE_IDE_TLS_KEY` | TLS Private Key Path | `./certs/key.pem` |
-| `ANTHROPIC_BASE_URL` | API Proxy Target (gesetzt fuer Managed Sessions) | `http://localhost:4434` |
-| `CLAUDE_IDE_LOG_LEVEL` | Log Level | `info` |
-
----
-
-## 18. FEATURE FLAGS
-
-| Flag | Default | Beschreibung |
-|------|---------|-------------|
-| `ENABLE_EBPF` | `true` | eBPF File Watching (false → inotify Fallback) |
-| `ENABLE_SHM` | `true` | Zenoh Shared Memory (false → TCP) |
-| `ENABLE_WASM_PARSER` | `true` | WASM JSONL Parser (false → JS Parser) |
-| `ENABLE_API_PROXY` | `true` | API Proxy + Network Tab |
-| `ENABLE_PROFILER` | `false` | Performance Profiler Panel |
-| `ENABLE_AUDIO` | `false` | UI Sounds |
-
----
-
-## 19. TEST-STRATEGIE + OBSERVABILITY + PERFORMANCE
-
-### A) Test-Kategorien
-
-#### Unit Tests
-- **Was testen:** JSONL Parser, ECS Components, Limbo Queries, FlatBuffers Codec, Zenoh Message Routing
-- **Tool:** `cargo test` (remote via cargo-remote)
-- **Coverage-Ziel:** 80% fuer Parser + Codec, 60% fuer Server-Logik
-- **Ausfuehrung:** `cargo remote -- test`
-
-#### Integration Tests
-- **Was testen:** eBPF Watcher → ECS → Zenoh Pipeline, PTY Session Lifecycle, API Proxy End-to-End
-- **Tool:** `cargo test --test integration` + Docker fuer isolierte Umgebung
-- **Externe Abhaengigkeiten:** Echte Files auf Disk, echtes Claude Binary (fuer PTY), echte API (fuer Proxy)
-- **Ausfuehrung:** `cargo remote -- test --test integration`
-
-#### E2E Tests
-- **Was testen:** Server starten → Browser oeffnen → JSONL laden → Chat anzeigen → Input senden
-- **Tool:** Playwright (headless via Docker: `deepdive-playwright`)
-- **Umgebung:** Lokal (Server + Playwright Container)
-- **Kritische Pfade:**
-  1. JSONL laden → alle Messages sichtbar (inkl. hidden)
-  2. Session Input senden → Claude antwortet → Antwort erscheint in <500ms
-  3. File aendern → File Tree Update in <100ms
-  4. API Proxy → Request/Response im Network Tab
-  5. Mobile Layout → Bottom Tab Bar funktioniert
-- **Ausfuehrung:** `docker run --rm --network host -v /tmp:/tmp deepdive-playwright node /tmp/e2e-test.js`
-
-#### Smoke Tests (nach Deploy)
-- **Was testen:** Server laeuft, WebTransport erreichbar, JSONL-Parser funktioniert, mindestens 1 Session sichtbar
-- **Wann:** Nach jedem Server-Restart
-- **Automatisiert:** Ja (Health Check Endpoint)
-- **Ausfuehrung:** `curl -k https://localhost:4433/health`
-
-#### Performance Tests
-- **Anforderungen:**
-  - Latency: File-Event → Browser-Update < 50ms (p99)
-  - Memory: Server < 200MB RSS, Browser < 500MB
-  - Throughput: 10000 JSONL-Lines/sec Parse-Rate
-  - FPS: Konstant 120Hz bei 1000 Messages im Chat
-- **Benchmark-Command:** `cargo remote -- bench`
-- **Baseline:** Erste Messung in Phase 7 (WebTransport E2E)
-
-### B) Real-World Testing
-
-#### Testdaten-Strategie
-- **Herkunft:** Echte Claude Code JSONL-Files aus `~/.claude/` (anonymisiert: API Keys redacted)
-- **Edge Cases:** Leeres JSONL, 100MB+ JSONL, JSONL mit korrupter Zeile, JSONL mit Bildern (base64), Sidechain-Messages, Team-Sessions mit 10+ Agents
-- **Sensitive Daten:** API Keys automatisch redacted (`sk-ant-*` → `[REDACTED]`)
-- **Cleanup:** Test-Sessions in separatem Verzeichnis, nach Test loeschen
-
-#### Manuelle Validierung
-- [x] Haupt-User-Flow durchgespielt (wird in Phase 9 Gate geprueft)
-- [ ] Error-Cases provoziert (JSONL loeschen waehrend Watch, Server killen, Network disconnect)
-- [ ] Edge Cases (10+ parallele Sessions, 100MB JSONL, Unicode in Messages)
-- [ ] Mobile getestet (Smartphone ueber VPN/LAN)
-
-### C) Observability-Strategie
-
-#### Logging
-- **Format:** Structured JSON (tracing crate mit json subscriber)
-- **Log-Levels:**
-  - `ERROR`: DB-Fehler, PTY crash, eBPF attach failure, WebTransport fatal
-  - `WARN`: JSONL parse error (einzelne Zeile), Session disconnect, Slow query (>100ms)
-  - `INFO`: Session start/stop, Agent spawn/kill, WebTransport connect/disconnect, API proxy request
-  - `DEBUG`: File events, Zenoh messages, ECS entity changes, FlatBuffer encode/decode
-- **Pflicht-Events:** Startup (mit Config), Shutdown (graceful/forced), Errors, Session lifecycle
-- **Sensitive Daten:** NICHT geloggt: API Keys, JWT Secrets, User-Input-Inhalte (nur Laenge)
-
-#### Metriken
-- **Tool:** Custom (Limbo DB + Frontend Dashboard) - kein Prometheus noetig fuer lokale IDE
-- **Standard-Metriken:**
-  - [x] Request Count / Throughput (WebTransport + API Proxy)
-  - [x] Error Rate (pro Komponente)
-  - [x] Latency Histogram (File-Event → Browser, API Proxy RTT)
-  - [x] Resource Usage (Server RSS, Browser Memory, CPU)
-- **Business-Metriken:** Sessions active, Messages/sec, Tokens consumed, Cost accumulated, Agents active
-
-#### Health Checks
-- **Endpoint:** `GET /health` (HTTP) + WebTransport keepalive
-- **Was wird geprueft:** Limbo DB erreichbar, eBPF Watcher aktiv, Zenoh Session open, Free Disk >1GB
-
-#### Tracing
-- **Tool:** `tracing` crate mit span-basiertem Tracing
-- **Spans:** JSONL parse, WebTransport send, API proxy forward, ECS system tick
-- **Context Propagation:** Session-ID als Span-Attribut in allen Operationen
-
----
-
-## 20. ACCEPTANCE CRITERIA (Gherkin)
+## B.3 Acceptance Criteria
+
+### Positive Criteria
+
+| AC-ID | Kriterium | Verify-Methode | Evidence-Artefakt | Test-Gate |
+|-------|--------------------------|----------------|-------------------|-----------|
+| AC-1 | ALLE JSONL Messages sichtbar (inkl. system-reminder, hidden, thinking, reasoning) | E2E Test: echtes JSONL laden, Message-Count vergleichen | Screenshot + Count-Match | PR |
+| AC-2 | File-Event-to-Browser < 50ms (p99) | Benchmark: 1000 File-Changes, Latenz messen | Histogram-Output | Main |
+| AC-3 | 120Hz bei 1000+ Messages im Virtual Scroller | Performance Profiler: FPS messen | FPS-Counter Screenshot | Main |
+| AC-4 | Session Input via PTY → Claude antwortet → Antwort im Chat < 500ms | E2E Test: Input senden, Response-Timer | Log mit Timestamps | PR |
+| AC-5 | API Proxy Request+Response Bodies im Network Tab sichtbar | E2E Test: API Call triggern, Network Tab pruefen | Screenshot | PR |
+| AC-6 | Agent Topology Graph zeigt 3+ Agents mit animierten Bubbles | E2E Test: Team-Session laden | Screenshot/GIF | Main |
+| AC-7 | Mobile Layout (< 768px) mit Bottom Tab Bar und Swipe | Playwright Mobile Viewport | Screenshot | Nightly |
+| AC-8 | Ghost Messages bei komprimierten Conversations (30% Opacity) | E2E Test: komprimiertes JSONL | Screenshot | PR |
+| AC-9 | Breathing Orb wechselt State < 50ms nach PTY-Signal | Unit Test: PTY mock → Orb state change timer | Log mit Timestamps | PR |
+| AC-10 | Server < 200MB RSS nach 1h Betrieb mit 5 aktiven Sessions | Memory Profiler | `ps aux` Output | Nightly |
+
+### Negative Criteria
+
+| AC-ID | Kriterium (darf NICHT eintreten) | Verify-Methode | Evidence-Artefakt |
+|-------|----------------------------------|----------------|-------------------|
+| AC-N1 | Kein JSONL-Inhalt darf versteckt/gefiltert werden | `diff <(jq '.role' file.jsonl) <(UI message count)` | Count-Match |
+| AC-N2 | Kein Mock/Stub im Production-Pfad | `grep -r "mock\|stub\|fake" src/ --include="*.rs" --include="*.ts"` | Keine Treffer (ausser test/) |
+| AC-N3 | Kein Memory Leak (Server RSS darf nicht monoton steigen) | 1h Soak Test, RSS alle 60s messen | Flat/declining RSS Graph |
+| AC-N4 | Keine Secrets in Logs/UI (API Keys redacted) | `grep -r "sk-ant" logs/` | Keine Treffer |
+
+### Gherkin-Szenarien
 
 ```gherkin
 Feature: JSONL Full Transparency
@@ -1368,6 +518,14 @@ Feature: Multi-Agent Topology
   And Messages zwischen Agents werden als animierte Bubbles dargestellt
   And die Swimlane Timeline zeigt parallele Aktivitaet
 
+Feature: Conflict Resolution
+  Given der User editiert eine Datei im CodeMirror Editor
+  When Claude Code gleichzeitig dieselbe Datei via Tool-Call aendert
+  Then erscheint ein gelber Banner "Claude bearbeitet diese Datei"
+  And User-Aenderungen werden im OT-Buffer gehalten
+  And nach Claudes Edit wird ein 3-Wege-Merge ausgefuehrt
+  And bei Konflikt oeffnet sich automatisch die Merge View
+
 Feature: Mobile Support
   Given ein Smartphone-Browser mit Viewport <768px
   When die IDE geladen wird
@@ -1378,126 +536,1193 @@ Feature: Mobile Support
 
 ---
 
-## 21. DECISION LOG
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PHASE C: INFORMATION SYSTEMS ARCHITECTURE
+     ═══════════════════════════════════════════════════════════════════════════ -->
 
-| Entscheidung | Begruendung | Alternativen |
-|--------------|-------------|--------------|
-| Rust Backend | Performance, Safety, io_uring Support, WASM Target | Go (GC Pauses), Node (single-threaded) |
-| SolidJS | Fine-grained Reactivity ohne VDOM, kleinste Bundle Size | React (VDOM Overhead), Svelte (weniger Ecosystem) |
-| Zenoh statt NATS | Rust-native, SHM zero-copy (1us vs 50us), kein externer Prozess | NATS (Go, externer Service) |
-| Limbo statt redb | SQL + FTS5 + io_uring + async, SQLite-kompatibel | redb (kein SQL), rusqlite (kein async io_uring) |
-| eBPF statt inotify | Process-Level Insights, effizienter bei vielen Files | inotify (einfacher, weniger Kernel-Requirements) |
-| ECS statt HashMap | Cache-freundlich, parallelisierbar, Struct-of-Arrays | HashMap (einfacher aber O(n) Iteration) |
-| FlatBuffers Hot + MsgPack Cold | Zero-copy fuer High-Frequency, flexibel fuer Low-Frequency | Nur MsgPack (einfacher, aber mehr Overhead bei 200 events/sec) |
-| WebTransport only | 0-RTT, QUIC Multiplexing, Connection Migration | WebSocket Fallback (mehr Browser-Support, weniger Features) |
-| PTY statt claude -p | claude -p --resume startet Session neu, PTY haelt sie am Leben | claude -p (einfacher, aber Session-Verlust) |
-| Catppuccin Mocha | 14 harmonische Farben, Community-Standard fuer Dark Themes | Nord (kaelter), Dracula (bunter), Custom |
-| CodeMirror 6 statt Monaco | 500KB vs 5MB, Virtual Viewport, 120Hz-ready, Merge View | Monaco (VS Code Feeling, aber schwer) |
+## C.1 Data Architecture
 
----
+### Datenmodell
 
-## 22. DOCUMENTATION UPDATES
+| Entitaet | Felder | Beziehungen | Storage |
+|---------|--------|-------------|---------|
+| Session | id, path, status, model, started_at, cost | 1:N Messages, 1:N Files, 1:N Tasks, 1:N Agents | Limbo + ECS |
+| Message | id, session_id, role, content, timestamp, tokens, hidden, message_type | N:1 Session, 1:N ContentBlocks | Limbo + ECS |
+| ContentBlock | block_type, text, tool_name, tool_input, tool_result, is_error, image_data | N:1 Message | Embedded in Message |
+| File | id, session_id, path, modified, size | N:1 Session | Limbo + ECS |
+| Task | id, session_id, subject, status, owner | N:1 Session | Limbo + ECS |
+| Agent | id, session_id, name, agent_type, parent_id | N:1 Session, self-referential (parent) | Limbo + ECS |
+| ApiRequest | id, session_id, method, url, req_body, resp_body, status_code, latency_ms, timestamp | N:1 Session | Limbo |
+| EventEnvelope | event_id, source, sequence, logical_ts, wall_ts, session_id, dedup_key | Wraps alle Events | In-Memory (ECS) |
 
-- [ ] `/work/claude-ide/README.md` - Projekt-Beschreibung, Setup-Anleitung, Architektur-Diagramm
-- [ ] `/work/claude-ide/.claude/CLAUDE.md` - Projekt-spezifische Claude Code Instructions
-- [ ] `/work/claude-ide/docs/architecture.md` - Detaillierte Architektur-Dokumentation
-- [ ] `/work/claude-ide/docs/api.md` - WebTransport API Dokumentation
-- [ ] `/home/jan/.claude/CLAUDE.md` - claude-ide Verweis ergaenzen unter "Verwendung in Projekten"
+### Limbo SQL Schema
 
----
+```sql
+CREATE TABLE sessions (id INTEGER PRIMARY KEY, path TEXT, status TEXT, model TEXT, started_at INTEGER, cost REAL);
+CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), role TEXT, content TEXT, timestamp INTEGER, tokens INTEGER, hidden INTEGER DEFAULT 0);
+CREATE TABLE files (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), path TEXT, modified INTEGER, size INTEGER);
+CREATE TABLE tasks (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), subject TEXT, status TEXT, owner TEXT);
+CREATE TABLE agents (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), name TEXT, agent_type TEXT, parent_id INTEGER);
+CREATE TABLE api_requests (id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id), method TEXT, url TEXT, request_body TEXT, response_body TEXT, status_code INTEGER, latency_ms INTEGER, timestamp INTEGER);
+CREATE VIRTUAL TABLE messages_fts USING fts5(content, content=messages, content_rowid=id);
+```
 
-## 23. ROLLBACK-PLAN
-
-1. **Git:** Jeder Schritt hat einen atomaren Commit → `git revert` auf beliebigen Schritt
-2. **DB:** Limbo DB kann geloescht und neu aufgebaut werden (JSONL ist Source of Truth)
-3. **eBPF:** Feature Flag `ENABLE_EBPF=false` → Fallback auf inotify
-4. **Zenoh SHM:** Feature Flag `ENABLE_SHM=false` → Fallback auf TCP
-5. **WASM:** Feature Flag `ENABLE_WASM_PARSER=false` → Fallback auf JS Parser
-6. **Gesamtes Projekt:** `/work/claude-ide` loeschen, Btrfs Snapshot zurueck
+**Datenmigration:** Nicht noetig (Greenfield). Limbo DB kann jederzeit aus JSONL regeneriert werden (JSONL = SSOT).
+**Backup-Strategie:** JSONL-Files sind Source of Truth. Limbo DB ist wegwerf-Cache. Btrfs Snapshots fuer /work.
 
 ---
 
-## 24. CLEANUP NACH IMPLEMENTIERUNG
+## C.2 Application Architecture
+
+### Komponenten
+
+| Komponente | Verantwortung | Schnittstellen | ABB-Mapping |
+|-----------|--------------|----------------|-------------|
+| `server/src/main.rs` | Entry Point, Component Wiring | Alle Module | - |
+| `server/src/ecs/` | ECS World mit Components + Systems | Internal API | State Engine |
+| `server/src/db/` | Limbo DB CRUD + FTS5 | Internal API | Database |
+| `server/src/watcher/` | eBPF/fanotify File Watching | FileEvent → ECS | File Watcher |
+| `server/src/parser/` | Streaming JSONL Parser | ClaudeMessage → ECS | JSONL Engine |
+| `server/src/discovery/` | ~/.claude/ Scanner fuer Sessions | SessionInfo → ECS | JSONL Engine |
+| `server/src/session/` | PTY + tmux Session Management | SessionControl API | Session Manager |
+| `server/src/bus/` | Zenoh Event Bus + SHM | Pub/Sub Topics | Event Bus |
+| `server/src/transport/` | WebTransport + Codecs + Adaptive | Binary Streams | Transport + Codec |
+| `server/src/proxy/` | API Proxy (ANTHROPIC_BASE_URL) | HTTP forward | API Proxy |
+| `server/src/git/` | libgit2 Blame/Status/Log | Git API | - |
+| `server/src/teams/` | Team Config Reader + Topology | Team Events | Team Visualizer |
+| `wasm/jsonl-parser/` | WASM JSONL Parser (Browser) | Web Worker | JSONL Engine |
+| `wasm/markdown/` | WASM Markdown Renderer | Web Worker | Chat Renderer |
+| `wasm/compress/` | WASM Zstd Decoder | Web Worker | Wire Codec |
+| `frontend/src/` | SolidJS UI Application | WebTransport Client | UI Shell |
+
+**Kommunikation:**
+- Server-intern: Zenoh Pub/Sub (SHM zero-copy, ~1us)
+- Server → Browser: WebTransport bidirektional (FlatBuffers hot, MessagePack cold, Zstd compressed)
+- Browser → Server: WebTransport (MessagePack, User Input + Commands)
+- Server → Anthropic: HTTPS (API Proxy, transparent forward)
+
+### Event-Ordering Protokoll (Peer-Review Upgrade v1.1)
+
+Jedes Event im System bekommt einen EventEnvelope:
+
+```rust
+pub struct EventEnvelope {
+    pub event_id: Uuid,
+    pub source: EventSource,      // JSONL | PTY | Proxy | Watcher | User
+    pub sequence: u64,            // Monoton steigend pro Source
+    pub logical_ts: u64,          // Lamport Clock (globale Ordnung)
+    pub wall_ts: i64,             // Unix Timestamp (Darstellung)
+    pub session_id: SessionId,
+    pub dedup_key: Option<String>, // Fuer Dedup bei Echo-Events
+}
+```
+
+**Dedup-Regel:** JSONL-Event mit `dedup_key` das einem kuerzlich gesendeten PTY-Input entspricht → "already seen" (kein UI-Double).
+
+### Backpressure-Strategie (Peer-Review Upgrade v1.1)
+
+| Event-Klasse | Queue-Groesse | Drop-Policy | Recovery |
+|--------------|---------------|-------------|----------|
+| message.new | Unbounded | Nie droppen | - |
+| tool.result | 1000 | Nie droppen | - |
+| file.change | 500 | Oldest-first drop | Snapshot nach reconnect |
+| cursor.move | 10 | Latest-only (replace) | Kein Recovery noetig |
+| metrics.update | 50 | Latest-only (replace) | Kein Recovery noetig |
+| system.event | 100 | Nie droppen | - |
+
+Bei Reconnect: Server sendet Snapshot des aktuellen States + Delta der verpassten non-droppable Events.
+
+---
+
+## C.3 Error Handling Strategy
+
+| Error-Kategorie | Beispiele | Strategie |
+|-----------------|-----------|-----------|
+| **Fatal** (unrecoverable) | Limbo DB corrupt, eBPF attach fehlschlaegt, Port belegt | Graceful Shutdown mit Fehlermeldung im Browser, auto-restart via systemd |
+| **Transient** (voruebergehend) | JSONL file locked, WebTransport disconnect, Zenoh timeout | Retry mit exponential backoff (max 5 Versuche, 100ms→3.2s) |
+| **Recoverable** (behebbar) | JSONL parse error (einzelne Zeile), Session nicht gefunden, File deleted | Skip + Warning-Log, UI zeigt Ghost-Element mit Fehlerstatus |
+| **Expected** (erwartbar) | Session beendet, File nicht mehr da, empty JSONL | Normaler Control Flow, Session-Status auf "ended", File aus Tree entfernen |
+
+**Pflicht-Fragen:**
+- [x] Welche Fehler koennen auftreten? → 11+ Risiken identifiziert (siehe E.2)
+- [x] Retry-Logik noetig? → Ja: WebTransport reconnect (exp. backoff), Zenoh reconnect, File watcher re-attach
+- [x] User-Feedback bei Fehlern? → Inline-Toasts (Catppuccin Red), Statusbar-Indikator, Breathing-Orb ERROR State (rot pulsierend)
+- [x] Fehler-Propagation? → eBPF/Watcher → ECS Event → Zenoh broadcast → Frontend Toast. Fatal → Server shutdown → Browser "Disconnected" overlay
+- [x] Logging? → Structured JSON (tracing crate), ERROR/WARN/INFO/DEBUG → Limbo DB + stdout
+
+---
+
+## C.4 Security Architecture
+
+### Security Checkliste
+- [x] **Input Validation:** User-Input ueber WebTransport validiert (Message-Length-Limits, UTF-8 Check, keine Raw-Bytes an PTY ohne Sanitization)
+- [x] **Authentication:** JWT Token + API Key; Token-Refresh; Rate-Limiting pro Session
+- [x] **Authorization:** Single-User, Full-Access (lokale IDE)
+- [x] **Sensitive Data:** API Keys NICHT im JSONL angezeigt (Regex-Redaction: `sk-ant-*`, `Bearer *`); .env nie committet
+- [x] **OWASP Top 10:** XSS (SolidJS escaped by default + CSP Header), Injection (PTY input sanitized, no shell=true), SSRF (API Proxy nur zu api.anthropic.com whitelist)
+- [x] **Secrets Management:** .env file, nie in Git, nie in Logs
+- [x] **Transport Security:** QUIC/TLS 1.3 (quinn), mkcert lokale CA fuer LAN, Let's Encrypt fuer Internet
+- [x] **eBPF Security:** BPF Programme laufen im Kernel — nur vorverifizierte Programme, kein dynamisches Laden von User-Input
+- [x] **CORS:** Strict same-origin; API Proxy fuegt keine offenen CORS-Header hinzu
+- [x] **COOP/COEP:** Cross-Origin-Isolation fuer SharedArrayBuffer (WASM Workers). `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp`. Monaspace Neon + Inter Fonts MUESSEN self-hosted werden.
+- [x] **WebTransport TLS:** Self-signed Certs von Browsern fuer QUIC abgelehnt. Loesung: `mkcert` lokale CA + OS Trust Store. Mobile: CA-Cert verteilen.
+
+### Security Scanning Layers (geplant)
+
+| Layer | Tool | Wann | Pflicht? |
+|-------|------|------|----------|
+| Source Code (SAST) | `cargo clippy` + semgrep | PR + Weekly | Ja |
+| Dependencies | `cargo audit` + `npm audit` | PR | Ja |
+| Secrets | gitleaks | Pre-commit | Ja |
+| Unicode/Bidi | Grep-Check | Lint Step | Ja |
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PHASE D: TECHNOLOGY ARCHITECTURE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+## D.1 Technology Stack
+
+### Rust (server/Cargo.toml)
+
+| Package | Version | Aktion | Grund | SBB-Mapping |
+|---------|---------|--------|-------|-------------|
+| tokio | 1.x (io-uring feature) | Add | Async Runtime + io_uring | Runtime |
+| axum | 0.8 | Add | HTTP Server | API Proxy |
+| quinn | 0.11 | Add | QUIC / WebTransport | Transport |
+| hecs | 0.10 | Add | ECS World | State Engine |
+| zenoh | 1.x (shm feature) | Add | Event Bus + SHM | Event Bus |
+| limbo-core | latest | Add | SQLite-kompatible DB | Database |
+| serde / serde_json | 1.x | Add | JSON Serialisierung | Wire Codec |
+| rmp-serde | 1.x | Add | MessagePack Serialisierung | Wire Codec |
+| flatbuffers | 24.x | Add | FlatBuffers Runtime | Wire Codec |
+| tracing / tracing-subscriber | 0.1/0.3 | Add | Structured Logging | Observability |
+| portable-pty | latest | Add | PTY Management | Session Manager |
+| git2 | latest | Add | libgit2 Bindings | Git Integration |
+| zstd | latest | Add | Zstd Compression | Wire Codec |
+| jsonwebtoken | latest | Add | JWT Auth | Security |
+| aya | latest | Add | eBPF Framework (Rust) | File Watcher |
+
+### Rust (wasm/*/Cargo.toml)
+
+| Package | Version | Aktion | Grund | SBB-Mapping |
+|---------|---------|--------|-------|-------------|
+| wasm-bindgen | latest | Add | Rust→WASM Bindings | WASM Runtime |
+| serde_json | 1.x | Add | JSONL Parsing | JSONL Engine |
+| pulldown-cmark | latest | Add | Markdown→HTML | Chat Renderer |
+| zstd (wasm feature) | latest | Add | Zstd Decoder | Wire Codec |
+
+### Frontend (frontend/package.json)
+
+| Package | Version | Aktion | Grund | SBB-Mapping |
+|---------|---------|--------|-------|-------------|
+| solid-js | latest | Add | UI Framework | UI Shell |
+| @solidjs/router | latest | Add | Routing | UI Shell |
+| vite | 6.x | Add | Build Tool | Build |
+| @codemirror/view | 6.x | Add | Code Editor | Code Editor |
+| @codemirror/merge | 6.x | Add | Merge/Diff View | Code Editor |
+| @codemirror/lang-* | 6.x | Add | Syntax Highlighting | Code Editor |
+| @phosphor-icons/web | latest | Add | Icon Library | UI Shell |
+| flatbuffers | latest | Add | FlatBuffers JS Runtime | Wire Codec |
+| @msgpack/msgpack | latest | Add | MessagePack JS | Wire Codec |
+
+---
+
+## D.2 Environment Architecture
+
+| Variable | Beschreibung | Default | Secret? |
+|----------|-------------|---------|---------|
+| `CLAUDE_IDE_PORT` | WebTransport Server Port | `4433` | Nein |
+| `CLAUDE_IDE_HTTP_PORT` | HTTP Fallback / Static Files | `8080` | Nein |
+| `CLAUDE_IDE_DB_PATH` | Limbo DB Pfad | `/data/claude-ide/ide.db` | Nein |
+| `CLAUDE_IDE_WATCH_PATHS` | Komma-separierte Watch-Pfade | `~/.claude/` | Nein |
+| `CLAUDE_IDE_JWT_SECRET` | JWT Signing Secret | (generiert) | **Ja** |
+| `CLAUDE_IDE_TLS_CERT` | TLS Certificate Path | `./certs/cert.pem` | Nein |
+| `CLAUDE_IDE_TLS_KEY` | TLS Private Key Path | `./certs/key.pem` | **Ja** |
+| `ANTHROPIC_BASE_URL` | API Proxy Target (gesetzt fuer Managed Sessions) | `http://localhost:4434` | Nein |
+| `CLAUDE_IDE_LOG_LEVEL` | Log Level | `info` | Nein |
+
+**Deployment-Umgebungen:**
+
+| Umgebung | Zweck | Konfiguration |
+|----------|-------|---------------|
+| Local/Dev | Entwicklung + Primaer-Nutzung | mkcert TLS, Limbo in /data, eBPF direkt |
+| LAN | Mobile-Zugriff | Selbes Setup, CA-Cert auf Mobile verteilen |
+| Internet (Phase 2) | Externer Zugriff | Let's Encrypt, Auth hardening |
+
+---
+
+## D.3 Feature Flags
+
+| Flag | Default | Beschreibung | Lifecycle |
+|------|---------|-------------|-----------|
+| `ENABLE_EBPF` | `true` | eBPF File Watching (false → inotify Fallback) | Permanent |
+| `ENABLE_SHM` | `true` | Zenoh Shared Memory (false → TCP) | Permanent |
+| `ENABLE_WASM_PARSER` | `true` | WASM JSONL Parser (false → JS Parser) | Permanent |
+| `ENABLE_API_PROXY` | `true` | API Proxy + Network Tab | Permanent |
+| `ENABLE_PROFILER` | `false` | Performance Profiler Panel | Permanent |
+| `ENABLE_AUDIO` | `false` | UI Sounds | Permanent |
+
+---
+
+## D.4 Observability Architecture
+
+### Logging
+- **Format:** Structured JSON (tracing crate mit json subscriber)
+- **Log-Levels:**
+  - `ERROR`: DB-Fehler, PTY crash, eBPF attach failure, WebTransport fatal
+  - `WARN`: JSONL parse error (einzelne Zeile), Session disconnect, Slow query (>100ms), Conflict events
+  - `INFO`: Session start/stop, Agent spawn/kill, WebTransport connect/disconnect, API proxy request, Merge results
+  - `DEBUG`: File events, Zenoh messages, ECS entity changes, FlatBuffer encode/decode, File tree updates
+- **Pflicht-Events:** Startup (mit Config), Shutdown (graceful/forced), Errors, Session lifecycle
+- **Sensitive Daten:** NICHT geloggt: API Keys, JWT Secrets, User-Input-Inhalte (nur Laenge)
+
+### Metriken
+- **Tool:** Custom (Limbo DB + Frontend Dashboard) — kein Prometheus noetig fuer lokale IDE
+- **Standard-Metriken:**
+  - [x] Request Count / Throughput (WebTransport + API Proxy)
+  - [x] Error Rate (pro Komponente)
+  - [x] Latency Histogram (File-Event → Browser, API Proxy RTT)
+  - [x] Resource Usage (Server RSS, Browser Memory, CPU)
+- **Business-Metriken:** Sessions active, Messages/sec, Tokens consumed, Cost accumulated, Agents active, conflict_count, merge_success_rate
+
+### Health Checks
+- **Endpoint:** `GET /health` (HTTP) + WebTransport keepalive
+- **Was wird geprueft:** Limbo DB erreichbar, eBPF Watcher aktiv, Zenoh Session open, Free Disk >1GB
+
+### Tracing
+- **Tool:** `tracing` crate mit span-basiertem Tracing
+- **Spans:** JSONL parse, WebTransport send, API proxy forward, ECS system tick
+- **Context Propagation:** Session-ID als Span-Attribut in allen Operationen
+
+---
+
+## D.5 Infrastructure
+
+| Komponente | Typ | Spezifikation | Kosten |
+|-----------|-----|--------------|--------|
+| Dev Laptop | Bare Metal | AMD Ryzen 9 5900HS (16 cores), 16GB RAM, RTX 3050 Ti, NVMe SSD | Vorhanden |
+| Rust Build Server | LXC (CT 155) | 8 Cores, 12GB RAM, Debian 12, mold Linker | Vorhanden (Proxmox) |
+| Limbo DB | Local File | /data/claude-ide/ide.db (ext4, kein CoW) | 0 |
+| TLS Certs | mkcert | Lokale CA im OS Trust Store | 0 |
+
+---
+
+<!-- GATE 2: Architektur vollstaendig? Risiken + Error Handling? → JA -->
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PHASE E: OPPORTUNITIES & SOLUTIONS
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+## E.1 Gap Analysis
+
+| Bereich | Ist-Zustand (Baseline) | Soll-Zustand (Target) | Gap | Aktion |
+|---------|----------------------|---------------------|-----|--------|
+| JSONL Visibility | Terminal zeigt ~60% der JSONL-Inhalte | 100% Visibility | 40% hidden content | Full JSONL Parser + Ghost Messages |
+| File Sync | Kein Live-Update im Browser | <50ms File-Event-to-Browser | Keine Loesung vorhanden | eBPF Watcher → Zenoh → WebTransport |
+| API Transparency | Kein Einblick in API Calls | Voller Request/Response Log | Keine Loesung vorhanden | API Proxy + Network Tab |
+| Multi-Agent | Keine Visualisierung | Topology Graph + Swimlane | Keine Loesung vorhanden | Teams Module + Force-directed Graph |
+| Code Editing | Terminal-only | Browser CodeMirror 6 mit Conflict Resolution | Keine Loesung vorhanden | CodeMirror 6 + OT Buffer |
+| Mobile Access | Nicht moeglich | Vollwertiges Mobile Layout | Keine Loesung vorhanden | Responsive Layout + QUIC Connection Migration |
+| Session Control | Nur Terminal | Bidirektional (PTY + tmux) | Keine Loesung vorhanden | Session Manager |
+
+---
+
+## E.2 Risk Assessment
+
+| ID | Risiko | Schwere | Wahrscheinlichkeit | Impact | Mitigation | Owner |
+|----|--------|---------|---------------------|--------|------------|-------|
+| R-1 | Limbo-Instabilitaet (experimentell) | High | Medium | DB-Failures, Data Loss | Fallback auf rusqlite/SQLite mit io_uring wrapper; Tests frueh | Claude |
+| R-2 | eBPF Kernel-Support auf openSUSE | Medium | Medium | Feature nicht verfuegbar | Fallback auf fanotify direkt (ohne eBPF tracing); Kernel-Config check in WP-0 | Claude |
+| R-3 | WebTransport Browser-Support (Safari) | Medium | Low | Safari-User ausgeschlossen | Safari seit 17.4 (2024); Chrome/Firefox stabil; ggf. WebSocket Fallback nur fuer Safari | Claude |
+| R-4 | Zenoh SHM Stabilitaet | Medium | Low | Performance-Degradation | Zenoh produktionsreif (Eclipse); SHM Feature explizit testen | Claude |
+| R-5 | 120Hz Rendering-Performance | High | Medium | UI ruckelt, schlechte UX | SolidJS fine-grained; Virtual Scroller; Web Workers; GPU CSS | Claude |
+| R-6 | JSONL-Files >100MB | Medium | High | Langsamer Start, OOM | Streaming Parser, nur sichtbare Messages im DOM, Limbo Indexing | Claude |
+| R-7 | PTY-Management Komplexitaet | Medium | Medium | Session-Instabilitaet | portable-pty crate; tmux als Fallback | Claude |
+| R-8 | Scope Creep | High | High | Projekt nicht fertig | Strikte Phase 1 Scope-Grenze; Out of Scope klar definiert | Jan |
+| R-9 | WebTransport Self-Signed Cert Rejection | High | High | Browser lehnt QUIC ab | mkcert lokale CA + Trust Store (WP-0) | Claude |
+| R-10 | Event-Ordering Race Conditions | Medium | Medium | UI-Inkonsistenzen, Doubles | EventEnvelope mit Lamport Clock + Dedup | Claude |
+| R-11 | Backpressure bei Event-Spikes | Medium | Medium | Queue-Overflow, Lag | Bounded channels + Drop-Policy (C.2) | Claude |
+| R-12 | File Conflict User+Claude | Medium | Low | Datenverlust | OT Buffer + 3-Wege-Merge + Conflict Banner | Claude |
+| R-13 | COOP/COEP fuer SharedArrayBuffer | Medium | High | WASM Workers nicht nutzbar | Self-hosted Fonts + COOP/COEP Headers (WP-0) | Claude |
+
+---
+
+## E.3 Architecture Decision Records
+
+| ID | Entscheidung | Status | Kontext | Begruendung | Alternativen | Konsequenzen |
+|----|-------------|--------|---------|-------------|-------------|-------------|
+| ADR-1 | Rust Backend | Accepted | Brauchen <50ms Latenz, io_uring, WASM-Target | Performance, Safety, Zero-Cost Abstractions | Go (GC Pauses), Node (single-threaded) | Steile Lernkurve, laengere Compile-Zeiten |
+| ADR-2 | SolidJS Frontend | Accepted | 120Hz ohne Frame-Drops | Fine-grained Reactivity ohne VDOM, kleinste Bundle Size | React (VDOM Overhead), Svelte (weniger Ecosystem) | Kleineres Ecosystem als React |
+| ADR-3 | Zenoh statt NATS | Accepted | Zero-copy IPC noetig fuer <1us Latenz | Rust-native, SHM (~1us vs ~50us), kein externer Prozess | NATS (Go, externer Service), tokio::broadcast (kein SHM) | Zenoh Ecosystem kleiner als NATS |
+| ADR-4 | Limbo statt rusqlite | Accepted | Brauchen async io_uring + FTS5 in Rust-native DB | SQL + FTS5 + io_uring + async, SQLite-kompatibel | redb (kein SQL), rusqlite (kein async io_uring) | Experimentell, Stabilitaetsrisiko |
+| ADR-5 | eBPF statt inotify | Accepted | Brauchen PID-Attribution (welcher Prozess schreibt) fuer Conflict Resolution | Process-Level Insights, effizienter bei vielen Files | inotify (einfacher, kein PID) | Kernel-Abhaengigkeit, Portabilitaet |
+| ADR-6 | ECS (hecs) statt HashMap | Accepted | 120Hz mit 100+ Entities (Agents, Tasks, Messages) | Cache-freundlich (SoA), parallelisierbar, kein GC | HashMap (einfacher aber O(n) Iteration) | Ungewoehnlich fuer Web-Apps |
+| ADR-7 | FlatBuffers + MsgPack Dual-Codec | Accepted | Hot path (200/sec) braucht zero-copy, cold path braucht Flexibilitaet | Best of both worlds | Nur MsgPack (einfacher, mehr Overhead), Nur FlatBuf (unflexibel) | Zwei Codec-Pfade warten |
+| ADR-8 | WebTransport only (kein WS Fallback) | Accepted | QUIC Connection Migration fuer Mobile, 0-RTT, Multiplexing | Modernster Transport, alle Ziel-Browser supporten es | WebSocket Fallback (mehr Browser, weniger Features) | Aeltere Browser ausgeschlossen |
+| ADR-9 | PTY statt claude -p --resume | Accepted | `claude -p --resume` startet Session NEU, PTY haelt sie am Leben | Session-Kontinuitaet | `claude -p` (einfacher, Session-Verlust) | PTY-Management Komplexitaet |
+| ADR-10 | Catppuccin Mocha | Accepted | Brauchen harmonisches Dark Theme | 14 harmonische Farben, Community-Standard | Nord (kaelter), Dracula (bunter) | Catppuccin-spezifisch |
+| ADR-11 | CodeMirror 6 statt Monaco | Accepted | 120Hz-ready, Merge View, klein | 500KB vs 5MB, Virtual Viewport | Monaco (VS Code Feeling, aber 5MB) | Weniger Out-of-Box Features als Monaco |
+
+---
+
+## E.4 Implementation Work Packages
+
+### WP-0: Prerequisites pruefen
+Komplexitaet: Simple | Size: S | Scope: scope:full | Gate: Ja (User Approval)
+Kanban-Status: Backlog
+
+**Kontext:** Alle Technologie-Voraussetzungen muessen vor dem ersten Code-Zeile validiert werden. eBPF, Limbo, Zenoh SHM, quinn WebTransport, mkcert TLS, COOP/COEP.
+
+**Zielbild:** Alle Prerequisites gruen. mkcert CA installiert. Fonts self-hosted. Browser akzeptiert WebTransport + SharedArrayBuffer.
+
+**ABB/SBB-Bezug:** Alle SBBs (Validierung)
+
+**In Scope:**
+- `certs/` (NEU) — Verzeichnis fuer lokale CA + Certs via mkcert
+- `frontend/public/fonts/` (NEU) — Monaspace Neon + Inter als WOFF2
+- Bash-Commands fuer Kernel-Config, Limbo-Test, Zenoh SHM, flatc
+
+**Out of Scope:** Kein produktiver Code
+
+**Abhaengigkeiten:** Keine
+
+**Spezifikation:**
+1. eBPF Kernel-Support pruefen: `cat /boot/config-$(uname -r) | grep -E "CONFIG_BPF=|CONFIG_BPF_SYSCALL="`
+2. Minimaler Limbo-Test (create table, insert, select, FTS5 query)
+3. Zenoh SHM Feature: `cargo check` mit `zenoh/shm` feature
+4. `flatc --version` → installiert
+5. Quinn WebTransport Example compilieren + Browser-Test
+6. `mkcert -install && mkcert localhost 127.0.0.1 ::1` → Cert im Trust Store
+7. COOP/COEP Test-HTML → SharedArrayBuffer verfuegbar
+8. Monaspace Neon + Inter Variable Font WOFF2 → `frontend/public/fonts/`
+
+**Akzeptanzkriterien:**
+
+| AC-ID | Kriterium | Verify-Methode | Evidence | Test-Gate |
+|-------|-----------|----------------|----------|-----------|
+| AC-WP0-1 | eBPF Kernel Support aktiv | `grep CONFIG_BPF /boot/config-*` | `=y` Output | PR |
+| AC-WP0-2 | Limbo FTS5 funktioniert | Cargo test | Test output | PR |
+| AC-WP0-3 | mkcert CA installiert, Browser akzeptiert WebTransport | Browser DevTools | Screenshot | PR |
+| AC-WP0-N1 | Kein externer CDN-Zugriff noetig (COEP-safe) | Network Tab leer | Screenshot | PR |
+
+**VERIFY:**
+- [ ] Test: eBPF Kernel config → beide `=y`
+- [ ] Test: Limbo create/insert/select/FTS5
+- [ ] Test: Zenoh SHM compiles
+- [ ] Test: flatc installiert
+- [ ] Test: mkcert CA + WebTransport akzeptiert
+- [ ] Test: COOP/COEP → SharedArrayBuffer verfuegbar
+- [ ] Test: Fonts self-hosted (WOFF2)
+- [ ] Observability-Check: **N/A** (nur Prerequisite-Pruefung)
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-1: Rust Workspace + Cargo Scaffolding
+Komplexitaet: Simple | Size: S | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** Cargo Workspace mit allen Crates anlegen. Noch kein Code, nur Struktur.
+
+**Zielbild:** `cargo check` compiliert erfolgreich auf dem Build-Server.
+
+**ABB/SBB-Bezug:** Alle SBBs (Grundstruktur)
+
+**In Scope:**
+- `Cargo.toml` (NEU) — Workspace root
+- `server/Cargo.toml` + `server/src/main.rs` + `server/src/lib.rs` (NEU)
+- `wasm/jsonl-parser/Cargo.toml` + `src/lib.rs` (NEU)
+- `wasm/markdown/Cargo.toml` + `src/lib.rs` (NEU)
+- `wasm/compress/Cargo.toml` + `src/lib.rs` (NEU)
+- `schemas/messages.fbs` (NEU) — FlatBuffers Schema
+- `.cargo-remote.toml` (NEU) — Remote Build Config
+
+**Abhaengigkeiten:** blocked by WP-0
+
+**Code:**
+```toml
+# Cargo.toml (Workspace Root)
+[workspace]
+resolver = "2"
+members = ["server", "wasm/jsonl-parser", "wasm/markdown", "wasm/compress"]
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full", "io-uring"] }
+axum = "0.8"
+quinn = "0.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rmp-serde = "1"
+flatbuffers = "24"
+zenoh = { version = "1", features = ["shm"] }
+hecs = "0.10"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+```
+
+**VERIFY:**
+- [ ] Test: `cargo remote -- check` → compiles
+- [ ] Manuell: Verzeichnisstruktur korrekt
+- [ ] Observability-Check: **N/A** (nur Scaffolding)
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-2: ECS World + Limbo DB Setup
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** ECS World (hecs) mit allen Entity-Typen. Limbo DB mit Schema. Grundlegende CRUD.
+
+**ABB/SBB-Bezug:** State Engine (hecs), Database (Limbo)
+
+**In Scope:**
+- `server/src/ecs/mod.rs`, `components.rs`, `systems.rs`, `world.rs` (NEU)
+- `server/src/db/mod.rs`, `schema.rs`, `queries.rs` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-1
+
+**VERIFY:**
+- [ ] Test: `cargo remote -- test -p server -- ecs` → ECS World erstellt, Entities inserted/queried
+- [ ] Test: `cargo remote -- test -p server -- db` → Limbo schema created, CRUD works, FTS5 query works
+- [ ] Manuell: Limbo io_uring Backend aktiv (nicht fallback)
+- [ ] Observability: DB-Init + Schema-Migration auf INFO-Level
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-3: eBPF File Watcher
+Komplexitaet: Complex | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** eBPF-basiertes File Watching mit fanotify + PID-Tracing. Inotify Fallback.
+
+**ABB/SBB-Bezug:** File Watcher (aya eBPF)
+
+**In Scope:**
+- `server/src/watcher/mod.rs`, `ebpf.rs`, `events.rs`, `fallback.rs` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-1 (parallel zu WP-2 moeglich)
+
+**VERIFY:**
+- [ ] Test: `cargo remote -- test -p server -- watcher` → File create/modify/delete Events
+- [ ] Test: Benchmark — 1000 File-Changes in 1s → alle Events, <1ms Latenz
+- [ ] Test: Fallback auf inotify wenn eBPF nicht verfuegbar
+- [ ] Observability: `file_events_total` Counter, `file_event_latency_ms` Histogram
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-4: JSONL Parser + Session Discovery
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** Streaming JSONL Parser fuer ALLE Claude Code Message-Typen. Session Discovery scannt ~/.claude/ rekursiv.
+
+**ABB/SBB-Bezug:** JSONL Engine
+
+**In Scope:**
+- `server/src/parser/mod.rs`, `jsonl.rs`, `types.rs` (NEU)
+- `server/src/discovery/mod.rs`, `scanner.rs` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-2, WP-3
+
+**VERIFY:**
+- [ ] Test: Echtes JSONL parsen → alle Messages, keine fehlenden Felder
+- [ ] Test: system-reminder, thinking blocks, hidden content korrekt
+- [ ] Test: Session Discovery findet alle JSONL-Files unter ~/.claude/
+- [ ] Test: 10000+ Zeilen JSONL → Streaming-Parse ohne OOM
+- [ ] Observability: `jsonl_lines_parsed_total`, `jsonl_parse_errors_total`, `sessions_discovered`
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-5: PTY Session Manager
+Komplexitaet: Complex | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** Managed Sessions (IDE spawnt Claude Code, voller PTY-Zugriff). Observed Sessions (JSONL Watch + tmux send-keys). NICHT `claude -p --resume`.
+
+**ABB/SBB-Bezug:** Session Manager (portable-pty, tmux)
+
+**In Scope:**
+- `server/src/session/mod.rs`, `managed.rs`, `observed.rs`, `types.rs` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-4
+
+**VERIFY:**
+- [ ] Test: Managed Session spawnt `claude`, liest stdout
+- [ ] Test: `send_input("hello")` → Claude antwortet
+- [ ] Test: ANTHROPIC_BASE_URL korrekt gesetzt (Proxy)
+- [ ] Test: Observed Session erkennt existierende Session
+- [ ] Test: tmux send-keys Input → Claude empfaengt
+- [ ] Observability: `sessions_active` Gauge, `session_input_count`, `pty_errors_total`
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-6: Zenoh Event Bus
+Komplexitaet: Medium | Size: S | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** Zenoh In-Process Event Bus mit SHM. Topics: session/messages, files/changes, tasks/updates, agents/metrics, system/events.
+
+**ABB/SBB-Bezug:** Event Bus (Zenoh + SHM)
+
+**In Scope:**
+- `server/src/bus/mod.rs`, `zenoh_bus.rs`, `topics.rs` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-4 (parallel zu WP-5 moeglich)
+
+**VERIFY:**
+- [ ] Test: Publish + Subscribe → Message in <1ms (SHM)
+- [ ] Test: 10000 Messages/sec → kein Verlust
+- [ ] Test: SHM aktiv (nicht TCP fallback)
+- [ ] Observability: `zenoh_messages_published`, `zenoh_messages_received`, `zenoh_shm_bytes`
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-7: WebTransport Server (quinn)
+Komplexitaet: Complex | Size: L | Scope: scope:full | Gate: Ja (End-to-End Demo)
+Kanban-Status: Backlog
+
+**Kontext:** HTTP/3 WebTransport mit quinn. FlatBuffers (hot path), MessagePack (cold path), Zstd, Adaptive Quality.
+
+**ABB/SBB-Bezug:** Transport (quinn), Wire Codec (FlatBuf/MsgPack/Zstd), Quality Adapter
+
+**In Scope:**
+- `server/src/transport/mod.rs`, `webtransport.rs`, `codec.rs`, `adaptive.rs` (NEU)
+- `server/src/main.rs` — Integration aller Komponenten
+
+**Abhaengigkeiten:** blocked by WP-5, WP-6
+
+**VERIFY:**
+- [ ] Test: Browser WebTransport Connection → Handshake OK
+- [ ] Test: FlatBuffer encode/decode korrekt
+- [ ] Test: MessagePack encode/decode korrekt
+- [ ] Test: Zstd ~70% Bandwidth-Reduktion
+- [ ] Test: Adaptive Quality → RTT >150ms → Events gebatched
+- [ ] Test: Reconnect → Delta Sync
+- [ ] Observability: `connections_active`, `bytes_sent/received`, `rtt_ms`, `quality_tier`
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-8: SolidJS Frontend Shell
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** SolidJS + Vite 6, 3-Panel Layout, Catppuccin Mocha Tokens, WebTransport Client, Router.
+
+**ABB/SBB-Bezug:** UI Shell (SolidJS + Vite 6)
+
+**In Scope:**
+- `frontend/package.json`, `vite.config.ts`, `index.html` (NEU)
+- `frontend/src/App.tsx`, `styles/tokens.css`, `styles/global.css` (NEU)
+- `frontend/src/layouts/ThreePanel.tsx` (NEU)
+- `frontend/src/transport/client.ts`, `codec.ts` (NEU)
+- `frontend/src/stores/session.ts` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-7
+
+**VERIFY:**
+- [ ] Test: `npm run dev` → 3-Panel sichtbar
+- [ ] Test: Resize-Handles, Catppuccin Farben, Fonts laden
+- [ ] Test: WebTransport Client verbindet
+- [ ] Observability: Connection status in Console
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-9: Chat Panel + JSONL Rendering
+Komplexitaet: Complex | Size: L | Scope: scope:full | Gate: Ja (CRITICAL: ALLES anzeigen)
+Kanban-Status: Backlog
+
+**Kontext:** ALLE JSONL-Inhalte rendern. Virtual Scroller (~25 DOM-Nodes). Tool Cards, Ghost Messages, Token Heatmap, Context Meter, Breathing Orb, Model Badge.
+
+**ABB/SBB-Bezug:** Chat Renderer
+
+**In Scope:**
+- `frontend/src/components/chat/` — ChatPanel, MessageCard, ToolCard, SystemMessage, ThinkingBlock, GhostMessage, VirtualScroller, TokenHeatmap, ContextMeter, BreathingOrb, ModelBadge, InputField (12 Dateien NEU)
+
+**Breathing Orb Status-Source-Hierarchie:**
+1. **PTY Stream (Primary, <10ms):** Braille-Spinner = THINKING, Block-Cursor = STREAMING, Tool-Pattern = TOOL_USE
+2. **JSONL Events (Secondary, 200-500ms):** `stop_reason` Felder als Ground-Truth
+3. **Reconciliation:** PTY setzt optimistisch. JSONL korrigiert in 500ms. Bei Widerspruch nach 1s: JSONL gewinnt.
+
+**Abhaengigkeiten:** blocked by WP-8
+
+**VERIFY:**
+- [ ] Test: Echtes JSONL → ALLE Messages sichtbar (inkl. hidden, thinking, system-reminder)
+- [ ] Test: Virtual Scroller → ~25 DOM-Nodes bei 1000+ Messages
+- [ ] Test: Ghost Messages (30% Opacity)
+- [ ] Test: Breathing Orb 5 States, <50ms PTY-Reaktion, 500ms JSONL-Reconciliation
+- [ ] Test: Token Heatmap, Model Badge, Context Meter
+- [ ] Manuell: Spring-Physics 120Hz, Markdown (WASM pulldown-cmark)
+- [ ] Observability: Render errors (WARN), WASM parse errors (ERROR), FPS Counter
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-10: File Browser + Editor
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** Live-animierter File Tree. CodeMirror 6 mit Merge View, Git Blame. Conflict Resolution (OT Buffer, 3-Wege-Merge).
+
+**ABB/SBB-Bezug:** Code Editor (CodeMirror 6)
+
+**In Scope:**
+- `frontend/src/components/files/FileTree.tsx`, `FileNode.tsx` (NEU)
+- `frontend/src/components/editor/EditorPanel.tsx`, `DiffView.tsx`, `BlameGutter.tsx`, `ConflictBanner.tsx` (NEU)
+- `frontend/src/lib/ot-buffer.ts` (NEU)
+
+**Conflict Resolution:** Claude = Authority. eBPF PID-Detection. Gelber Banner bei gleichzeitigem Edit. OT Buffer → 3-Wege-Merge → auto Merge View bei Konflikt.
+
+**Abhaengigkeiten:** blocked by WP-8 (parallel zu WP-9 moeglich)
+
+**VERIFY:**
+- [ ] Test: File Tree korrekt, Updates <100ms animiert
+- [ ] Test: CodeMirror 6 Syntax Highlighting, Merge View
+- [ ] Test: Conflict Banner + OT-Merge + auto Merge View
+- [ ] Observability: conflict_count Counter, merge_success_rate Gauge
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-11: Session Sidebar
+Komplexitaet: Simple | Size: S | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** Left Panel: Sessions-Liste (aktiv + archiviert). Breathing Orb pro Session. Resume-Button.
+
+**ABB/SBB-Bezug:** UI Shell
+
+**In Scope:** `frontend/src/components/sessions/SessionList.tsx`, `SessionCard.tsx`, `SessionStatus.tsx` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-8 (parallel zu WP-9, WP-10)
+
+**VERIFY:**
+- [ ] Test: Aktive + archivierte Sessions, Session-Wechsel, Orb-Farben
+- [ ] Observability: **N/A** (UI-only)
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-12: API Proxy + Network Tab
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Ja (User Review)
+Kanban-Status: Backlog
+
+**Kontext:** Rust Proxy intercepted ANTHROPIC_BASE_URL. Loggt alles in Limbo. Network Tab mit Waterfall.
+
+**ABB/SBB-Bezug:** API Proxy (axum)
+
+**In Scope:**
+- `server/src/proxy/mod.rs`, `handler.rs`, `mitm.rs` (NEU)
+- `frontend/src/components/network/NetworkPanel.tsx`, `RequestRow.tsx`, `RequestDetail.tsx` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-9
+
+**VERIFY:**
+- [ ] Test: ANTHROPIC_BASE_URL → Proxy empfaengt, Request/Response in Limbo
+- [ ] Test: Network Tab Waterfall mit Timing
+- [ ] Test: Proxy Overhead <5ms
+- [ ] Observability: `proxy_requests_total`, `proxy_latency_ms`
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-13: Tool Visualizations
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**Kontext:** 11 Tool-Typen mit spezieller Visualisierung als Collapsible Cards.
+
+**ABB/SBB-Bezug:** Chat Renderer
+
+**In Scope:** `frontend/src/components/tools/` — EditCard, BashCard, ReadCard, GrepCard, GlobCard, WebSearchCard, WebFetchCard, LspCard, NotebookCard, PdfCard, PermissionCard (11 Dateien NEU)
+
+**Abhaengigkeiten:** blocked by WP-9
+
+**VERIFY:**
+- [ ] Test: Alle 11 Tool-Typen korrekt gerendert
+- [ ] Test: Edit-Card Inline-Diff, Bash-Card ANSI-Farben, Cards collapsible
+- [ ] Observability: **N/A** (pure UI)
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-14: Git Integration
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**ABB/SBB-Bezug:** Code Editor (Git features)
+
+**In Scope:**
+- `server/src/git/mod.rs`, `blame.rs`, `status.rs` (NEU)
+- `frontend/src/components/git/BranchSelector.tsx`, `StagingArea.tsx`, `CommitHistory.tsx` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-10
+
+**VERIFY:**
+- [ ] Test: Git blame, Branch-Wechsel, Staging Area, Commit History
+- [ ] Observability: Git errors (WARN)
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-15: Multi-Agent / Teams
+Komplexitaet: Complex | Size: L | Scope: scope:full | Gate: Ja (User Review)
+Kanban-Status: Backlog
+
+**ABB/SBB-Bezug:** Team Visualizer
+
+**In Scope:**
+- `server/src/teams/mod.rs`, `discovery.rs`, `topology.rs` (NEU)
+- `frontend/src/components/teams/` — TeamsPanel, TopologyGraph, MessageBubble, SwimlaneTL, AgentCard (5 Dateien NEU)
+
+**Abhaengigkeiten:** blocked by WP-9
+
+**VERIFY:**
+- [ ] Test: Team-Config → Agents als Nodes, Bubbles auf Edges, Swimlane
+- [ ] Observability: `agents_active`, `team_messages_total`
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-16: Gantt + Kanban
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**ABB/SBB-Bezug:** UI Shell (Task Management)
+
+**In Scope:**
+- `frontend/src/components/tasks/TaskPanel.tsx`, `KanbanBoard.tsx`, `KanbanColumn.tsx`, `KanbanCard.tsx` (NEU)
+- `frontend/src/components/gantt/GanttPanel.tsx`, `GanttChart.tsx`, `GanttBar.tsx`, `TimeTracker.tsx` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-15
+
+**VERIFY:**
+- [ ] Test: Kanban-Spalten, Drag&Drop, Gantt Zeitachse, Time-Tracking, Toggle
+- [ ] Observability: **N/A** (UI-only)
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-17: WASM Modules
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**ABB/SBB-Bezug:** JSONL Engine (WASM), Chat Renderer (WASM), Wire Codec (WASM)
+
+**In Scope:**
+- `wasm/jsonl-parser/src/lib.rs`, `wasm/markdown/src/lib.rs`, `wasm/compress/src/lib.rs`
+- `frontend/src/workers/jsonl.worker.ts`, `markdown.worker.ts`, `compress.worker.ts` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-7 (parallel zu Frontend-WPs)
+
+**VERIFY:**
+- [ ] Test: `wasm-pack build` → 3 .wasm Files
+- [ ] Test: JSONL Worker 10000 Zeilen < 100ms
+- [ ] Test: SharedArrayBuffer Transfer zwischen Workers
+- [ ] Observability: Worker parse time (Performance API)
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-18: Mobile Responsive
+Komplexitaet: Medium | Size: M | Scope: scope:full | Gate: Nein
+Kanban-Status: Backlog
+
+**ABB/SBB-Bezug:** UI Shell (Mobile)
+
+**In Scope:**
+- `frontend/src/layouts/MobileLayout.tsx` (NEU)
+- `frontend/src/components/mobile/BottomTabBar.tsx`, `SwipeView.tsx`, `VoiceInput.tsx` (NEU)
+- `frontend/src/hooks/useMediaQuery.ts`, `useHaptic.ts` (NEU)
+
+**Abhaengigkeiten:** blocked by WP-9, WP-10, WP-11
+
+**VERIFY:**
+- [ ] Test: <768px → Mobile Layout, Bottom Tab Bar, Swipe, Voice Input, 44px Touch-Targets
+- [ ] Observability: **N/A** (UI-only)
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+### WP-19: Polish + Performance
+Komplexitaet: Complex | Size: L | Scope: scope:full | Gate: Ja (User Abnahme)
+Kanban-Status: Backlog
+
+**ABB/SBB-Bezug:** Alle (Performance + UX)
+
+**In Scope:**
+- `frontend/src/components/profiler/ProfilerPanel.tsx` (NEU)
+- `frontend/src/components/gallery/GalleryPanel.tsx`, `Lightbox.tsx` (NEU)
+- `frontend/src/components/shared/CommandPalette.tsx`, `ContextMenu.tsx`, `SkeletonLoader.tsx` (NEU)
+- `frontend/src/components/settings/SettingsPanel.tsx` (NEU)
+- `frontend/src/shortcuts/keymap.ts` (NEU)
+
+**Abhaengigkeiten:** blocked by alle vorherigen WPs
+
+**VERIFY:**
+- [ ] Test: FPS 120Hz bei normalem Usage, Gallery Lightbox, Cmd+K Command Palette
+- [ ] Test: Glassmorphism Context Menu, Skeleton Loading, Browser Notifications
+- [ ] Manuell: Spring-Physics, Phosphor Icon Morphing, 7 Curated Effects
+- [ ] Observability: FPS, Memory, Event throughput, Render time
+- [ ] Lessons-Check: Unerwartetes Verhalten? → .claude/CLAUDE.md
+
+---
+
+## E.5 Dependency Graph & Ordering
+
+```mermaid
+graph TD
+    WP0[WP-0: Prerequisites] --> WP1[WP-1: Rust Workspace]
+    WP1 --> WP2[WP-2: ECS + Limbo]
+    WP1 --> WP3[WP-3: eBPF Watcher]
+    WP2 --> WP4[WP-4: JSONL Parser]
+    WP3 --> WP4
+    WP4 --> WP5[WP-5: PTY Session Manager]
+    WP4 --> WP6[WP-6: Zenoh Event Bus]
+    WP5 --> WP7[WP-7: WebTransport Server]
+    WP6 --> WP7
+    WP7 --> WP8[WP-8: SolidJS Frontend Shell]
+    WP7 --> WP17[WP-17: WASM Modules]
+    WP8 --> WP9[WP-9: Chat Panel + JSONL]
+    WP8 --> WP10[WP-10: File Browser + Editor]
+    WP8 --> WP11[WP-11: Session Sidebar]
+    WP17 --> WP9
+    WP9 --> WP12[WP-12: API Proxy + Network]
+    WP9 --> WP13[WP-13: Tool Visualizations]
+    WP9 --> WP15[WP-15: Multi-Agent Teams]
+    WP10 --> WP14[WP-14: Git Integration]
+    WP15 --> WP16[WP-16: Gantt + Kanban]
+    WP9 --> WP18[WP-18: Mobile Responsive]
+    WP10 --> WP18
+    WP11 --> WP18
+    ALL[Alle WPs] --> WP19[WP-19: Polish + Performance]
+```
+
+**Parallelisierbar:**
+- WP-2 (ECS/Limbo) + WP-3 (eBPF) → parallel nach WP-1
+- WP-5 (PTY) + WP-6 (Zenoh) → parallel nach WP-4
+- WP-9 (Chat) + WP-10 (Editor) + WP-11 (Sessions) → parallel nach WP-8
+- WP-12 (Proxy) + WP-13 (Tools) + WP-15 (Teams) → parallel nach WP-9
+- WP-17 (WASM) parallel zu Frontend-WPs
+
+**Kritischer Pfad:**
+```
+WP-0 → WP-1 → WP-2 → WP-4 → WP-5 → WP-7 → WP-8 → WP-9 → WP-19
+```
+
+---
+
+## E.6 Git & SCM Strategy
+
+### Repository
+- **Pfad:** `/work/claude-ide`
+- **Init noetig?** Nein (bereits `git init`)
+- **GitHub Remote:** Kein Remote (spaeter entscheiden)
+
+### Branch Strategy
+- **Phase 1:** Direkt auf `main` (Greenfield, Single-Developer)
+- **Phase 2+:** Feature-Branches `feat/[kurztitel]`
+- **Base:** `main`
+
+### Commits (Conventional Commits)
+- **Strategie:** Atomar — ein Commit pro abgeschlossenem Work Package
+- **Praefix:** `feat:` | `fix:` | `docs:` | `refactor:` | `test:` | `chore:`
+
+### .gitignore
+`.env`, `*.key`, `*.pem`, `*.db`, `*.db-shm`, `*.db-wal`, `node_modules/`, `target/`, `dist/`, `pkg/`, `__pycache__/`, `.claude-ide/images/`, `*.log`
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PHASE F: MIGRATION PLANNING
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+## F.1 Test-Strategie & CI/CD Gate Architecture
+
+### CI/CD Gates (vereinfacht — lokale IDE, kein CI-Server)
+
+| Gate | Ziel | Muss enthalten | Ziel-Dauer |
+|------|------|----------------|------------|
+| **PR Gate** (= pre-commit) | Schnelles Feedback | `cargo clippy`, `cargo test`, `npm run lint` | < 5 min |
+| **Main Gate** (= post-merge) | Stabilitaet | Volle Integration Tests, E2E Smoke | < 15 min |
+| **Nightly** (= manuell) | Breite Regression | Performance Benchmarks, Soak Test, Load Test | < 60 min |
+
+### Test-Taxonomie (8 Ebenen)
+
+| Ebene | Ziel | Gate | Evidence |
+|-------|------|------|----------|
+| **Static** | Fruehe Fehler | PR | `cargo clippy` + `npm lint` |
+| **Unit** | Einzelne Funktionen | PR | `cargo test` + Coverage |
+| **Integration** | Komponenten-Zusammenspiel | Main | `cargo test --test integration` |
+| **Contract/API** | **N/A** — keine externen API-Consumer | - | - |
+| **System/Artifact** | Binary black-box | Main | Server starten + Health Check |
+| **E2E/Smoke** | Kritische User-Journeys | Nightly | Playwright |
+| **UAT** | Fachliche Freigabe | Release | Jan's manuelle Pruefung |
+| **Non-Functional** | Performance/Resilienz | Nightly | `cargo bench` + FPS Profiler |
+
+### Unit Tests
+- **Was:** JSONL Parser, ECS Components, Limbo Queries, FlatBuffers Codec, Zenoh Routing
+- **Tool:** `cargo test` (remote via cargo-remote)
+- **Coverage-Ziel:** 80% Parser + Codec, 60% Server-Logik
+- **Ausfuehrung:** `cargo remote -- test`
+
+### Integration Tests
+- **Was:** eBPF→ECS→Zenoh Pipeline, PTY Lifecycle, API Proxy E2E
+- **Tool:** `cargo test --test integration`
+- **Externe Abhaengigkeiten:** Echte Files, echtes Claude Binary, echte API
+- **Ausfuehrung:** `cargo remote -- test --test integration`
+
+### E2E Tests
+- **Was:** Server → Browser → JSONL laden → Chat → Input → Response
+- **Tool:** Playwright (headless via `deepdive-playwright` Docker)
+- **Kritische Pfade:**
+  1. JSONL laden → alle Messages sichtbar (inkl. hidden)
+  2. Session Input → Claude antwortet → Chat <500ms
+  3. File aendern → File Tree Update <100ms
+  4. API Proxy → Network Tab
+  5. Mobile Layout → Bottom Tab Bar
+- **Ausfuehrung:** `docker run --rm --network host deepdive-playwright node /tmp/e2e-test.js`
+
+### Smoke Tests
+- **Was:** Server laeuft, WebTransport erreichbar, JSONL-Parser funktioniert
+- **Wann:** Nach jedem Server-Restart
+- **Ausfuehrung:** `curl -k https://localhost:4433/health`
+
+### Performance Tests
+- **Latency:** File-Event → Browser < 50ms (p99)
+- **Memory:** Server < 200MB RSS, Browser < 500MB
+- **Throughput:** 10000 JSONL-Lines/sec Parse-Rate
+- **FPS:** 120Hz bei 1000 Messages
+- **Benchmark:** `cargo remote -- bench`
+
+---
+
+## F.2 Real-World Testing
+
+### Testdaten-Strategie
+- **Herkunft:** Echte Claude Code JSONL-Files aus `~/.claude/` (API Keys automatisch redacted)
+- **Edge Cases:** Leeres JSONL, 100MB+ JSONL, korrupte Zeile, Base64-Bilder, Sidechain-Messages, 10+ Agent Teams
+- **Sensitive Daten:** `sk-ant-*` → `[REDACTED]` automatisch
+- **Cleanup:** Test-Sessions in separatem Verzeichnis, nach Test loeschen
+
+### Manuelle Validierung
+- [ ] Haupt-User-Flow durchgespielt (WP-9 Gate)
+- [ ] Error-Cases provoziert (JSONL loeschen, Server killen, Network disconnect)
+- [ ] Edge Cases (10+ Sessions, 100MB JSONL, Unicode)
+- [ ] Mobile getestet (Smartphone ueber VPN/LAN)
+
+---
+
+## F.3 Release & Deployment Plan
+
+**Check-in Frequenz:** `Pro Phase` (20 WPs = 20 Check-ins)
+
+**Gates:**
+- [ ] WP-0: Prerequisites → User Approval
+- [ ] WP-7: WebTransport E2E → User Demo
+- [ ] WP-9: Chat Panel JSONL komplett → User Review (CRITICAL)
+- [ ] WP-12: API Proxy + Network → User Review
+- [ ] WP-15: Multi-Agent Teams → User Review
+- [ ] WP-19: Final Polish → User Abnahme
+
+**Discoveries:**
+| Typ | Handling |
+|-----|----------|
+| Security | Sofort fixen |
+| Bugs | Sofort fixen wenn blocking, sonst Sammeln |
+| Performance | Sammeln (WP-19) |
+| Tech-Debt | Sammeln |
+
+---
+
+## F.4 Rollback Architecture
+
+1. **Git:** Jeder WP hat atomaren Commit → `git revert`
+2. **DB:** Limbo loeschen + aus JSONL regenerieren (JSONL = SSOT)
+3. **eBPF:** `ENABLE_EBPF=false` → inotify Fallback
+4. **Zenoh SHM:** `ENABLE_SHM=false` → TCP Fallback
+5. **WASM:** `ENABLE_WASM_PARSER=false` → JS Parser Fallback
+6. **Gesamt:** `/work/claude-ide` loeschen, Btrfs Snapshot zurueck
+
+---
+
+## F.5 Kanban Board Setup
+
+```
+┌──────────────┬──────────────┬──────────────┬──────────────┬──────────────┬──────────────┐
+│   BACKLOG    │   ANALYSIS   │    READY     │ IN PROGRESS  │    REVIEW    │     DONE     │
+│     (∞)      │   (WIP: 3)   │   (WIP: 5)   │   (WIP: 3)   │   (WIP: 3)   │     (∞)      │
+├──────────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+│ WP-0..WP-19  │              │              │              │              │              │
+└──────────────┴──────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
+```
+
+**WIP-Limits:** L-Size → Analysis: 3, Ready: 5, In Progress: 3, Review: 3
+
+**Policies:**
+| Spalte | Entry | Exit |
+|--------|-------|------|
+| Analysis | Im Backlog | Requirements verstanden |
+| Ready | Analyse fertig | Definition of Ready erfuellt (Deps geklaert, ACs definiert) |
+| In Progress | DoR erfuellt, WIP frei | Code + Tests gruen |
+| Review | Code fertig | VERIFY bestanden |
+| Done | VERIFY pass | Kanban-Karte abgeschlossen |
+
+---
+
+<!-- GATE 3: Test-Strategie + Kanban Board vollstaendig? → JA -->
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PHASE G: IMPLEMENTATION GOVERNANCE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+## G.1 Architecture Compliance Review
+
+**PR Review Checkliste:**
+- [ ] Code entspricht Architecture Principles (P.2)?
+- [ ] Building Blocks korrekt implementiert (A.6)?
+- [ ] Error Handling gemaess Strategie (C.3)?
+- [ ] Security Checkliste bestanden (C.4)?
+- [ ] Observability implementiert (D.4)?
+- [ ] Tests gruen (F.1)?
+- [ ] Keine Secrets im Code?
+- [ ] Keine TODO/TBD/Platzhalter im Code?
+
+**TOGAF Compliance:**
+- [ ] Alle Pflicht-Phasen laut Tailoring L durchlaufen?
+- [ ] Building Blocks dokumentiert und implementiert?
+- [ ] ADRs aktuell?
+- [ ] Requirements Traceability gegeben (RM.3)?
+
+---
+
+## G.2 Definition of Done
+
+### Code & Architektur
+- [ ] Code implementiert (20 Work Packages)
+- [ ] Tests gruen (Unit + Integration + E2E)
+- [ ] VERIFY fuer jedes WP durchgefuehrt (inkl. AC-Evidence-Tabelle)
+- [ ] Logging implementiert (mindestens Error-Level Events)
+- [ ] Error Handling implementiert (Fatal/Transient/Recoverable/Expected)
+- [ ] Security Scanning aktiv (clippy, audit, gitleaks)
+- [ ] Performance geprueft (120Hz, <50ms, <200MB)
+- [ ] Architecture Compliance Review bestanden (G.1)
+
+### Kanban
+- [ ] Alle Kanban-Karten in "Done"
+- [ ] Bei scope:full: VERIFY-Report fuer jedes WP vorhanden
+- [ ] Keine status:partial ohne Folge-Issue
+
+### Dokumentation & Abschluss
+- [ ] Lessons in .claude/CLAUDE.md geschrieben
+- [ ] Docs aktualisiert (README, Architecture, API)
+- [ ] Git Commits atomar pro WP
+
+---
+
+## G.3 Success Metrics
+
+| Metrik | Zielwert | Messbar durch |
+|--------|----------|---------------|
+| JSONL Transparency | 100% Messages sichtbar | Count-Match JSONL vs. UI |
+| File-Event Latenz | < 50ms p99 | Benchmark |
+| FPS | 120Hz bei 1000 Messages | Performance Profiler |
+| Server Memory | < 200MB RSS | `ps aux` |
+| Browser Memory | < 500MB | Chrome DevTools |
+| JSONL Parse Rate | > 10000 Lines/sec | `cargo bench` |
+| WebTransport Reconnect | < 2s | Disconnect/Reconnect Test |
+
+**Kanban Flow Metrics:**
+| Metrik | Geplant | Tatsaechlich |
+|--------|---------|------------|
+| Lead Time (gesamt) | ~4 Wochen | [Nach Implementation] |
+| Cycle Time (Durchschnitt pro WP) | ~1-2 Tage | [Nach Implementation] |
+| Throughput | 2-3 WPs pro Woche | [Nach Implementation] |
+
+---
+
+## G.4 Post-Implementation Cleanup
 
 - [ ] Dead Code entfernen (unused imports, commented-out code)
 - [ ] `cargo clippy` auf Server + WASM Crates
 - [ ] `npm run lint` auf Frontend
 - [ ] Test-Fixtures aufraeumen
-- [ ] Temporary debug logging entfernen
+- [ ] Debug-Logging reduzieren
 - [ ] `.cargo-remote.toml` Pfade pruefen
-- [ ] Self-signed Certificates nicht committen
+- [ ] Self-signed Certs nicht committen
 
 ---
 
-## 25. PR REVIEW CHECKLISTE
+## G.5 Documentation Updates
 
-- [ ] Alle VERIFY-Schritte durchgefuehrt
-- [ ] Keine Secrets im Code (grep nach sk-ant, Bearer, password)
-- [ ] Cargo clippy clean
-- [ ] npm lint clean
-- [ ] Tests gruen (Unit + Integration)
-- [ ] JSONL Full Transparency geprueft (NICHTS versteckt)
-- [ ] Performance: 120Hz bei 1000 Messages
-- [ ] Mobile Layout funktioniert
-- [ ] Docs aktuell
+- [ ] `/work/claude-ide/README.md` — Projekt-Beschreibung, Setup, Architektur-Diagramm
+- [ ] `/work/claude-ide/.claude/CLAUDE.md` — Projekt-spezifische Instructions
+- [ ] `/work/claude-ide/docs/architecture.md` — Detaillierte Architektur
+- [ ] `/work/claude-ide/docs/api.md` — WebTransport API Docs
+- [ ] `/home/jan/.claude/CLAUDE.md` — claude-ide Verweis ergaenzen
 
 ---
 
-## 26. ERFOLGSKRITERIEN
-
-- [ ] JSONL wird vollstaendig und in Echtzeit angezeigt (inkl. hidden content)
-- [ ] Session-Input funktioniert bidirektional (PTY + tmux)
-- [ ] File-Changes erscheinen in <100ms im Browser
-- [ ] API Proxy loggt alle Requests/Responses transparent
-- [ ] Multi-Agent Topology Graph zeigt Team-Aktivitaet
-- [ ] Gantt mit Time-Tracking zeigt Agent-Performance
-- [ ] 120Hz Rendering bei typischer Nutzung
-- [ ] Mobile-Layout nutzbar am Smartphone
-- [ ] Server < 200MB RAM, Browser < 500MB RAM
+<!-- GATE 4: Definition of Done erfuellbar? Architecture Compliance pruefbar? → JA -->
 
 ---
 
-## 27. DEFINITION OF DONE
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PHASE H: ARCHITECTURE CHANGE MANAGEMENT
+     ═══════════════════════════════════════════════════════════════════════════ -->
 
-- [ ] Code implementiert (19 Schritte/Phasen)
-- [ ] Tests gruen (Unit + Integration + E2E)
-- [ ] VERIFY fuer jeden Schritt durchgefuehrt (inkl. Observability-Check)
-- [ ] Logging implementiert (Structured JSON, alle Error-Level Events)
-- [ ] Error Handling implementiert (Fatal/Transient/Recoverable/Expected)
-- [ ] Performance-Anforderungen geprueft (120Hz, <50ms Latenz, <200MB Server RAM)
-- [ ] Lessons in .claude/CLAUDE.md geschrieben
-- [ ] Docs aktualisiert (README, Architecture, API)
-- [ ] Git Commits atomar pro Phase
+## H.1 Architecture Change Log
 
----
-
-## 28. SUMMARY OF CHANGES
-
-- Neues Projekt `/work/claude-ide` angelegt
-- Rust Workspace mit Server + 3 WASM Crates
-- SolidJS Frontend mit Vite 6
-- 19 Implementierungsphasen von Scaffolding bis Polish
-- Vollstaendiger Tech-Stack: Rust (Tokio+io_uring, axum, quinn, hecs, zenoh+SHM, limbo, aya/eBPF) + SolidJS + CodeMirror 6 + WASM (jsonl-parser, pulldown-cmark, zstd)
-- UI: 3-Panel Layout, 7 Center-Tabs (Chat, Editor, Diff, Network, Gallery, Teams, Gantt), Catppuccin Mocha, Spring Physics, Breathing Orb
-- Features: Full JSONL Transparency, API Proxy, Multi-Agent Topology, Interactive Gantt, Mobile Support
+| Aenderung | Betroffene Komponenten | Typ | Impact |
+|----------|----------------------|-----|--------|
+| Plan v1.0 → v1.1: Peer-Review Upgrades | Event Bus, Transport, Security, File Watcher | Feature | Medium |
+| Plan v1.1 → v2.0: TOGAF ADM Migration | Plan-Struktur (kein Code-Impact) | Refactor | Low |
 
 ---
 
-## 29. LESSONS LEARNED
+## H.2 Lessons Learned
 
-_Noch keine Lessons - werden waehrend VERIFY geschrieben._
+_Noch keine Lessons — werden waehrend VERIFY geschrieben und hier referenziert._
 
-### Plan-Qualitaet Retrospektive
+---
+
+## H.3 Architecture Repository Updates
+
+- [ ] Building Blocks Katalog (A.6) nach Implementation aktualisieren
+- [ ] ADRs (E.3) bei neuen Entscheidungen ergaenzen
+- [ ] Technology Standards nach Erfahrung anpassen
+
+---
+
+## H.4 Plan-Qualitaet Retrospektive
+
 | Aspekt | Bewertung |
 |--------|-----------|
-| Scope-Schaetzung | Gross - bewusst L-Size gewaehlt |
-| Risiko-Einschaetzung | Korrekt - Limbo/eBPF als Hauptrisiken identifiziert |
+| Scope-Schaetzung | Gross — bewusst L-Size gewaehlt |
+| Risiko-Einschaetzung | Korrekt — Limbo/eBPF als Hauptrisiken |
+| Tailoring Level | L korrekt — 100+ Dateien, neue Architektur |
+| Kanban WIP-Limits | WIP 3 — angemessen fuer Single-Developer |
+| TOGAF Phasen-Aufwand | Angemessen — Plan ist umfangreich aber vollstaendig |
 
 ---
 
-## 30. NEXT STEPS (Phase 2 - nach Phase 1 Completion)
+## H.5 Next Steps & Change Requests
 
-1. Conversation Branching (Fork-Funktion)
+**Follow-up Tasks (Phase 2):**
+1. Conversation Branching (Fork)
 2. Export (MD/HTML/PDF/JSONL)
 3. WASM Plugin System (sandboxed, hot-reload)
 4. Multi-LLM Adapter (Codex, Gemini)
@@ -1509,70 +1734,110 @@ _Noch keine Lessons - werden waehrend VERIFY geschrieben._
 
 ---
 
-## 31. TODOWRITE ITEMS
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     REQUIREMENTS MANAGEMENT
+     ═══════════════════════════════════════════════════════════════════════════ -->
 
-### A) Plan-Erstellung (bei /impl-plan Start)
-```json
-[
-  {"content": "Phase 1: Analyse & Klaerung", "status": "completed"},
-  {"content": "Phase 2: Planung & Design", "status": "completed"},
-  {"content": "Phase 3: Konfiguration & Tests", "status": "completed"},
-  {"content": "Phase 4: Validierung & Abschluss", "status": "completed"}
-]
-```
+## RM.1 Requirements Register
 
-### B) Implementation (nach Plan-Approval)
-```json
-[
-  {"content": "Schritt 0: Prerequisites pruefen (eBPF, Limbo, Zenoh, quinn) + VERIFY", "status": "pending"},
-  {"content": "Schritt 1: Rust Workspace + Cargo Scaffolding + VERIFY", "status": "pending"},
-  {"content": "Schritt 2: ECS World (hecs) + Limbo DB Setup + VERIFY", "status": "pending"},
-  {"content": "Schritt 3: eBPF File Watcher (fanotify) + VERIFY", "status": "pending"},
-  {"content": "Schritt 4: JSONL Parser + Session Discovery + VERIFY", "status": "pending"},
-  {"content": "Schritt 5: PTY Session Manager (managed + observed) + VERIFY", "status": "pending"},
-  {"content": "Schritt 6: Zenoh Event Bus + SHM + VERIFY", "status": "pending"},
-  {"content": "Schritt 7: WebTransport Server (quinn) + VERIFY [GATE]", "status": "pending"},
-  {"content": "Schritt 8: SolidJS Frontend Shell + 3-Panel Layout + VERIFY", "status": "pending"},
-  {"content": "Schritt 9: Chat Panel + Full JSONL Rendering + VERIFY [GATE]", "status": "pending"},
-  {"content": "Schritt 10: File Browser + CodeMirror Editor + VERIFY", "status": "pending"},
-  {"content": "Schritt 11: Session Sidebar + VERIFY", "status": "pending"},
-  {"content": "Schritt 12: API Proxy + Network Tab + VERIFY [GATE]", "status": "pending"},
-  {"content": "Schritt 13: Tool Visualizations (11 Types) + VERIFY", "status": "pending"},
-  {"content": "Schritt 14: Git Integration + VERIFY", "status": "pending"},
-  {"content": "Schritt 15: Multi-Agent / Teams + VERIFY [GATE]", "status": "pending"},
-  {"content": "Schritt 16: Gantt + Kanban + VERIFY", "status": "pending"},
-  {"content": "Schritt 17: WASM Modules (3x) + VERIFY", "status": "pending"},
-  {"content": "Schritt 18: Mobile Responsive + VERIFY", "status": "pending"},
-  {"content": "Schritt 19: Polish + Performance + VERIFY [GATE]", "status": "pending"},
-  {"content": "Definition of Done pruefen", "status": "pending"}
-]
-```
+| ID | Requirement | Typ | Quelle | Status | Prioritaet | Phase |
+|----|------------|-----|--------|--------|-----------|-------|
+| REQ-1 | ALLE JSONL-Inhalte anzeigen | Func | Jan | Accepted | Must | A |
+| REQ-2 | File-Event Latenz <50ms p99 | Non-Func | Tech | Accepted | Must | A |
+| REQ-3 | 120Hz bei 1000+ Messages | Non-Func | Tech | Accepted | Must | A |
+| REQ-4 | Bidirektionale Session-Steuerung | Func | Jan | Accepted | Must | A |
+| REQ-5 | API Proxy mit Logging | Func | Jan | Accepted | Must | A |
+| REQ-6 | Multi-Agent Topology Graph | Func | Jan | Accepted | Must | A |
+| REQ-7 | Interactive Gantt | Func | Jan | Accepted | Should | A |
+| REQ-8 | Mobile Layout | Func | Jan | Accepted | Should | A |
+| REQ-9 | Server <200MB, Browser <500MB | Non-Func | HW | Accepted | Must | A |
+| REQ-10 | Adaptive Quality (RTT) | Func | Mobile | Accepted | Must | A |
+| REQ-11 | eBPF PID-Tracing | Func | Conflict Res. | Accepted | Must | A |
+| REQ-12 | Conflict Resolution OT | Func | Peer-Review | Accepted | Should | E |
+| REQ-13 | Event-Ordering Lamport Clock | Non-Func | Peer-Review | Accepted | Must | E |
+| REQ-14 | Backpressure bounded channels | Non-Func | Peer-Review | Accepted | Must | E |
 
 ---
 
-## QUALITAETS-CHECK VOR AUSGABE
+## RM.2 Change Request Log
+
+| ID | Aenderung | Begruendung | Impact | Status | Entscheidung |
+|----|---------|-----------|--------|--------|-------------|
+| CHG-1 | Event-Ordering Protokoll hinzufuegen | Peer-Review Codex: Race Conditions | C.2, alle WPs | Accepted | 2026-02-20, Jan |
+| CHG-2 | Backpressure-Strategie hinzufuegen | Peer-Review Codex: Queue Overflow | C.2, WP-6, WP-7 | Accepted | 2026-02-20, Jan |
+| CHG-3 | COOP/COEP + Self-hosted Fonts | Peer-Review Codex: SharedArrayBuffer | C.4, WP-0 | Accepted | 2026-02-20, Jan |
+| CHG-4 | mkcert fuer WebTransport TLS | Peer-Review Gemini: Cert Rejection | C.4, WP-0 | Accepted | 2026-02-20, Jan |
+| CHG-5 | Breathing Orb Dual-Source | Peer-Review Gemini: Status-Quelle | WP-9 | Accepted | 2026-02-20, Jan |
+| CHG-6 | Conflict Resolution OT Buffer | Peer-Review Gemini+Claude: Concurrent Edits | WP-10 | Accepted | 2026-02-20, Jan |
+| CHG-7 | TOGAF ADM Format Migration | Skill-Update /impl-plan v2.0 | Plan-Struktur | Accepted | 2026-02-20, Jan |
+
+---
+
+## RM.3 Traceability Matrix
+
+| Requirement | Work Package | Test | Acceptance Criteria | Status |
+|------------|-------------|------|---------------------|--------|
+| REQ-1 | WP-4, WP-9 | E2E | AC-1, AC-8, AC-N1 | Planned |
+| REQ-2 | WP-3, WP-6, WP-7 | Benchmark | AC-2 | Planned |
+| REQ-3 | WP-8, WP-9, WP-17 | Performance | AC-3 | Planned |
+| REQ-4 | WP-5 | Integration | AC-4 | Planned |
+| REQ-5 | WP-12 | E2E | AC-5 | Planned |
+| REQ-6 | WP-15 | E2E | AC-6 | Planned |
+| REQ-7 | WP-16 | Manual | - | Planned |
+| REQ-8 | WP-18 | Playwright | AC-7 | Planned |
+| REQ-9 | WP-19 | Soak Test | AC-10, AC-N3 | Planned |
+| REQ-10 | WP-7 | Integration | - | Planned |
+| REQ-11 | WP-3 | Integration | - | Planned |
+| REQ-12 | WP-10 | E2E | - | Planned |
+| REQ-13 | WP-6, WP-7 | Unit | - | Planned |
+| REQ-14 | WP-6, WP-7 | Unit | - | Planned |
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     QUALITAETS-CHECK
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+## QUALITAETS-CHECK
 
 **CRITICAL:**
-- [x] T-Shirt Size bestimmt und im Header genannt? → L
-- [x] Alle Pflicht-Sektionen fuer L ausgefuellt? → Alle 31
-- [x] Keine leeren Sektionen? → Alle haben Inhalt
-- [x] Keine Platzhalter? → Kein [TBD]
-- [x] Alle Blocking Questions beantwortet? → 12/12
-- [x] VERIFY-Template in jedem Schritt inkl. Observability-Check? → 20/20 Schritte
-- [x] Lessons-Check Teil von jedem VERIFY? → Ja
-- [x] Confidence Score gesetzt? → 82%
-- [x] Alle 4 Gates bestanden? → Ja
+- [x] TOGAF Tailoring Level L im Header (P.1)?
+- [x] Alle Pflicht-Sektionen laut Tailoring Matrix ausgefuellt?
+- [x] Keine leeren Pflicht-Sektionen?
+- [x] Keine Platzhalter ([TBD], ..., TODO)?
+- [x] Alle Stakeholder Concerns (P.3) beantwortet? → 12/12
+- [x] VERIFY-Template in jedem Work Package (E.4)?
+- [x] Lessons-Check Teil von jedem VERIFY?
+- [x] Confidence Score gesetzt? → 85%
+- [x] Alle Gates bestanden? → Gate 0-4
+- [x] TaskCreate fuer alle Phasen durchgefuehrt?
+- [x] Master-Checkliste vollstaendig abgehakt?
+
+**TOGAF Compliance:**
+- [x] Architecture Building Blocks identifiziert (A.6)? → 14 ABBs
+- [x] Solution Building Blocks definiert (A.6)? → 14 SBBs
+- [x] Architecture Decision Records (E.3)? → 11 ADRs
+- [x] Gap Analysis (E.1)? → 7 Gaps
+- [x] Architecture Compliance Review (G.1)? → 12-Punkt Checkliste
+- [x] Requirements Traceability (RM.3)? → 14 REQs → WPs → ACs
+
+**Kanban Compliance:**
+- [x] Kanban Board aufgesetzt (F.5)? → 6 Spalten
+- [x] WIP-Limits definiert? → 3/5/3/3
+- [x] Work Packages als Karten (E.4)? → 20 WPs
+- [x] Definition of Ready pro Karte? → In WP-Template
+- [x] Flow-Metriken geplant (G.3)? → Lead/Cycle/Throughput
 
 **REQUIRED:**
-- [x] Mindestens 1 Risiko identifiziert? → 9 Risiken
-- [x] Error Handling Strategie definiert? → 4 Kategorien
-- [x] Test-Strategie vollstaendig? → Unit/Integration/E2E/Smoke/Performance
-- [x] Real-World Testing bewertet? → Testdaten + manuelle Validierung
-- [x] Observability-Strategie definiert? → Logging/Metriken/Health/Tracing
-- [x] Performance-Anforderungen bewertet? → 120Hz, <50ms, <200MB
-- [x] Git Sektion ausgefuellt? → Ja
-- [x] TodoWrite Items vorbereitet? → 21 Items
+- [x] Mindestens 1 Risiko (E.2)? → 13 Risiken
+- [x] Error Handling (C.3)? → 4 Kategorien
+- [x] Test-Strategie vollstaendig (F.1)? → 8 Ebenen bewertet
+- [x] Observability (D.4)? → Logging/Metriken/Health/Tracing
+- [x] Git (E.6)? → Ja
+- [x] Architecture Principles (P.2)? → 7 Prinzipien
 
 **RECOMMENDED:**
-- [x] Rollback-Plan definiert? → 6 Rollback-Optionen
-- [x] Gates bei kritischen Schritten? → 6 Gates
+- [x] Rollback Architecture (F.4)? → 6 Optionen
+- [x] Gates bei kritischen WPs? → 6 Gates
+- [x] Stakeholder Map (A.3)? → 5 Stakeholder + RACI
+- [x] Infrastructure (D.5)? → 4 Komponenten
