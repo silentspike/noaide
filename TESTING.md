@@ -4,8 +4,8 @@
 
 | Gate | Required Tests | Blocking | Target Duration |
 |------|----------------|----------|-----------------|
-| PR | Static, Unit, Integration, Security, Build, Language | Yes | p95 <= 12 min |
-| Main | Contract, System/Artifact, E2E Smoke | Yes | <= 20 min |
+| PR | Static, Unit, Security, Build, System Artifact, Language | Yes | p95 <= 10 min |
+| Main | Integration, Contract, E2E Smoke | Yes | <= 20 min |
 | Nightly | Full E2E, Load/Stress Baseline, Extended Security | No | <= 60 min |
 | Release | System Full, E2E Critical, NFR Thresholds | Yes | <= 45 min |
 
@@ -21,7 +21,7 @@
 | Security (Rust) | `cargo audit` | CI | `artifacts/cargo-audit.json` |
 | Security (Frontend) | `npm audit --audit-level=high` | CI | `artifacts/npm-audit.json` |
 | Security (SAST) | CodeQL Analysis | CI | GitHub Security tab |
-| System/Artifact | `./target/release/claude-ide-server --version` | Release binary | `artifacts/system.log` |
+| System/Artifact | `./target/release/noaide-server --version` | Release binary | `artifacts/system.log` |
 | E2E/Smoke | Playwright via Docker | Ephemeral | `artifacts/e2e/` |
 | Language | German content detection in GitHub files | CI | `artifacts/language-check.log` |
 

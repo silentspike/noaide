@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for considering contributing to claude-ide!
+Thank you for considering contributing to noaide!
 
 ## Language Policy
 
@@ -106,7 +106,48 @@ refactor/description  # Refactoring
 - Every feature needs tests
 - Keep dependencies on latest stable versions
 
+## Development
+
+### Self-hosted Runner Setup
+
+The CI/CD pipeline runs on a self-hosted GitHub Actions runner. To set up a new runner:
+
+```bash
+ssh root@<runner-host> "bash -s" < scripts/setup-runner.sh
+```
+
+Required tools are installed automatically: Rust (stable+nightly), Node.js 22, wasm-pack, flatc, mkcert, gitleaks, cargo-audit, Docker, bpf-linker.
+
+## Parallel Work (Multi-Agent Development)
+
+noaide supports parallel development by multiple AI coding agents. Each work package
+is a self-contained GitHub Issue with clear boundaries.
+
+### Rules for Parallel Branches
+
+1. **One work package = one branch.** Always branch from `main`:
+   ```bash
+   git checkout -b feat/wp3-event-bus main
+   ```
+2. **Never commit directly to `main`.** Branch protection enforces PRs.
+3. **Respect file boundaries.** Each issue specifies:
+   - **In Scope:** Files you may modify
+   - **Out of Scope:** Files you must NOT touch
+4. **Interface contracts.** Shared types, traits, and topics are defined in the issue.
+   Implement against the contract, not against other agents' code.
+5. **Rebase before PR.** Always rebase onto the latest `main` before creating a PR:
+   ```bash
+   git fetch origin && git rebase origin/main
+   ```
+6. **Merge order follows dependencies.** Check the dependency graph in the issue.
+   If your WP depends on another, wait for it to merge first.
+
+### Sprint Milestones
+
+Work packages are grouped into sprint milestones (S1-S4) on GitHub.
+Milestones define which WPs can run in parallel and which must be sequential.
+
 ## Architecture
 
-See the [Implementation Plan](IMPL-PLAN.md) for the full TOGAF ADM architecture
-and all 11 Architecture Decision Records (ADRs).
+All 11 Architecture Decision Records (ADRs) are summarized in [llms.txt](llms.txt).
+See the [README](README.md) for the overall system architecture diagram.

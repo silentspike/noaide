@@ -37,11 +37,34 @@ jobs:
           awk "/^## \[${VERSION_NUM}\]/{flag=1; next} /^## \[/{flag=0} flag" \
             CHANGELOG.md > release_notes.md
 
+      - name: Generate FlatBuffers
+        run: flatc --rust --ts -o generated/ schemas/messages.fbs
+
       - name: Build release binary
         run: cargo build --release
 
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Build WASM modules
+        run: |
+          for mod in jsonl-parser markdown compress; do
+            wasm-pack build wasm/$mod --target web --out-dir ../../frontend/src/wasm/$mod
+          done
+
       - name: Build frontend
         run: cd frontend && npm ci && npm run build
+
+      - name: Create release bundle
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          BUNDLE="noaide-${VERSION}-linux-x86_64"
+          mkdir -p "${BUNDLE}"
+          cp target/release/noaide-server "${BUNDLE}/"
+          cp -r frontend/dist/ "${BUNDLE}/frontend/"
+          tar czf "${BUNDLE}.tar.gz" "${BUNDLE}"
+          sha256sum "${BUNDLE}.tar.gz" > "${BUNDLE}.tar.gz.sha256"
+          sha256sum target/release/noaide-server > noaide-server.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -51,4 +74,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            target/release/claude-ide-server
+            noaide-*-linux-x86_64.tar.gz
+            noaide-*-linux-x86_64.tar.gz.sha256
+            target/release/noaide-server
+            noaide-server.sha256
