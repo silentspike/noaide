@@ -34,7 +34,7 @@ If you discover a security vulnerability, please report it responsibly:
 
 ## Security Measures
 
-- All dependencies regularly updated via Dependabot
+- GitHub Actions dependencies updated via Dependabot (Cargo and npm will be enabled once application code exists)
 - CodeQL SAST scanning on every push/PR
 - `cargo audit` and `npm audit` in CI pipeline
 - Secret scanning enabled
