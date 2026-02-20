@@ -1,0 +1,34 @@
+[package]
+name = "togaf-parser"
+version = "0.1.0"
+edition = "2021"
+description = "TOGAF ADM IMPL-PLAN.md to plan.json parser"
+license = "AGPL-3.0"
+
+[lib]
+name = "togaf_parser"
+
+[[bin]]
+name = "plan-parser"
+path = "src/bin/plan-parser.rs"
+required-features = ["cli"]
+
+[features]
+default = []
+cli = ["dep:clap", "dep:notify"]
+watcher = ["dep:notify"]
+
+[dependencies]
+pulldown-cmark = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+thiserror = "2"
+tracing = "0.1"
+
+# Optional (CLI)
+clap = { version = "4", features = ["derive"], optional = true }
+notify = { version = "7", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1"
