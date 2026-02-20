@@ -4,16 +4,19 @@
 //! Usage:
 //!   plan-parser <input.md> [--output plan.json] [--watch] [--compact]
 
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 use clap::Parser as ClapParser;
 
-use togaf_parser::parser;
 use togaf_parser::emitter;
+use togaf_parser::parser;
 
 #[derive(ClapParser)]
-#[command(name = "plan-parser", about = "TOGAF IMPL-PLAN.md to plan.json converter")]
+#[command(
+    name = "plan-parser",
+    about = "TOGAF IMPL-PLAN.md to plan.json converter"
+)]
 struct Cli {
     /// Input IMPL-PLAN.md file
     input: PathBuf,
@@ -55,8 +58,7 @@ fn run_parse(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     let markdown = fs::read_to_string(&cli.input)
         .map_err(|e| format!("Cannot read {}: {}", cli.input.display(), e))?;
 
-    let doc = parser::parse(&markdown)
-        .map_err(|e| format!("Parse error: {}", e))?;
+    let doc = parser::parse(&markdown).map_err(|e| format!("Parse error: {}", e))?;
 
     let json = if cli.compact {
         emitter::to_json_compact(&doc)?
@@ -80,11 +82,14 @@ fn run_parse(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(feature = "watcher")]
 fn run_watch(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
-    use notify::{Watcher, RecursiveMode, Event, EventKind};
+    use notify::{Event, EventKind, RecursiveMode, Watcher};
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
 
-    eprintln!("Watching {} for changes (200ms debounce)...", cli.input.display());
+    eprintln!(
+        "Watching {} for changes (200ms debounce)...",
+        cli.input.display()
+    );
 
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
@@ -101,8 +106,7 @@ fn run_watch(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
                     let now = Instant::now();
                     if now.duration_since(last_parse) >= debounce {
                         last_parse = now;
-                        eprintln!("[{}] File changed, re-parsing...",
-                            chrono_now_simple());
+                        eprintln!("[{}] File changed, re-parsing...", chrono_now_simple());
                         if let Err(e) = run_parse(cli) {
                             eprintln!("Parse error: {}", e);
                         }

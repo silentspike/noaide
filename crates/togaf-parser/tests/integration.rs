@@ -18,7 +18,10 @@ fn parses_without_error() {
 fn extracts_meta_correctly() {
     let doc = parser::parse(FIXTURE).unwrap();
 
-    assert_eq!(doc.meta.title, "noaide - Browser-basierte Real-time IDE fuer Claude Code");
+    assert_eq!(
+        doc.meta.title,
+        "noaide - Browser-basierte Real-time IDE fuer Claude Code"
+    );
     assert_eq!(doc.meta.tailoring, TailoringLevel::L);
     assert_eq!(doc.meta.scope, "scope:full");
     assert_eq!(doc.meta.adm_iteration, 1);
@@ -85,7 +88,12 @@ fn extracts_all_5_gates() {
 fn extracts_13_risks() {
     let doc = parser::parse(FIXTURE).unwrap();
 
-    assert_eq!(doc.risks.len(), 13, "Should have 13 risks, got {}", doc.risks.len());
+    assert_eq!(
+        doc.risks.len(),
+        13,
+        "Should have 13 risks, got {}",
+        doc.risks.len()
+    );
 
     // Spot-check first and last risk
     assert_eq!(doc.risks[0].id, "R-1");
@@ -93,18 +101,30 @@ fn extracts_13_risks() {
     assert_eq!(doc.risks[0].severity, RiskLevel::High);
 
     assert_eq!(doc.risks[12].id, "R-13");
-    assert!(doc.risks[12].title.contains("COOP") || doc.risks[12].title.contains("SharedArrayBuffer"));
+    assert!(
+        doc.risks[12].title.contains("COOP") || doc.risks[12].title.contains("SharedArrayBuffer")
+    );
 }
 
 #[test]
 fn extracts_11_adrs() {
     let doc = parser::parse(FIXTURE).unwrap();
 
-    assert_eq!(doc.adrs.len(), 11, "Should have 11 ADRs, got {}", doc.adrs.len());
+    assert_eq!(
+        doc.adrs.len(),
+        11,
+        "Should have 11 ADRs, got {}",
+        doc.adrs.len()
+    );
 
     // All ADRs should be Accepted in this plan
     for adr in &doc.adrs {
-        assert_eq!(adr.status, AdrStatus::Accepted, "ADR {} should be Accepted", adr.id);
+        assert_eq!(
+            adr.status,
+            AdrStatus::Accepted,
+            "ADR {} should be Accepted",
+            adr.id
+        );
     }
 
     // Spot-check specific ADRs
@@ -120,7 +140,8 @@ fn extracts_20_work_packages() {
     let doc = parser::parse(FIXTURE).unwrap();
 
     assert_eq!(
-        doc.work_packages.len(), 20,
+        doc.work_packages.len(),
+        20,
         "Should have 20 work packages, got {}",
         doc.work_packages.len()
     );
@@ -158,7 +179,10 @@ fn sections_have_html_content() {
 fn footer_stats_present() {
     let doc = parser::parse(FIXTURE).unwrap();
 
-    assert!(!doc.meta.footer_stats.is_empty(), "Footer stats should be present");
+    assert!(
+        !doc.meta.footer_stats.is_empty(),
+        "Footer stats should be present"
+    );
     assert!(doc.meta.footer_stats.contains("Sections done"));
     assert!(doc.meta.footer_stats.contains("Gates passed"));
     assert!(doc.meta.footer_stats.contains("WPs"));
@@ -191,6 +215,14 @@ fn json_size_reasonable() {
     let json = togaf_parser::emitter::to_json(&doc).unwrap();
 
     // plan.json should be reasonably sized (not empty, not gigantic)
-    assert!(json.len() > 10_000, "JSON should be > 10KB, got {} bytes", json.len());
-    assert!(json.len() < 5_000_000, "JSON should be < 5MB, got {} bytes", json.len());
+    assert!(
+        json.len() > 10_000,
+        "JSON should be > 10KB, got {} bytes",
+        json.len()
+    );
+    assert!(
+        json.len() < 5_000_000,
+        "JSON should be < 5MB, got {} bytes",
+        json.len()
+    );
 }

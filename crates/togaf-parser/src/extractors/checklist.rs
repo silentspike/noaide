@@ -21,13 +21,11 @@ pub enum ChecklistItem {
     Unknown,
 }
 
-static SECTION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^-\s+\[([ xX])\]\s+(P|A|B|C|D|E|F|G|H|RM)\.(\d+)\s+").unwrap()
-});
+static SECTION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^-\s+\[([ xX])\]\s+(P|A|B|C|D|E|F|G|H|RM)\.(\d+)\s+").unwrap());
 
-static GATE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^-\s+\[([ xX])\]\s+.*GATE\s+(\d+)").unwrap()
-});
+static GATE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^-\s+\[([ xX])\]\s+.*GATE\s+(\d+)").unwrap());
 
 /// Parse a single checklist line into a ChecklistItem
 pub fn parse_checklist_line(line: &str) -> ChecklistItem {

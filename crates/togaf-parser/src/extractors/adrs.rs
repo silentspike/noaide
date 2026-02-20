@@ -7,8 +7,8 @@
 //! | ADR-1 | Rust Backend | Accepted | ... | ... | ... | ... |
 //! ```
 
-use crate::schema::{Adr, AdrStatus};
 use super::tables;
+use crate::schema::{Adr, AdrStatus};
 
 /// Extract ADRs from section content (E.3 Architecture Decision Records).
 pub fn extract_adrs(section_content: &str) -> Vec<Adr> {
@@ -17,53 +17,63 @@ pub fn extract_adrs(section_content: &str) -> Vec<Adr> {
         None => return Vec::new(),
     };
 
-    table.rows.iter().filter_map(|row| {
-        let id = row.get("ID")?.trim().to_string();
-        if id.is_empty() {
-            return None;
-        }
+    table
+        .rows
+        .iter()
+        .filter_map(|row| {
+            let id = row.get("ID")?.trim().to_string();
+            if id.is_empty() {
+                return None;
+            }
 
-        let title = row.get("Entscheidung")
-            .or_else(|| row.get("Decision"))
-            .or_else(|| row.get("Title"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let title = row
+                .get("Entscheidung")
+                .or_else(|| row.get("Decision"))
+                .or_else(|| row.get("Title"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        let status = row.get("Status")
-            .map(|s| parse_adr_status(s))
-            .unwrap_or(AdrStatus::Proposed);
+            let status = row
+                .get("Status")
+                .map(|s| parse_adr_status(s))
+                .unwrap_or(AdrStatus::Proposed);
 
-        let context = row.get("Kontext")
-            .or_else(|| row.get("Context"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let context = row
+                .get("Kontext")
+                .or_else(|| row.get("Context"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        let decision = row.get("Begruendung")
-            .or_else(|| row.get("Rationale"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let decision = row
+                .get("Begruendung")
+                .or_else(|| row.get("Rationale"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        let alternatives = row.get("Alternativen")
-            .or_else(|| row.get("Alternatives"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let alternatives = row
+                .get("Alternativen")
+                .or_else(|| row.get("Alternatives"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        let consequences = row.get("Konsequenzen")
-            .or_else(|| row.get("Consequences"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let consequences = row
+                .get("Konsequenzen")
+                .or_else(|| row.get("Consequences"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        Some(Adr {
-            id,
-            title,
-            status,
-            date: String::new(),
-            context,
-            decision,
-            alternatives,
-            consequences,
+            Some(Adr {
+                id,
+                title,
+                status,
+                date: String::new(),
+                context,
+                decision,
+                alternatives,
+                consequences,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 /// Parse an ADR status string
