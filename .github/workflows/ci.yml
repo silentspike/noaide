@@ -46,6 +46,8 @@ jobs:
               - 'frontend/**'
             rust:
               - 'src/**'
+              - 'server/**'
+              - 'crates/**'
               - 'Cargo.*'
               - 'wasm/**'
               - 'schemas/**'

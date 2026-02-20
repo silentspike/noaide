@@ -2,7 +2,7 @@ name: Issue Quality Gate
 
 on:
   issues:
-    types: [opened, edited, reopened, labeled, unlabeled]
+    types: [opened, edited, reopened]
 
 permissions:
   issues: write
@@ -37,17 +37,27 @@ jobs:
             const warnings = [];
 
             // ─────────────────────────────────────────────────────
-            // 1. Required sections
+            // 1. Required sections (strict for scope:full, relaxed otherwise)
             // ─────────────────────────────────────────────────────
-            const requiredSections = [
-              "## In Scope",
-              "## Out of Scope",
-              "Acceptance Criteria",
-              "## Verification",
-            ];
-            const sectionMissing = requiredSections.filter(s => !body.includes(s));
-            if (sectionMissing.length) {
-              failures.push("Missing sections: " + sectionMissing.join(", "));
+            const isScopeFullEarly = labels.some(l => l === "scope:full");
+            if (isScopeFullEarly) {
+              const requiredSections = [
+                "## In Scope",
+                "## Out of Scope",
+                "Acceptance Criteria",
+                "## Verification",
+              ];
+              const sectionMissing = requiredSections.filter(s => !body.includes(s));
+              if (sectionMissing.length) {
+                failures.push("Missing sections (scope:full): " + sectionMissing.join(", "));
+              }
+            } else {
+              // For non-scope:full issues, only require basic structure
+              const basicSections = ["Acceptance Criteria", "## Verification"];
+              const basicMissing = basicSections.filter(s => !body.includes(s));
+              if (basicMissing.length) {
+                warnings.push("Consider adding sections: " + basicMissing.join(", "));
+              }
             }
 
             // ─────────────────────────────────────────────────────
@@ -85,9 +95,8 @@ jobs:
             const gateKeywords = ["PR", "Main", "Nightly", "Release"];
             const hasGatePlan = gateKeywords.some(g => body.includes(g));
             if (!hasGatePlan) {
-              failures.push(
-                "Missing Gate-Plan: body must mention at least one of: " +
-                gateKeywords.join(", ")
+              warnings.push(
+                "Consider mentioning a gate (PR, Main, Nightly, Release) in the verification section"
               );
             }
 
@@ -151,13 +160,15 @@ jobs:
             }
 
             // ─────────────────────────────────────────────────────
-            // 9. Dependencies: "blocked by" or "Keine" in body
+            // 9. Dependencies: "blocked by", "None", or Dependencies section
             // ─────────────────────────────────────────────────────
             const hasDependencies =
-              /blocked by/i.test(body) || /\bNone\b/.test(body) || /\bno dependencies\b/i.test(body);
+              /blocked by/i.test(body) || /\bNone\b/.test(body) ||
+              /\bno dependencies\b/i.test(body) || /## Dependencies/i.test(body) ||
+              /\bBlocks:\b/i.test(body);
             if (!hasDependencies) {
               failures.push(
-                'Missing dependency declaration: body must contain "blocked by #NNN" or "None"'
+                'Missing dependency declaration: body must contain "blocked by #NNN", "None", or a Dependencies section'
               );
             }
 
