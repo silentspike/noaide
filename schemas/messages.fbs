@@ -1,0 +1,17 @@
+namespace noaide.wire;
+
+enum EventSource : byte { JSONL, PTY, Proxy, Watcher, User }
+enum QualityTier : byte { Full, Batched, Critical }
+
+table EventEnvelope {
+  event_id: string (required);
+  source: EventSource;
+  sequence: uint64;
+  logical_ts: uint64;
+  wall_ts: int64;
+  session_id: string;
+  dedup_key: string;
+  payload: [ubyte] (required);
+}
+
+root_type EventEnvelope;
