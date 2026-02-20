@@ -1,30 +1,24 @@
-# claude-ide
+# noaide
 
 > Browser-based real-time IDE for AI coding agents (Claude Code, Gemini CLI, Codex). Rust backend + SolidJS frontend + WASM modules.
 
 ## Core Documentation (read first)
 - [README](README.md): Overview, quick start, architecture, configuration
-- [Implementation Plan](IMPL-PLAN.md): Full TOGAF ADM Level L architecture (20 work packages, 11 ADRs)
 - [Contributing](CONTRIBUTING.md): Development workflow, commit conventions, code style
 - [Testing](TESTING.md): Test strategy, gate matrix, performance benchmarks
+- [Security Policy](SECURITY.md): Vulnerability reporting, response timeline
 
 ## Architecture Decisions
-- ADR-1: Rust backend (tokio + io_uring)
-- ADR-2: SolidJS frontend (fine-grained reactivity)
-- ADR-3: Zenoh + SHM event bus (~1us latency)
-- ADR-4: Limbo DB (io_uring, FTS5, async)
-- ADR-5: eBPF file watcher (PID attribution)
-- ADR-6: hecs ECS state engine (struct-of-arrays)
-- ADR-7: FlatBuffers (hot path) + MessagePack (cold path)
-- ADR-8: WebTransport-only (QUIC, 0-RTT)
-- ADR-9: PTY stdin + tmux send-keys (session control)
-- ADR-10: Catppuccin Mocha theme
-- ADR-11: CodeMirror 6 editor
-
-## Code Patterns
-- [Rust Patterns](.claude/rules/rust-patterns.md): ECS, error handling, Zenoh topics
-- [SolidJS Patterns](.claude/rules/solidjs-patterns.md): Signals, tokens, virtual scroller
-- [WASM Patterns](.claude/rules/wasm-patterns.md): Workers, SharedArrayBuffer, COOP/COEP
-
-## Security
-- [Security Policy](SECURITY.md): Vulnerability reporting, response timeline
+| ADR | Decision | Rationale |
+|-----|----------|-----------|
+| ADR-1 | Rust backend (tokio + io_uring) | Zero-copy async I/O, memory safety |
+| ADR-2 | SolidJS frontend (fine-grained reactivity) | No virtual DOM, 120fps at 1000+ messages |
+| ADR-3 | Zenoh + SHM event bus | ~1us latency, zero-copy shared memory |
+| ADR-4 | Limbo DB (io_uring, FTS5, async) | Async SQLite alternative, full-text search |
+| ADR-5 | eBPF file watcher | PID attribution, kernel-level efficiency |
+| ADR-6 | hecs ECS state engine | Struct-of-arrays, cache-friendly iteration |
+| ADR-7 | FlatBuffers (hot) + MessagePack (cold) | Zero-copy hot path, compact cold path |
+| ADR-8 | WebTransport-only (QUIC, 0-RTT) | Multiplexed streams, no head-of-line blocking |
+| ADR-9 | PTY stdin + tmux send-keys | Session control without shell=true |
+| ADR-10 | Catppuccin Mocha theme | Consistent dark theme, accessibility |
+| ADR-11 | CodeMirror 6 editor | Modular, tree-sitter integration |

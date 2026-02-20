@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# claude-ide .gitignore — Rust + Node.js + WASM + System
+# noaide .gitignore — Rust + Node.js + WASM + System
 # ═══════════════════════════════════════════════════════════════
 
 # ── Secrets & Credentials ──────────────────────────────────────
@@ -84,6 +84,11 @@ generated/
 
 # ── Docker ─────────────────────────────────────────────────────
 .docker/
+
+# ── Internal Development (not for public repo) ──────────────
+.claude/
+.audit/
+IMPL-PLAN.md
 
 # ── Misc ───────────────────────────────────────────────────────
 __pycache__/

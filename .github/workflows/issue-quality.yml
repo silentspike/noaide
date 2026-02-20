@@ -19,30 +19,11 @@ jobs:
             const body = (issue.body || "");
             const labels = (issue.labels || []).map(l => l.name);
 
-            const requiredSections = [
-              "## In Scope",
-              "## Out of Scope",
-              "Acceptance Criteria",
-            ];
-            const sectionMissing = requiredSections.filter(s => !body.includes(s));
-
-            const hasAcId = /AC-\d+/m.test(body);
-            const hasVerify = /Verify|Verify-Methode|Evidence/i.test(body);
-
-            const hasType = labels.some(l => l.startsWith("type:"));
-            const hasScope = labels.some(l => l.startsWith("scope:"));
-
-            const failures = [];
-            if (sectionMissing.length) failures.push("Missing sections: " + sectionMissing.join(", "));
-            if (!hasAcId) failures.push("Missing AC-ID (AC-1, AC-2, ...)");
-            if (!hasVerify) failures.push("Missing Verify/Evidence plan");
-            if (!hasType) failures.push("Missing type:* label");
-            if (!hasScope) failures.push("Missing scope:* label");
-
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const issue_number = issue.number;
 
+            // ── Helper: ensure label exists ──────────────────────
             async function ensureLabel(name, color, description) {
               try {
                 await github.rest.issues.getLabel({ owner, repo, name });
@@ -51,10 +32,142 @@ jobs:
               }
             }
 
+            // ── Collect failures (hard) and warnings (soft) ─────
+            const failures = [];
+            const warnings = [];
+
+            // ─────────────────────────────────────────────────────
+            // 1. Required sections
+            // ─────────────────────────────────────────────────────
+            const requiredSections = [
+              "## In Scope",
+              "## Out of Scope",
+              "Acceptance Criteria",
+              "## Testplan",
+            ];
+            const sectionMissing = requiredSections.filter(s => !body.includes(s));
+            if (sectionMissing.length) {
+              failures.push("Missing sections: " + sectionMissing.join(", "));
+            }
+
+            // ─────────────────────────────────────────────────────
+            // 2. AC-IDs (AC-1, AC-2, ...)
+            // ─────────────────────────────────────────────────────
+            const hasAcId = /AC-\d+/m.test(body);
+            if (!hasAcId) {
+              failures.push("Missing AC-ID pattern (AC-1, AC-2, ...)");
+            }
+
+            // ─────────────────────────────────────────────────────
+            // 3. Verify / Evidence plan
+            // ─────────────────────────────────────────────────────
+            const hasVerify = /Verify|Verify-Methode|Evidence/i.test(body);
+            if (!hasVerify) {
+              failures.push("Missing Verify/Evidence plan");
+            }
+
+            // ─────────────────────────────────────────────────────
+            // 4. Required labels: type:*, scope:*, priority:*, size:*
+            // ─────────────────────────────────────────────────────
+            const hasType = labels.some(l => l.startsWith("type:"));
+            const hasScope = labels.some(l => l.startsWith("scope:"));
+            const hasPriority = labels.some(l => l.startsWith("priority:"));
+            const hasSize = labels.some(l => l.startsWith("size:"));
+
+            if (!hasType) failures.push("Missing `type:*` label");
+            if (!hasScope) failures.push("Missing `scope:*` label");
+            if (!hasPriority) failures.push("Missing `priority:*` label");
+            if (!hasSize) failures.push("Missing `size:*` label");
+
+            // ─────────────────────────────────────────────────────
+            // 5. Gate-Plan: at least one gate mentioned in body
+            // ─────────────────────────────────────────────────────
+            const gateKeywords = ["PR", "Main", "Nightly", "Release"];
+            const hasGatePlan = gateKeywords.some(g => body.includes(g));
+            if (!hasGatePlan) {
+              failures.push(
+                "Missing Gate-Plan: body must mention at least one of: " +
+                gateKeywords.join(", ")
+              );
+            }
+
+            // ─────────────────────────────────────────────────────
+            // 6. N/A Convention: every N/A must include a reason
+            //    Pattern: "N/A" must be followed by explanation text
+            //    on the same line (not just bare "N/A").
+            //    Valid:   "N/A - not applicable because ..."
+            //             "N/A (no external deps)"
+            //    Invalid: "N/A" alone on a line or as only cell content
+            // ─────────────────────────────────────────────────────
+            const naLines = body.split("\n").filter(line => /\bN\/A\b/i.test(line));
+            const bareNaLines = naLines.filter(line => {
+              // Strip markdown table delimiters and whitespace
+              const cleaned = line.replace(/^\s*\|?\s*/, "").replace(/\s*\|?\s*$/, "").trim();
+              // Check if any cell in a table row is bare N/A
+              if (line.includes("|")) {
+                const cells = line.split("|").map(c => c.trim()).filter(c => c.length > 0);
+                return cells.some(cell => /^\s*N\/A\s*$/i.test(cell));
+              }
+              // Non-table line: bare N/A with nothing meaningful after it
+              return /^\s*N\/A\s*$/i.test(cleaned);
+            });
+            if (bareNaLines.length > 0) {
+              failures.push(
+                "N/A without reason found (" + bareNaLines.length + " occurrence(s)). " +
+                "Every N/A must include an explanation, e.g. `N/A - no external dependencies`"
+              );
+            }
+
+            // ─────────────────────────────────────────────────────
+            // 7. scope:full => System/Artifact must not be N/A
+            // ─────────────────────────────────────────────────────
+            const isScopeFull = labels.some(l => l === "scope:full");
+            if (isScopeFull) {
+              // Look for System or Artifact lines/cells that are N/A
+              const systemNa = /System\s*[:\|]\s*N\/A/i.test(body);
+              const artifactNa = /Artifact\s*[:\|]\s*N\/A/i.test(body);
+              if (systemNa || artifactNa) {
+                const naFields = [];
+                if (systemNa) naFields.push("System");
+                if (artifactNa) naFields.push("Artifact");
+                failures.push(
+                  "scope:full requires " + naFields.join(" and ") +
+                  " to be specified (not N/A)"
+                );
+              }
+            }
+
+            // ─────────────────────────────────────────────────────
+            // 8. Sprint/Execution Plan section (soft warning only)
+            // ─────────────────────────────────────────────────────
+            const hasSprintPlan =
+              body.includes("## Sprint") ||
+              body.includes("## Execution Plan") ||
+              body.includes("## Timeline");
+            if (!hasSprintPlan) {
+              warnings.push(
+                "Consider adding a `## Sprint`, `## Execution Plan`, or `## Timeline` section"
+              );
+            }
+
+            // ─────────────────────────────────────────────────────
+            // 9. Dependencies: "blocked by" or "Keine" in body
+            // ─────────────────────────────────────────────────────
+            const hasDependencies =
+              /blocked by/i.test(body) || /\bNone\b/.test(body) || /\bno dependencies\b/i.test(body);
+            if (!hasDependencies) {
+              failures.push(
+                'Missing dependency declaration: body must contain "blocked by #NNN" or "None"'
+              );
+            }
+
+            // ── Ensure quality labels exist ──────────────────────
             await ensureLabel("quality:needs-spec", "b60205", "Specification incomplete, not ready");
             await ensureLabel("quality:ready", "238636", "Spec + AC + verify complete");
 
+            // ── Apply result ─────────────────────────────────────
             if (failures.length > 0) {
+              // Add needs-spec, remove ready
               await github.rest.issues.addLabels({
                 owner, repo, issue_number,
                 labels: ["quality:needs-spec"]
@@ -65,13 +178,28 @@ jobs:
                   name: "quality:ready"
                 });
               } catch {}
+
+              // Build comment body
+              let commentBody =
+                "**Issue Quality Gate: FAILED**\n\n" +
+                "### Errors (must fix)\n" +
+                failures.map(f => `- ${f}`).join("\n");
+
+              if (warnings.length > 0) {
+                commentBody +=
+                  "\n\n### Warnings (recommended)\n" +
+                  warnings.map(w => `- ${w}`).join("\n");
+              }
+
+              commentBody +=
+                "\n\nPlease address the errors above before setting this issue to `status:ready`.";
+
               await github.rest.issues.createComment({
                 owner, repo, issue_number,
-                body: "**Issue Quality Gate: FAILED**\n\n" +
-                      failures.map(f => `- ${f}`).join("\n") +
-                      "\n\nPlease address these items before setting this issue to `status:ready`."
+                body: commentBody
               });
             } else {
+              // Add ready, remove needs-spec
               await github.rest.issues.addLabels({
                 owner, repo, issue_number,
                 labels: ["quality:ready"]
@@ -82,4 +210,15 @@ jobs:
                   name: "quality:needs-spec"
                 });
               } catch {}
+
+              // If there are warnings, post them even on success
+              if (warnings.length > 0) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number,
+                  body:
+                    "**Issue Quality Gate: PASSED**\n\n" +
+                    "### Warnings (recommended)\n" +
+                    warnings.map(w => `- ${w}`).join("\n")
+                });
+              }
             }

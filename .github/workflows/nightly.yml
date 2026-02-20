@@ -1,0 +1,123 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 2:00 UTC daily
+  workflow_dispatch:  # Manual trigger
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build server
+        run: cargo build --release
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM modules
+        run: |
+          for mod in jsonl-parser markdown compress; do
+            wasm-pack build wasm/$mod --target web --out-dir ../../frontend/src/wasm/$mod
+          done
+
+      - name: Build frontend
+        run: cd frontend && npm ci && npm run build
+
+      - name: Start server
+        run: |
+          ./target/release/noaide-server &
+          sleep 5
+          curl -sk https://localhost:4433/health || echo "Health check pending"
+
+      - name: Run E2E tests
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test tests/e2e/smoke.spec.ts --reporter=html
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ github.run_number }}
+          path: tests/e2e/results/
+
+  benchmarks:
+    name: Performance Benchmarks
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmarks
+        run: cargo bench -- --output-format bencher | tee benchmark-results.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: benchmark-results.txt
+
+  extended-security:
+    name: Extended Security Scan
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Full dependency audit
+        run: cargo audit --json > cargo-audit-full.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Full npm audit
+        run: cd frontend && npm ci && npm audit --json > ../npm-audit-full.json || true
+
+      - name: Gitleaks full scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ github.run_number }}
+          path: |
+            cargo-audit-full.json
+            npm-audit-full.json

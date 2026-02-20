@@ -8,7 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- TOGAF ADM Level L implementation plan (20 work packages, 4 sprints)
-- Project architecture documentation
-- CI/CD pipeline with self-hosted runner
-- GitHub community files (SECURITY, CONTRIBUTING, templates)
+- Initial project structure with Rust workspace and SolidJS frontend
+- CI/CD pipeline: 9 jobs with path filters, security scanning, system artifact verification
+- Nightly workflow: E2E tests, benchmarks, extended security audit
+- Release workflow: WASM modules, frontend bundle, SHA256 checksums
+- GitHub community files (SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, issue templates)
+- Issue Quality Gate workflow with automated spec validation
+- 11 Architecture Decision Records (ADRs)

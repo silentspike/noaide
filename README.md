@@ -1,18 +1,18 @@
-# claude-ide
+# noaide
 
-[![CI](https://github.com/silentspike/claude-ide/actions/workflows/ci.yml/badge.svg)](https://github.com/silentspike/claude-ide/actions/workflows/ci.yml)
+[![CI](https://github.com/silentspike/noaide/actions/workflows/ci.yml/badge.svg)](https://github.com/silentspike/noaide/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Status: Pre-Alpha](https://img.shields.io/badge/Status-Pre--Alpha-orange.svg)](#project-status)
 
 Browser-based real-time IDE for AI coding agents. Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) first, with a pluggable adapter architecture for [Gemini CLI](https://github.com/google-gemini/gemini-cli) and [OpenAI Codex](https://github.com/openai/codex). Watch every JSONL message, manage sessions, inspect API calls, and collaborate with your AI — all in your browser at 120 Hz.
 
-> **Note:** claude-ide is in active early development. Features listed below represent the target architecture. See [Project Status](#project-status) for current implementation progress. Multi-LLM adapter support (Gemini, Codex) is planned for Phase 2.
+> **Note:** noaide is in active early development. Features listed below represent the target architecture. See [Project Status](#project-status) for current implementation progress. Multi-LLM adapter support (Gemini, Codex) is planned for Phase 2.
 
-## Why claude-ide?
+## Why noaide?
 
 AI coding agents like Claude Code, Gemini CLI, and Codex write conversation logs (JSONL) that contain **everything** — system prompts, hidden messages, thinking blocks, tool calls, and results. The standard CLIs show only a fraction of this data.
 
-claude-ide gives you full transparency:
+noaide gives you full transparency:
 
 - **Full JSONL Viewer** — Every message, including hidden and system-reminder content
 - **Real-time File Watching** — eBPF-powered file change detection with PID attribution
@@ -82,8 +82,8 @@ claude-ide gives you full transparency:
 
 ```bash
 # Clone
-git clone https://github.com/silentspike/claude-ide.git
-cd claude-ide
+git clone https://github.com/silentspike/noaide.git
+cd noaide
 
 # Generate local TLS certificates
 mkdir -p certs
@@ -102,7 +102,7 @@ cd frontend && npm install && cd ..
 cargo build --release
 
 # Run
-./target/release/claude-ide-server
+./target/release/noaide-server
 
 # Open browser
 # https://localhost:4433
@@ -114,13 +114,13 @@ cargo build --release
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDE_IDE_PORT` | `4433` | WebTransport/QUIC port |
-| `CLAUDE_IDE_HTTP_PORT` | `8080` | HTTP fallback port |
-| `CLAUDE_IDE_DB_PATH` | `/data/claude-ide/ide.db` | Limbo database path |
-| `CLAUDE_IDE_WATCH_PATHS` | `~/.claude/` | Directories to watch for JSONL |
-| `CLAUDE_IDE_TLS_CERT` | `./certs/cert.pem` | TLS certificate path |
-| `CLAUDE_IDE_TLS_KEY` | `./certs/key.pem` | TLS private key path |
-| `CLAUDE_IDE_LOG_LEVEL` | `info` | Log level (trace/debug/info/warn/error) |
+| `NOAIDE_PORT` | `4433` | WebTransport/QUIC port |
+| `NOAIDE_HTTP_PORT` | `8080` | HTTP fallback port |
+| `NOAIDE_DB_PATH` | `~/.local/share/noaide/ide.db` | Limbo database path |
+| `NOAIDE_WATCH_PATHS` | `~/.claude/` | Directories to watch for JSONL |
+| `NOAIDE_TLS_CERT` | `./certs/cert.pem` | TLS certificate path |
+| `NOAIDE_TLS_KEY` | `./certs/key.pem` | TLS private key path |
+| `NOAIDE_LOG_LEVEL` | `info` | Log level (trace/debug/info/warn/error) |
 
 ### Feature Flags
 
@@ -135,11 +135,11 @@ cargo build --release
 ## Development
 
 ```bash
-# Backend (requires cargo-remote for build server)
-cargo remote -- build              # Dev build
-cargo remote -- test               # Run tests
-cargo remote -- clippy             # Lint
-cargo remote -- build --release    # Release build
+# Backend
+cargo build                        # Dev build
+cargo test                         # Run tests
+cargo clippy -- -D warnings        # Lint
+cargo build --release              # Release build
 
 # Frontend
 cd frontend
@@ -167,7 +167,7 @@ flatc --rust --ts -o generated/ schemas/messages.fbs
 
 ## Project Status
 
-claude-ide follows a [TOGAF ADM](https://www.opengroup.org/togaf) implementation plan with 20 work packages across 4 sprints.
+noaide follows a [TOGAF ADM](https://www.opengroup.org/togaf) implementation plan with 20 work packages across 4 sprints.
 
 | Sprint | Focus | Status |
 |--------|-------|--------|
@@ -176,7 +176,7 @@ claude-ide follows a [TOGAF ADM](https://www.opengroup.org/togaf) implementation
 | S3 | Advanced Features (Proxy, Git, Teams, Mobile) | Planned |
 | S4 | Polish (Profiler, Accessibility, Docs, Release) | Planned |
 
-See the [Implementation Plan](IMPL-PLAN.md) for full architectural details.
+Track progress via [GitHub Milestones](../../milestones) and [Issues](../../issues).
 
 ## Contributing
 
