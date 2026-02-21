@@ -6,15 +6,13 @@ use aya_ebpf::{
     macros::{map, tracepoint},
     maps::RingBuf,
     programs::TracePointContext,
-    EbpfContext,
 };
-use aya_log_ebpf::info;
-use noaide_common::{BpfFileEvent, MAX_PATH_LEN, OP_CREATE, OP_DELETE, OP_MODIFY};
+use noaide_common::{BpfFileEvent, OP_CREATE, OP_DELETE, OP_MODIFY};
 
 /// Ring buffer for sending file events to userspace.
 /// 256KB capacity = ~1000 events (each ~264 bytes).
 #[map]
-static EVENTS: RingBuf = RingBuf::with_byte_capacity(256 * 1024, 0);
+static EVENTS: RingBuf = RingBuf::with_byte_size(256 * 1024, 0);
 
 /// Tracepoint: sys_enter_openat
 ///
