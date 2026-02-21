@@ -1,0 +1,13 @@
+[package]
+name = "noaide-common"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types between noaide userspace and eBPF programs"
+license = "MIT"
+
+[features]
+default = []
+# Enable std support (userspace only, not available in eBPF)
+std = []
+
+[dependencies]
