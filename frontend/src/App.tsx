@@ -1,12 +1,14 @@
 import { Router, Route } from "@solidjs/router";
-import { createContext, useContext, createSignal, onMount, onCleanup } from "solid-js";
+import { createContext, useContext, createSignal, Show, onMount, onCleanup } from "solid-js";
 import ThreePanel from "./layouts/ThreePanel";
+import MobileLayout from "./layouts/MobileLayout";
 import ChatPanel from "./components/chat/ChatPanel";
 import SessionList from "./components/sessions/SessionList";
 import FileTree from "./components/files/FileTree";
 import EditorPanel from "./components/editor/EditorPanel";
 import TaskPanel from "./components/tasks/TaskPanel";
 import TeamsPanel from "./components/teams/TeamsPanel";
+import { useIsMobile } from "./hooks/useMediaQuery";
 import { createSessionStore, type SessionStore } from "./stores/session";
 import { TransportClient } from "./transport/client";
 import "./styles/tokens.css";
@@ -50,21 +52,59 @@ export default function App() {
 }
 
 function Shell() {
+  const isMobile = useIsMobile();
+
   return (
-    <ThreePanel
-      left={<LeftPanel />}
-      center={<CenterPanel />}
-      right={<RightPanel />}
-    />
+    <Show
+      when={!isMobile()}
+      fallback={
+        <MobileLayout
+          chat={<ChatPanel />}
+          files={<FilesPanel />}
+          sessions={<SessionList />}
+          network={<SettingsPlaceholder label="Network" />}
+          settings={<SettingsPlaceholder label="Settings" />}
+        />
+      }
+    >
+      <ThreePanel
+        left={<SessionList />}
+        center={<ChatPanel />}
+        right={<RightPanel />}
+      />
+    </Show>
   );
 }
 
-function LeftPanel() {
-  return <SessionList />;
+function FilesPanel() {
+  const [selectedFile, setSelectedFile] = createSignal<string>("");
+  return (
+    <div style={{ display: "flex", "flex-direction": "column", height: "100%" }}>
+      <div style={{ "flex-shrink": "0", height: "40%", "border-bottom": "1px solid var(--ctp-surface0)", overflow: "hidden" }}>
+        <FileTree onFileSelect={setSelectedFile} />
+      </div>
+      <div style={{ flex: "1", overflow: "hidden" }}>
+        <EditorPanel filePath={selectedFile() || undefined} />
+      </div>
+    </div>
+  );
 }
 
-function CenterPanel() {
-  return <ChatPanel />;
+function SettingsPlaceholder(props: { label: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        height: "100%",
+        color: "var(--ctp-overlay0)",
+        "font-size": "14px",
+      }}
+    >
+      {props.label}
+    </div>
+  );
 }
 
 function RightPanel() {
