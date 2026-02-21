@@ -2,6 +2,7 @@ import { Router, Route } from "@solidjs/router";
 import { createContext, useContext, onMount, onCleanup } from "solid-js";
 import ThreePanel from "./layouts/ThreePanel";
 import ChatPanel from "./components/chat/ChatPanel";
+import SessionList from "./components/sessions/SessionList";
 import { createSessionStore, type SessionStore } from "./stores/session";
 import { TransportClient } from "./transport/client";
 import "./styles/tokens.css";
@@ -55,49 +56,7 @@ function Shell() {
 }
 
 function LeftPanel() {
-  const store = useSession();
-
-  return (
-    <div style={{ padding: "16px" }}>
-      <h2
-        style={{
-          "font-size": "14px",
-          "font-weight": "600",
-          color: "var(--ctp-subtext1)",
-          "text-transform": "uppercase",
-          "letter-spacing": "0.05em",
-          "margin-bottom": "12px",
-        }}
-      >
-        Sessions
-      </h2>
-      <div
-        style={{
-          padding: "24px 16px",
-          color: "var(--ctp-overlay1)",
-          "font-size": "13px",
-          "text-align": "center",
-        }}
-      >
-        <div
-          style={{
-            width: "8px",
-            height: "8px",
-            "border-radius": "50%",
-            background:
-              store.state.connectionStatus === "connected"
-                ? "var(--ctp-green)"
-                : store.state.connectionStatus === "connecting"
-                  ? "var(--ctp-yellow)"
-                  : "var(--ctp-overlay0)",
-            display: "inline-block",
-            "margin-right": "8px",
-          }}
-        />
-        {store.state.connectionStatus}
-      </div>
-    </div>
-  );
+  return <SessionList />;
 }
 
 function CenterPanel() {
