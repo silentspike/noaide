@@ -1,6 +1,7 @@
 import { Router, Route } from "@solidjs/router";
 import { createContext, useContext, onMount, onCleanup } from "solid-js";
 import ThreePanel from "./layouts/ThreePanel";
+import ChatPanel from "./components/chat/ChatPanel";
 import { createSessionStore, type SessionStore } from "./stores/session";
 import { TransportClient } from "./transport/client";
 import "./styles/tokens.css";
@@ -100,30 +101,7 @@ function LeftPanel() {
 }
 
 function CenterPanel() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        height: "100%",
-        color: "var(--ctp-overlay1)",
-        "flex-direction": "column",
-        gap: "8px",
-      }}
-    >
-      <div
-        style={{
-          "font-family": "var(--font-mono)",
-          "font-size": "24px",
-          color: "var(--ctp-blue)",
-        }}
-      >
-        noaide
-      </div>
-      <div style={{ "font-size": "13px" }}>Select a session to begin</div>
-    </div>
-  );
+  return <ChatPanel />;
 }
 
 function RightPanel() {

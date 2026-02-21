@@ -1,0 +1,78 @@
+.orb-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.orb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--orb-color);
+  will-change: transform, opacity;
+  box-shadow: 0 0 8px var(--orb-color);
+}
+
+/* IDLE: Slow pulse 2s */
+.orb--idle {
+  animation: orb-pulse 2s ease-in-out infinite;
+}
+
+/* THINKING: Fast pulse 0.5s */
+.orb--thinking {
+  animation: orb-pulse 0.5s ease-in-out infinite;
+}
+
+/* STREAMING: Breathing 1s */
+.orb--streaming {
+  animation: orb-breathe 1s ease-in-out infinite;
+}
+
+/* TOOL_USE: Rotate 1.5s */
+.orb--tool-use {
+  animation: orb-rotate 1.5s linear infinite;
+  border-radius: 3px;
+  width: 10px;
+  height: 10px;
+}
+
+/* ERROR: Rapid pulse 0.3s */
+.orb--error {
+  animation: orb-pulse 0.3s ease-in-out infinite;
+}
+
+@keyframes orb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.7);
+    opacity: 0.5;
+  }
+}
+
+@keyframes orb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+@keyframes orb-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
