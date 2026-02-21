@@ -38,6 +38,9 @@ hecs = "0.10"
 # Database
 limbo = { version = "0.0", features = ["index_experimental"] }
 
+# PTY management
+portable-pty = "0.9"
+
 # File watching
 notify = "7"
 aya = { version = "0.13", features = ["async_tokio"] }
