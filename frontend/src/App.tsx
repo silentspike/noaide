@@ -8,7 +8,9 @@ import FileTree from "./components/files/FileTree";
 import EditorPanel from "./components/editor/EditorPanel";
 import TaskPanel from "./components/tasks/TaskPanel";
 import TeamsPanel from "./components/teams/TeamsPanel";
+import CommandPalette from "./components/shared/CommandPalette";
 import { useIsMobile } from "./hooks/useMediaQuery";
+import { useKeymap, type KeyBinding } from "./shortcuts/keymap";
 import { createSessionStore, type SessionStore } from "./stores/session";
 import { TransportClient } from "./transport/client";
 import "./styles/tokens.css";
@@ -53,26 +55,46 @@ export default function App() {
 
 function Shell() {
   const isMobile = useIsMobile();
+  const [paletteOpen, setPaletteOpen] = createSignal(false);
+
+  const commands = () => [
+    { id: "new-session", label: "New Session", category: "Sessions", action: () => {}, shortcut: "\u2318N" },
+    { id: "search-files", label: "Search Files", category: "Files", action: () => {} },
+    { id: "toggle-profiler", label: "Toggle Profiler", category: "Settings", action: () => {} },
+    { id: "settings", label: "Open Settings", category: "Settings", action: () => {} },
+  ];
+
+  useKeymap(() => [
+    { key: "k", meta: true, description: "Command palette", action: () => setPaletteOpen(true) },
+    { key: "Escape", description: "Close overlay", action: () => setPaletteOpen(false) },
+  ] as KeyBinding[]);
 
   return (
-    <Show
-      when={!isMobile()}
-      fallback={
-        <MobileLayout
-          chat={<ChatPanel />}
-          files={<FilesPanel />}
-          sessions={<SessionList />}
-          network={<SettingsPlaceholder label="Network" />}
-          settings={<SettingsPlaceholder label="Settings" />}
+    <>
+      <Show
+        when={!isMobile()}
+        fallback={
+          <MobileLayout
+            chat={<ChatPanel />}
+            files={<FilesPanel />}
+            sessions={<SessionList />}
+            network={<SettingsPlaceholder label="Network" />}
+            settings={<SettingsPlaceholder label="Settings" />}
+          />
+        }
+      >
+        <ThreePanel
+          left={<SessionList />}
+          center={<ChatPanel />}
+          right={<RightPanel />}
         />
-      }
-    >
-      <ThreePanel
-        left={<SessionList />}
-        center={<ChatPanel />}
-        right={<RightPanel />}
+      </Show>
+      <CommandPalette
+        open={paletteOpen()}
+        onClose={() => setPaletteOpen(false)}
+        items={commands()}
       />
-    </Show>
+    </>
   );
 }
 
