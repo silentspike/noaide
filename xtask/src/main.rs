@@ -20,13 +20,17 @@ fn main() {
 }
 
 fn build_ebpf(release: bool) {
-    let manifest = workspace_root().join("crates/noaide-ebpf/Cargo.toml");
+    let ebpf_dir = workspace_root().join("crates/noaide-ebpf");
 
     let mut cmd = Command::new("cargo");
-    cmd.args(["+nightly", "build"])
-        .arg("--manifest-path")
-        .arg(&manifest)
+    cmd.current_dir(&ebpf_dir)
+        .args(["+nightly", "build"])
+        .args(["--target", "bpfel-unknown-none"])
         .args(["-Z", "build-std=core"]);
+
+    // Use workspace target dir so build.rs can find the binary
+    let target_dir = workspace_root().join("target");
+    cmd.arg("--target-dir").arg(&target_dir);
 
     if release {
         cmd.arg("--release");
@@ -39,8 +43,8 @@ fn build_ebpf(release: bool) {
     }
 
     let profile = if release { "release" } else { "debug" };
-    let output = workspace_root()
-        .join("target/bpfel-unknown-none")
+    let output = target_dir
+        .join("bpfel-unknown-none")
         .join(profile)
         .join("noaide-ebpf");
 
