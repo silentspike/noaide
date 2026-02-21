@@ -104,6 +104,11 @@ impl TransportServer {
         self.active_connections.load(Ordering::Relaxed)
     }
 
+    /// Get the local address the server is bound to.
+    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.endpoint.local_addr()
+    }
+
     /// Close the endpoint, rejecting new connections.
     pub fn close(&self) {
         self.endpoint
@@ -342,5 +347,170 @@ mod tests {
 
         assert_eq!(server.connection_count(), 0);
         server.close();
+    }
+
+    /// Build a quinn client config that trusts our self-signed cert.
+    fn build_test_client_config(
+        cert_der: rustls::pki_types::CertificateDer<'static>,
+    ) -> quinn::ClientConfig {
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(cert_der).unwrap();
+        let mut client_crypto = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        client_crypto.alpn_protocols = vec![b"h3".to_vec()];
+        let quic = quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto).unwrap();
+        quinn::ClientConfig::new(Arc::new(quic))
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn end_to_end_event_delivery() {
+        // Generate self-signed cert
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = certified.cert.pem().into_bytes();
+        let key_pem = certified.key_pair.serialize_pem().into_bytes();
+        let cert_der = certified.cert.der().clone();
+
+        let dir = tempfile::tempdir().unwrap();
+        let cert_path = dir.path().join("cert.pem");
+        let key_path = dir.path().join("key.pem");
+        std::fs::write(&cert_path, &cert_pem).unwrap();
+        std::fs::write(&key_path, &key_pem).unwrap();
+
+        // Start server
+        let bus = crate::bus::create_event_bus(false).await.unwrap();
+        let server = TransportServer::new(
+            "127.0.0.1:0".parse().unwrap(),
+            &cert_path,
+            &key_path,
+            bus.clone(),
+        )
+        .await
+        .unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            let _ = server.run().await;
+        });
+
+        // Connect quinn client
+        let client_config = build_test_client_config(cert_der);
+        let mut client_ep = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+        client_ep.set_default_client_config(client_config);
+
+        let conn = client_ep
+            .connect(server_addr, "localhost")
+            .unwrap()
+            .await
+            .unwrap();
+
+        // Spawn delayed publish — accept_uni blocks until the server
+        // writes data to the stream, so publish must happen concurrently.
+        let test_payload = b"integration test event".to_vec();
+        let payload_clone = test_payload.clone();
+        let bus_publish = bus.clone();
+        tokio::spawn(async move {
+            // Wait for server to subscribe + open stream
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            let envelope = crate::bus::EventEnvelope::new(
+                crate::bus::EventSource::User,
+                0,
+                0,
+                None,
+                payload_clone,
+            );
+            bus_publish
+                .publish(crate::bus::SESSION_MESSAGES, envelope)
+                .await
+                .unwrap();
+        });
+
+        // accept_uni returns when server writes first data to the stream
+        let mut recv = tokio::time::timeout(Duration::from_secs(5), conn.accept_uni())
+            .await
+            .expect("timeout waiting for event stream")
+            .unwrap();
+
+        // Read topic-prefixed frame from QUIC stream
+        let mut topic_len_buf = [0u8; 2];
+        tokio::time::timeout(Duration::from_secs(5), recv.read_exact(&mut topic_len_buf))
+            .await
+            .expect("timeout reading topic length")
+            .unwrap();
+        let topic_len = u16::from_be_bytes(topic_len_buf) as usize;
+
+        let mut topic_buf = vec![0u8; topic_len];
+        recv.read_exact(&mut topic_buf).await.unwrap();
+        let topic = String::from_utf8(topic_buf).unwrap();
+
+        // Read wire frame: [1 byte codec_id][4 bytes length BE][payload]
+        let mut header = [0u8; 5];
+        recv.read_exact(&mut header).await.unwrap();
+        let payload_len = u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
+
+        let mut payload = vec![0u8; payload_len];
+        recv.read_exact(&mut payload).await.unwrap();
+
+        // Reconstruct frame and decode
+        let mut frame = Vec::with_capacity(5 + payload_len);
+        frame.extend_from_slice(&header);
+        frame.extend_from_slice(&payload);
+        let decoded = WireCodec::decode(&frame).unwrap();
+
+        // Verify
+        assert_eq!(topic, "session/messages");
+        assert_eq!(decoded.payload, test_payload);
+        assert_eq!(decoded.source, crate::bus::EventSource::User);
+
+        // Cleanup
+        conn.close(quinn::VarInt::from_u32(0), b"done");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn connection_count_increments() {
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = certified.cert.pem().into_bytes();
+        let key_pem = certified.key_pair.serialize_pem().into_bytes();
+        let cert_der = certified.cert.der().clone();
+
+        let dir = tempfile::tempdir().unwrap();
+        let cert_path = dir.path().join("cert.pem");
+        let key_path = dir.path().join("key.pem");
+        std::fs::write(&cert_path, &cert_pem).unwrap();
+        std::fs::write(&key_path, &key_pem).unwrap();
+
+        let bus = crate::bus::create_event_bus(false).await.unwrap();
+        let server =
+            TransportServer::new("127.0.0.1:0".parse().unwrap(), &cert_path, &key_path, bus)
+                .await
+                .unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        // Capture connection count reference
+        let server_active = server.active_connections.clone();
+
+        tokio::spawn(async move {
+            let _ = server.run().await;
+        });
+
+        // Connect
+        let client_config = build_test_client_config(cert_der);
+        let mut client_ep = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+        client_ep.set_default_client_config(client_config);
+
+        let conn = client_ep
+            .connect(server_addr, "localhost")
+            .unwrap()
+            .await
+            .unwrap();
+
+        // Wait for connection to be established
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(server_active.load(Ordering::Relaxed), 1);
+
+        // Disconnect
+        conn.close(quinn::VarInt::from_u32(0), b"done");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(server_active.load(Ordering::Relaxed), 0);
     }
 }
