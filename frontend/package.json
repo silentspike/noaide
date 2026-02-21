@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "echo 'Test framework configuration pending'",
     "lint": "echo 'ESLint configuration pending WP-9'"
   },
   "dependencies": {
