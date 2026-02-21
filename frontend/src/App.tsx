@@ -1,8 +1,10 @@
 import { Router, Route } from "@solidjs/router";
-import { createContext, useContext, onMount, onCleanup } from "solid-js";
+import { createContext, useContext, createSignal, onMount, onCleanup } from "solid-js";
 import ThreePanel from "./layouts/ThreePanel";
 import ChatPanel from "./components/chat/ChatPanel";
 import SessionList from "./components/sessions/SessionList";
+import FileTree from "./components/files/FileTree";
+import EditorPanel from "./components/editor/EditorPanel";
 import { createSessionStore, type SessionStore } from "./stores/session";
 import { TransportClient } from "./transport/client";
 import "./styles/tokens.css";
@@ -64,29 +66,15 @@ function CenterPanel() {
 }
 
 function RightPanel() {
+  const [selectedFile, setSelectedFile] = createSignal<string>("");
+
   return (
-    <div style={{ padding: "16px" }}>
-      <h2
-        style={{
-          "font-size": "14px",
-          "font-weight": "600",
-          color: "var(--ctp-subtext1)",
-          "text-transform": "uppercase",
-          "letter-spacing": "0.05em",
-          "margin-bottom": "12px",
-        }}
-      >
-        Details
-      </h2>
-      <div
-        style={{
-          padding: "24px 16px",
-          color: "var(--ctp-overlay1)",
-          "font-size": "13px",
-          "text-align": "center",
-        }}
-      >
-        No active session
+    <div style={{ display: "flex", "flex-direction": "column", height: "100%" }}>
+      <div style={{ "flex-shrink": "0", height: "40%", "border-bottom": "1px solid var(--ctp-surface0)", overflow: "hidden" }}>
+        <FileTree onFileSelect={setSelectedFile} />
+      </div>
+      <div style={{ flex: "1", overflow: "hidden" }}>
+        <EditorPanel filePath={selectedFile() || undefined} />
       </div>
     </div>
   );
