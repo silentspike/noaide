@@ -25,9 +25,7 @@ pub fn track_session_status(world: &mut EcsWorld, now: i64, idle_threshold_secs:
             .unwrap_or_default();
 
         // Don't override Error or Archived states
-        if current_status == SessionStatus::Error
-            || current_status == SessionStatus::Archived
-        {
+        if current_status == SessionStatus::Error || current_status == SessionStatus::Archived {
             continue;
         }
 

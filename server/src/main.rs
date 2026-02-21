@@ -16,11 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ECS World
     let ecs = EcsWorld::new().shared();
-    info!(
-        sessions = 0,
-        messages = 0,
-        "ecs world initialized"
-    );
+    info!(sessions = 0, messages = 0, "ecs world initialized");
 
     // Database
     let db_path = std::env::var("NOAIDE_DB_PATH").unwrap_or_else(|_| "/data/noaide/ide.db".into());
