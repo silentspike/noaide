@@ -60,9 +60,7 @@ pub async fn proxy_handler(
         .collect();
 
     // Build forwarding request
-    let mut req_builder = state
-        .client
-        .request(method.clone(), &target_url);
+    let mut req_builder = state.client.request(method.clone(), &target_url);
 
     // Forward headers (skip host, connection)
     for (name, value) in headers.iter() {
@@ -86,7 +84,8 @@ pub async fn proxy_handler(
             let mut retry_builder = state.client.request(method.clone(), &target_url);
             for (name, value) in headers.iter() {
                 let name_str = name.as_str();
-                if name_str == "host" || name_str == "connection" || name_str == "transfer-encoding" {
+                if name_str == "host" || name_str == "connection" || name_str == "transfer-encoding"
+                {
                     continue;
                 }
                 retry_builder = retry_builder.header(name.clone(), value.clone());
