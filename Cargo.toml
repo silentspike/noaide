@@ -32,7 +32,7 @@ zenoh-shm = "1"
 hecs = "0.10"
 
 # Database
-limbo_core = "0.0"
+limbo = { version = "0.0", features = ["index_experimental"] }
 
 # File watching
 notify = "7"
