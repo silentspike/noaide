@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use noaide_server::db::Db;
 use noaide_server::discovery::SessionScanner;
-use noaide_server::ecs::components::{SessionComponent, SessionStatus};
 use noaide_server::ecs::EcsWorld;
+use noaide_server::ecs::components::{SessionComponent, SessionStatus};
 use noaide_server::parser;
 use noaide_server::watcher::FileEventKind;
 
@@ -90,9 +90,7 @@ async fn main() -> anyhow::Result<()> {
                 Ok(messages) => {
                     let mut msg_count = 0;
                     for msg in &messages {
-                        if let Some(component) =
-                            parser::message_to_component(msg, session_id)
-                        {
+                        if let Some(component) = parser::message_to_component(msg, session_id) {
                             world.spawn_message(component);
                             msg_count += 1;
                         }
@@ -113,10 +111,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             // Store file size as initial offset for incremental parsing
-            offsets.insert(
-                session_info.jsonl_path.clone(),
-                session_info.size_bytes,
-            );
+            offsets.insert(session_info.jsonl_path.clone(), session_info.size_bytes);
         }
 
         info!(
@@ -135,10 +130,7 @@ async fn main() -> anyhow::Result<()> {
                 Ok(event) => {
                     // Only process .jsonl file events
                     let path = &event.path;
-                    let is_jsonl = path
-                        .extension()
-                        .map(|ext| ext == "jsonl")
-                        .unwrap_or(false);
+                    let is_jsonl = path.extension().map(|ext| ext == "jsonl").unwrap_or(false);
                     if !is_jsonl {
                         continue;
                     }
