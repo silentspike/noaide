@@ -106,10 +106,7 @@ impl TeamDiscovery {
         let config: TeamConfig = serde_json::from_str(&content)?;
 
         // Check for corresponding task directory
-        let task_dir = self
-            .claude_dir
-            .join("tasks")
-            .join(&config.team_name);
+        let task_dir = self.claude_dir.join("tasks").join(&config.team_name);
         let task_dir = if task_dir.exists() {
             Some(task_dir)
         } else {
