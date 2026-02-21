@@ -219,4 +219,38 @@ mod tests {
         }
         assert!(count >= 5, "expected at least 5 events, got {count}");
     }
+
+    #[tokio::test]
+    async fn benchmark_1000_events() {
+        let dir = TempDir::new().unwrap();
+        let watcher = InotifyWatcher::new(4096).unwrap();
+        let mut rx = watcher.events();
+        watcher.watch(dir.path()).await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let start = Instant::now();
+        for i in 0..1000 {
+            fs::write(dir.path().join(format!("bench_{i}.txt")), "data").unwrap();
+        }
+
+        let mut count = 0;
+        let deadline = start + std::time::Duration::from_secs(5);
+        while count < 1000 && Instant::now() < deadline {
+            match tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv()).await {
+                Ok(Ok(_)) => count += 1,
+                _ => break,
+            }
+        }
+        let elapsed = start.elapsed();
+        eprintln!("benchmark: {count} events in {elapsed:?}");
+        assert!(
+            count >= 500,
+            "expected at least 500 of 1000 events, got {count}"
+        );
+        assert!(
+            elapsed.as_secs() < 5,
+            "expected <5s for 1000 events, took {elapsed:?}"
+        );
+    }
 }
