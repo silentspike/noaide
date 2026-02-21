@@ -47,64 +47,98 @@ struct ParsedMessage {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ContentBlock {
-    Text { text: String },
-    ToolUse { id: String, name: String, input: serde_json::Value },
-    ToolResult { tool_use_id: String, content: String, is_error: bool },
-    Thinking { thinking: String },
-    Image { media_type: String },
+    Text {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        is_error: bool,
+    },
+    Thinking {
+        thinking: String,
+    },
+    Image {
+        media_type: String,
+    },
 }
 
 fn extract_content_blocks(content: &serde_json::Value) -> Vec<ContentBlock> {
     match content {
         serde_json::Value::String(s) => vec![ContentBlock::Text { text: s.clone() }],
-        serde_json::Value::Array(arr) => {
-            arr.iter()
-                .filter_map(|block| {
-                    let block_type = block.get("type")?.as_str()?;
-                    match block_type {
-                        "text" => Some(ContentBlock::Text {
-                            text: block.get("text")?.as_str()?.to_string(),
-                        }),
-                        "tool_use" => Some(ContentBlock::ToolUse {
-                            id: block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            name: block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            input: block.get("input").cloned().unwrap_or(serde_json::Value::Null),
-                        }),
-                        "tool_result" => {
-                            let content_str = match block.get("content") {
-                                Some(serde_json::Value::String(s)) => s.clone(),
-                                Some(serde_json::Value::Array(arr)) => {
-                                    arr.iter()
-                                        .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
-                                }
-                                _ => String::new(),
-                            };
-                            Some(ContentBlock::ToolResult {
-                                tool_use_id: block.get("tool_use_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                content: content_str,
-                                is_error: block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false),
-                            })
-                        }
-                        "thinking" => Some(ContentBlock::Thinking {
-                            thinking: block.get("thinking").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        }),
-                        "image" => Some(ContentBlock::Image {
-                            media_type: block
-                                .get("source")
-                                .and_then(|s| s.get("media_type"))
-                                .and_then(|m| m.as_str())
-                                .unwrap_or("image/png")
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .filter_map(|block| {
+                let block_type = block.get("type")?.as_str()?;
+                match block_type {
+                    "text" => Some(ContentBlock::Text {
+                        text: block.get("text")?.as_str()?.to_string(),
+                    }),
+                    "tool_use" => Some(ContentBlock::ToolUse {
+                        id: block
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        name: block
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        input: block
+                            .get("input")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null),
+                    }),
+                    "tool_result" => {
+                        let content_str = match block.get("content") {
+                            Some(serde_json::Value::String(s)) => s.clone(),
+                            Some(serde_json::Value::Array(arr)) => arr
+                                .iter()
+                                .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                                .collect::<Vec<_>>()
+                                .join("\n"),
+                            _ => String::new(),
+                        };
+                        Some(ContentBlock::ToolResult {
+                            tool_use_id: block
+                                .get("tool_use_id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
                                 .to_string(),
-                        }),
-                        _ => Some(ContentBlock::Text {
-                            text: format!("[{block_type}]"),
-                        }),
+                            content: content_str,
+                            is_error: block
+                                .get("is_error")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false),
+                        })
                     }
-                })
-                .collect()
-        }
+                    "thinking" => Some(ContentBlock::Thinking {
+                        thinking: block
+                            .get("thinking")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    }),
+                    "image" => Some(ContentBlock::Image {
+                        media_type: block
+                            .get("source")
+                            .and_then(|s| s.get("media_type"))
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("image/png")
+                            .to_string(),
+                    }),
+                    _ => Some(ContentBlock::Text {
+                        text: format!("[{block_type}]"),
+                    }),
+                }
+            })
+            .collect(),
         _ => vec![],
     }
 }
@@ -116,13 +150,11 @@ fn entry_to_message(entry: RawEntry) -> ParsedMessage {
         .and_then(|m| m.get("role"))
         .and_then(|r| r.as_str())
         .map(String::from)
-        .or_else(|| {
-            match entry.r#type.as_str() {
-                "human" => Some("user".to_string()),
-                "assistant" => Some("assistant".to_string()),
-                "system" => Some("system".to_string()),
-                _ => None,
-            }
+        .or_else(|| match entry.r#type.as_str() {
+            "human" => Some("user".to_string()),
+            "assistant" => Some("assistant".to_string()),
+            "system" => Some("system".to_string()),
+            _ => None,
         });
 
     let content = message
@@ -141,12 +173,22 @@ fn entry_to_message(entry: RawEntry) -> ParsedMessage {
         .map(String::from);
 
     let usage = message.and_then(|m| m.get("usage"));
-    let input_tokens = usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64());
-    let output_tokens = usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64());
+    let input_tokens = usage
+        .and_then(|u| u.get("input_tokens"))
+        .and_then(|v| v.as_u64());
+    let output_tokens = usage
+        .and_then(|u| u.get("output_tokens"))
+        .and_then(|v| v.as_u64());
 
-    let cost_usd = entry.extra.get("costUSD").and_then(|v| v.as_f64())
+    let cost_usd = entry
+        .extra
+        .get("costUSD")
+        .and_then(|v| v.as_f64())
         .or_else(|| entry.extra.get("cost_usd").and_then(|v| v.as_f64()));
-    let duration_ms = entry.extra.get("durationMs").and_then(|v| v.as_u64())
+    let duration_ms = entry
+        .extra
+        .get("durationMs")
+        .and_then(|v| v.as_u64())
         .or_else(|| entry.extra.get("duration_ms").and_then(|v| v.as_u64()));
 
     ParsedMessage {
