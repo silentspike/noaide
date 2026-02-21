@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -26,6 +27,78 @@ const ALL_TOPICS: &[&str] = &[
     API_REQUESTS,
 ];
 
+/// Default capacity for the replay buffer (number of events).
+const REPLAY_BUFFER_CAPACITY: usize = 1000;
+
+// ── Replay Buffer ───────────────────────────────────────────────────────────
+
+/// Buffered event for delta sync replay.
+pub(crate) struct BufferedEvent {
+    /// Lamport timestamp for delta sync filtering (used when clients send last_logical_ts).
+    #[allow(dead_code)]
+    pub(crate) logical_ts: u64,
+    pub(crate) topic: String,
+    pub(crate) wire_frame: Vec<u8>,
+}
+
+/// Ring buffer of recent encoded events for delta sync on reconnect.
+///
+/// New connections replay buffered events so clients that reconnect
+/// don't miss events published while they were disconnected.
+pub struct RecentEventBuffer {
+    buffer: VecDeque<BufferedEvent>,
+    max_size: usize,
+}
+
+impl RecentEventBuffer {
+    /// Create a new buffer with the given capacity.
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            buffer: VecDeque::with_capacity(max_size),
+            max_size,
+        }
+    }
+
+    /// Push an encoded event into the buffer, evicting oldest if full.
+    pub fn push(&mut self, logical_ts: u64, topic: String, wire_frame: Vec<u8>) {
+        if self.buffer.len() >= self.max_size {
+            self.buffer.pop_front();
+        }
+        self.buffer.push_back(BufferedEvent {
+            logical_ts,
+            topic,
+            wire_frame,
+        });
+    }
+
+    /// Iterate over all buffered events (oldest first).
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &BufferedEvent> {
+        self.buffer.iter()
+    }
+
+    /// Get events with logical_ts strictly greater than the given timestamp.
+    /// Used when clients send their last seen timestamp for filtered replay.
+    #[allow(dead_code)]
+    pub(crate) fn events_since(
+        &self,
+        last_logical_ts: u64,
+    ) -> impl Iterator<Item = &BufferedEvent> {
+        self.buffer
+            .iter()
+            .filter(move |e| e.logical_ts > last_logical_ts)
+    }
+
+    /// Number of events in the buffer.
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Whether the buffer is empty.
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+}
+
 // ── TransportServer ─────────────────────────────────────────────────────────
 
 /// QUIC-based transport server for streaming events to browser clients.
@@ -39,6 +112,7 @@ pub struct TransportServer {
     endpoint: quinn::Endpoint,
     bus: Arc<dyn EventBus>,
     active_connections: Arc<AtomicUsize>,
+    recent_events: Arc<tokio::sync::Mutex<RecentEventBuffer>>,
 }
 
 impl TransportServer {
@@ -61,6 +135,9 @@ impl TransportServer {
             endpoint,
             bus,
             active_connections: Arc::new(AtomicUsize::new(0)),
+            recent_events: Arc::new(tokio::sync::Mutex::new(RecentEventBuffer::new(
+                REPLAY_BUFFER_CAPACITY,
+            ))),
         })
     }
 
@@ -68,9 +145,17 @@ impl TransportServer {
     pub async fn run(&self) -> anyhow::Result<()> {
         info!("accepting connections");
 
+        // Start buffer writer for delta sync replay
+        let buffer = self.recent_events.clone();
+        let bus_for_buffer = self.bus.clone();
+        tokio::spawn(async move {
+            buffer_writer(bus_for_buffer, buffer).await;
+        });
+
         while let Some(incoming) = self.endpoint.accept().await {
             let bus = self.bus.clone();
             let counter = self.active_connections.clone();
+            let recent = self.recent_events.clone();
 
             counter.fetch_add(1, Ordering::Relaxed);
             let remote = incoming.remote_address();
@@ -83,7 +168,7 @@ impl TransportServer {
             tokio::spawn(async move {
                 match incoming.await {
                     Ok(conn) => {
-                        if let Err(e) = handle_connection(conn, bus).await {
+                        if let Err(e) = handle_connection(conn, bus, recent).await {
                             warn!(error = %e, "connection handler error");
                         }
                     }
@@ -167,7 +252,11 @@ fn build_server_config(cert_path: &Path, key_path: &Path) -> anyhow::Result<quin
 // ── Connection Handler ──────────────────────────────────────────────────────
 
 /// Handle a single client connection: subscribe to bus, stream events.
-async fn handle_connection(conn: Connection, bus: Arc<dyn EventBus>) -> anyhow::Result<()> {
+async fn handle_connection(
+    conn: Connection,
+    bus: Arc<dyn EventBus>,
+    recent_events: Arc<tokio::sync::Mutex<RecentEventBuffer>>,
+) -> anyhow::Result<()> {
     let remote = conn.remote_address();
     info!(remote = %remote, "connection established");
 
@@ -206,6 +295,31 @@ async fn handle_connection(conn: Connection, bus: Arc<dyn EventBus>) -> anyhow::
 
     // Open unidirectional stream for event delivery
     let mut send = conn.open_uni().await.context("open event stream")?;
+
+    // Delta sync: replay buffered events to new connections.
+    // Clone frames under the lock, then write without holding it.
+    let replay_frames: Vec<Vec<u8>> = {
+        let buffer = recent_events.lock().await;
+        let q = quality.lock().await;
+        buffer
+            .iter()
+            .filter(|e| q.should_send(&e.topic))
+            .map(|e| e.wire_frame.clone())
+            .collect()
+    };
+    if !replay_frames.is_empty() {
+        debug!(
+            remote = %remote,
+            events = replay_frames.len(),
+            "replaying buffered events"
+        );
+        for frame in &replay_frames {
+            if let Err(e) = send.write_all(frame).await {
+                debug!(error = %e, "replay write failed");
+                return Ok(());
+            }
+        }
+    }
 
     // Event delivery + RTT measurement loop
     let mut rtt_interval = tokio::time::interval(Duration::from_millis(100));
@@ -254,6 +368,68 @@ async fn handle_connection(conn: Connection, bus: Arc<dyn EventBus>) -> anyhow::
             reason = conn.closed() => {
                 info!(remote = %remote, reason = ?reason, "connection closed");
                 return Ok(());
+            }
+        }
+    }
+}
+
+// ── Buffer Writer ───────────────────────────────────────────────────────────
+
+/// Background task that captures all bus events into the replay buffer.
+///
+/// Runs for the lifetime of the server. Each event is encoded and stored
+/// so new connections can replay recent history (delta sync).
+async fn buffer_writer(bus: Arc<dyn EventBus>, buffer: Arc<tokio::sync::Mutex<RecentEventBuffer>>) {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, crate::bus::EventEnvelope)>(1000);
+
+    for &topic in ALL_TOPICS {
+        match bus.subscribe(topic).await {
+            Ok(mut bus_rx) => {
+                let tx = tx.clone();
+                let topic_owned = topic.to_string();
+                tokio::spawn(async move {
+                    loop {
+                        match bus_rx.recv().await {
+                            Ok(envelope) => {
+                                if tx.send((topic_owned.clone(), envelope)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(
+                                    topic = topic_owned.as_str(),
+                                    missed = n,
+                                    "buffer writer lagged"
+                                );
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                warn!(topic, error = %e, "buffer writer subscribe failed");
+            }
+        }
+    }
+    drop(tx);
+
+    while let Some((topic, envelope)) = rx.recv().await {
+        let path = codec_path_for_topic(&topic);
+        match WireCodec::encode(&envelope, path) {
+            Ok(frame) => {
+                let logical_ts = envelope.logical_ts;
+                let topic_bytes = topic.as_bytes();
+                let topic_len = (topic_bytes.len() as u16).to_be_bytes();
+                let mut wire = Vec::with_capacity(2 + topic_bytes.len() + frame.len());
+                wire.extend_from_slice(&topic_len);
+                wire.extend_from_slice(topic_bytes);
+                wire.extend_from_slice(&frame);
+
+                buffer.lock().await.push(logical_ts, topic, wire);
+            }
+            Err(e) => {
+                warn!(error = %e, "buffer writer encode failed");
             }
         }
     }
@@ -512,5 +688,147 @@ mod tests {
         conn.close(quinn::VarInt::from_u32(0), b"done");
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(server_active.load(Ordering::Relaxed), 0);
+    }
+
+    /// Helper: read one topic-prefixed wire frame from a QUIC recv stream.
+    async fn read_one_event(recv: &mut quinn::RecvStream) -> (String, crate::bus::EventEnvelope) {
+        let mut topic_len_buf = [0u8; 2];
+        recv.read_exact(&mut topic_len_buf).await.unwrap();
+        let topic_len = u16::from_be_bytes(topic_len_buf) as usize;
+
+        let mut topic_buf = vec![0u8; topic_len];
+        recv.read_exact(&mut topic_buf).await.unwrap();
+        let topic = String::from_utf8(topic_buf).unwrap();
+
+        let mut header = [0u8; 5];
+        recv.read_exact(&mut header).await.unwrap();
+        let payload_len = u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
+
+        let mut payload_buf = vec![0u8; payload_len];
+        recv.read_exact(&mut payload_buf).await.unwrap();
+
+        let mut frame = Vec::with_capacity(5 + payload_len);
+        frame.extend_from_slice(&header);
+        frame.extend_from_slice(&payload_buf);
+        let envelope = WireCodec::decode(&frame).unwrap();
+
+        (topic, envelope)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn delta_sync_replays_buffered_events() {
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = certified.cert.pem().into_bytes();
+        let key_pem = certified.key_pair.serialize_pem().into_bytes();
+        let cert_der = certified.cert.der().clone();
+
+        let dir = tempfile::tempdir().unwrap();
+        let cert_path = dir.path().join("cert.pem");
+        let key_path = dir.path().join("key.pem");
+        std::fs::write(&cert_path, &cert_pem).unwrap();
+        std::fs::write(&key_path, &key_pem).unwrap();
+
+        let bus = crate::bus::create_event_bus(false).await.unwrap();
+        let server = TransportServer::new(
+            "127.0.0.1:0".parse().unwrap(),
+            &cert_path,
+            &key_path,
+            bus.clone(),
+        )
+        .await
+        .unwrap();
+        let server_addr = server.local_addr().unwrap();
+
+        // Start server (buffer_writer starts inside run())
+        tokio::spawn(async move {
+            let _ = server.run().await;
+        });
+
+        // Wait for buffer_writer to subscribe to bus topics
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Publish events BEFORE any client connects
+        let payloads: Vec<Vec<u8>> = (0..3)
+            .map(|i| format!("buffered event {i}").into_bytes())
+            .collect();
+        for (i, payload) in payloads.iter().enumerate() {
+            let envelope = crate::bus::EventEnvelope::new(
+                crate::bus::EventSource::User,
+                i as u64,
+                i as u64 + 1,
+                None,
+                payload.clone(),
+            );
+            bus.publish(crate::bus::SESSION_MESSAGES, envelope)
+                .await
+                .unwrap();
+        }
+
+        // Wait for buffer_writer to capture events
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // NOW connect client — should receive replayed events
+        let client_config = build_test_client_config(cert_der);
+        let mut client_ep = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+        client_ep.set_default_client_config(client_config);
+
+        let conn = client_ep
+            .connect(server_addr, "localhost")
+            .unwrap()
+            .await
+            .unwrap();
+
+        let mut recv = tokio::time::timeout(Duration::from_secs(5), conn.accept_uni())
+            .await
+            .expect("timeout waiting for event stream")
+            .unwrap();
+
+        // Read 3 replayed events
+        for i in 0..3 {
+            let (topic, envelope) =
+                tokio::time::timeout(Duration::from_secs(3), read_one_event(&mut recv))
+                    .await
+                    .unwrap_or_else(|_| panic!("timeout reading replayed event {i}"));
+
+            assert_eq!(topic, "session/messages");
+            assert_eq!(envelope.payload, payloads[i]);
+        }
+
+        conn.close(quinn::VarInt::from_u32(0), b"done");
+    }
+
+    #[test]
+    fn replay_buffer_push_and_evict() {
+        let mut buf = RecentEventBuffer::new(3);
+        assert_eq!(buf.len(), 0);
+
+        buf.push(1, "a".into(), vec![1]);
+        buf.push(2, "b".into(), vec![2]);
+        buf.push(3, "c".into(), vec![3]);
+        assert_eq!(buf.len(), 3);
+
+        // Fourth push evicts oldest
+        buf.push(4, "d".into(), vec![4]);
+        assert_eq!(buf.len(), 3);
+
+        let items: Vec<u64> = buf.iter().map(|e| e.logical_ts).collect();
+        assert_eq!(items, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn replay_buffer_events_since() {
+        let mut buf = RecentEventBuffer::new(10);
+        buf.push(1, "a".into(), vec![]);
+        buf.push(5, "b".into(), vec![]);
+        buf.push(10, "c".into(), vec![]);
+
+        let since_3: Vec<u64> = buf.events_since(3).map(|e| e.logical_ts).collect();
+        assert_eq!(since_3, vec![5, 10]);
+
+        let since_0: Vec<u64> = buf.events_since(0).map(|e| e.logical_ts).collect();
+        assert_eq!(since_0, vec![1, 5, 10]);
+
+        let since_10: Vec<u64> = buf.events_since(10).map(|e| e.logical_ts).collect();
+        assert!(since_10.is_empty());
     }
 }

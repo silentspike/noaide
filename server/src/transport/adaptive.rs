@@ -322,4 +322,67 @@ mod tests {
         aq.update_rtt(Duration::from_millis(80));
         assert_eq!(aq.current_tier(), QualityTier::Batched);
     }
+
+    #[test]
+    fn critical_events_never_dropped_during_tier_transition() {
+        let mut aq = AdaptiveQuality::new();
+
+        // Transition Full → Critical: critical topics must ALWAYS pass
+        for i in 0..HYSTERESIS_COUNT + 2 {
+            aq.update_rtt(Duration::from_millis(200));
+            assert!(
+                aq.should_send("session/messages"),
+                "session/messages dropped at sample {i}"
+            );
+            assert!(
+                aq.should_send("system/events"),
+                "system/events dropped at sample {i}"
+            );
+        }
+        assert_eq!(aq.current_tier(), QualityTier::Critical);
+
+        // Transition Critical → Full: critical topics still pass during recovery
+        for i in 0..HYSTERESIS_COUNT + 2 {
+            aq.update_rtt(Duration::from_millis(10));
+            assert!(
+                aq.should_send("session/messages"),
+                "session/messages dropped during recovery at sample {i}"
+            );
+            assert!(
+                aq.should_send("system/events"),
+                "system/events dropped during recovery at sample {i}"
+            );
+        }
+        assert_eq!(aq.current_tier(), QualityTier::Full);
+    }
+
+    #[test]
+    fn non_critical_filtered_only_after_tier_switch() {
+        let mut aq = AdaptiveQuality::new();
+
+        // Full tier: files/changes passes
+        assert!(aq.should_send("files/changes"));
+
+        // During hysteresis (2 Critical samples, still in Full)
+        aq.update_rtt(Duration::from_millis(200));
+        aq.update_rtt(Duration::from_millis(200));
+        assert_eq!(aq.current_tier(), QualityTier::Full);
+        assert!(aq.should_send("files/changes"));
+
+        // Third sample → switches to Critical
+        aq.update_rtt(Duration::from_millis(200));
+        assert_eq!(aq.current_tier(), QualityTier::Critical);
+        assert!(!aq.should_send("files/changes"));
+
+        // Recovery: 2 Full samples, still Critical
+        aq.update_rtt(Duration::from_millis(10));
+        aq.update_rtt(Duration::from_millis(10));
+        assert_eq!(aq.current_tier(), QualityTier::Critical);
+        assert!(!aq.should_send("files/changes"));
+
+        // Third Full sample → switches back to Full
+        aq.update_rtt(Duration::from_millis(10));
+        assert_eq!(aq.current_tier(), QualityTier::Full);
+        assert!(aq.should_send("files/changes"));
+    }
 }
