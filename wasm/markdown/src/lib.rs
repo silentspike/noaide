@@ -54,10 +54,10 @@ fn sanitize_html(html: &mut String) {
             if let Some(pos) = html.find(pat) {
                 // Find the end of the attribute value
                 let after = &html[pos + pat.len()..];
-                let end = if after.starts_with('"') {
-                    after[1..].find('"').map(|p| pos + pat.len() + p + 2)
-                } else if after.starts_with('\'') {
-                    after[1..].find('\'').map(|p| pos + pat.len() + p + 2)
+                let end = if let Some(stripped) = after.strip_prefix('"') {
+                    stripped.find('"').map(|p| pos + pat.len() + p + 2)
+                } else if let Some(stripped) = after.strip_prefix('\'') {
+                    stripped.find('\'').map(|p| pos + pat.len() + p + 2)
                 } else {
                     after.find([' ', '>', '/']).map(|p| pos + pat.len() + p)
                 };
