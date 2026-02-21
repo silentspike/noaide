@@ -22,6 +22,23 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
       },
+      output: {
+        manualChunks: {
+          codemirror: [
+            "@codemirror/view",
+            "@codemirror/state",
+            "@codemirror/language",
+            "@codemirror/merge",
+            "@codemirror/lang-javascript",
+            "@codemirror/lang-rust",
+            "@codemirror/lang-python",
+            "@codemirror/lang-json",
+            "@codemirror/lang-css",
+            "@codemirror/lang-html",
+            "@codemirror/lang-markdown",
+          ],
+        },
+      },
     },
   },
 });
