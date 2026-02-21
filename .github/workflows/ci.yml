@@ -287,12 +287,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Install FlatBuffers compiler
-        uses: taiki-e/install-action@v2
-        with:
-          tool: flatc
+        run: |
+          FLATC_VERSION="25.2.10"
+          curl -sSfL "https://github.com/google/flatbuffers/releases/download/v${FLATC_VERSION}/Linux.flatc.binary.g++-13.zip" -o flatc.zip
+          unzip -o flatc.zip flatc
+          chmod +x flatc
+          sudo mv flatc /usr/local/bin/
+          flatc --version
 
       - name: Generate FlatBuffers
-        run: flatc --rust --ts -o generated/ schemas/messages.fbs
+        run: |
+          if [ -f "schemas/messages.fbs" ]; then
+            mkdir -p generated
+            flatc --rust --ts -o generated/ schemas/messages.fbs
+          else
+            echo "No FlatBuffers schema found, skipping generation"
+          fi
 
       - name: Build release binary
         run: cargo build --release
