@@ -78,7 +78,10 @@ impl Db {
     pub async fn get_sessions(&self) -> DbResult<Vec<SessionComponent>> {
         let mut rows = self
             .conn
-            .query("SELECT id, path, status, model, started_at, cost FROM sessions", ())
+            .query(
+                "SELECT id, path, status, model, started_at, cost FROM sessions",
+                (),
+            )
             .await?;
 
         let mut result = Vec::new();
@@ -302,10 +305,7 @@ impl Db {
         Ok(())
     }
 
-    pub async fn get_agents_by_session(
-        &self,
-        session_id: &Uuid,
-    ) -> DbResult<Vec<AgentComponent>> {
+    pub async fn get_agents_by_session(&self, session_id: &Uuid) -> DbResult<Vec<AgentComponent>> {
         let mut rows = self
             .conn
             .query(

@@ -65,30 +65,21 @@ impl EcsWorld {
     pub fn spawn_file(&mut self, file: FileComponent) -> Entity {
         let session_id = file.session_id;
         let entity = self.world.spawn((file,));
-        self.file_index
-            .entry(session_id)
-            .or_default()
-            .push(entity);
+        self.file_index.entry(session_id).or_default().push(entity);
         entity
     }
 
     pub fn spawn_task(&mut self, task: TaskComponent) -> Entity {
         let session_id = task.session_id;
         let entity = self.world.spawn((task,));
-        self.task_index
-            .entry(session_id)
-            .or_default()
-            .push(entity);
+        self.task_index.entry(session_id).or_default().push(entity);
         entity
     }
 
     pub fn spawn_agent(&mut self, agent: AgentComponent) -> Entity {
         let session_id = agent.session_id;
         let entity = self.world.spawn((agent,));
-        self.agent_index
-            .entry(session_id)
-            .or_default()
-            .push(entity);
+        self.agent_index.entry(session_id).or_default().push(entity);
         entity
     }
 
@@ -192,11 +183,7 @@ impl EcsWorld {
 
     // === Update ===
 
-    pub fn update_session_status(
-        &mut self,
-        session_id: Uuid,
-        status: SessionStatus,
-    ) -> Option<()> {
+    pub fn update_session_status(&mut self, session_id: Uuid, status: SessionStatus) -> Option<()> {
         let entity = *self.session_index.get(&session_id)?;
         let mut session = self.world.get::<&mut SessionComponent>(entity).ok()?;
         session.status = status;
@@ -214,9 +201,7 @@ impl EcsWorld {
     }
 
     pub fn message_count_for_session(&self, session_id: Uuid) -> usize {
-        self.message_index
-            .get(&session_id)
-            .map_or(0, |v| v.len())
+        self.message_index.get(&session_id).map_or(0, |v| v.len())
     }
 }
 
