@@ -1,12 +1,16 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/noaide-common",
     "crates/togaf-parser",
     "server",
     "wasm/jsonl-parser",
     "wasm/markdown",
     "wasm/compress",
+    "xtask",
 ]
+# eBPF crate is built separately via xtask (needs nightly + bpfel-unknown-none target)
+exclude = ["crates/noaide-ebpf"]
 
 [workspace.dependencies]
 # Async runtime
@@ -36,6 +40,10 @@ limbo = { version = "0.0", features = ["index_experimental"] }
 
 # File watching
 notify = "7"
+aya = { version = "0.13", features = ["async_tokio"] }
+aya-log = "0.2"
+async-trait = "0.1"
+noaide-common = { path = "crates/noaide-common", features = ["std"] }
 
 # Observability
 tracing = "0.1"
