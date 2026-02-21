@@ -784,14 +784,14 @@ mod tests {
             .unwrap();
 
         // Read 3 replayed events
-        for i in 0..3 {
+        for (i, expected_payload) in payloads.iter().enumerate() {
             let (topic, envelope) =
                 tokio::time::timeout(Duration::from_secs(3), read_one_event(&mut recv))
                     .await
                     .unwrap_or_else(|_| panic!("timeout reading replayed event {i}"));
 
             assert_eq!(topic, "session/messages");
-            assert_eq!(envelope.payload, payloads[i]);
+            assert_eq!(envelope.payload, *expected_payload);
         }
 
         conn.close(quinn::VarInt::from_u32(0), b"done");
