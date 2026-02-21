@@ -6,6 +6,7 @@ import SessionList from "./components/sessions/SessionList";
 import FileTree from "./components/files/FileTree";
 import EditorPanel from "./components/editor/EditorPanel";
 import TaskPanel from "./components/tasks/TaskPanel";
+import TeamsPanel from "./components/teams/TeamsPanel";
 import { createSessionStore, type SessionStore } from "./stores/session";
 import { TransportClient } from "./transport/client";
 import "./styles/tokens.css";
@@ -68,7 +69,7 @@ function CenterPanel() {
 
 function RightPanel() {
   const [selectedFile, setSelectedFile] = createSignal<string>("");
-  const [rightTab, setRightTab] = createSignal<"files" | "tasks">("files");
+  const [rightTab, setRightTab] = createSignal<"files" | "tasks" | "teams">("files");
 
   return (
     <div style={{ display: "flex", "flex-direction": "column", height: "100%" }}>
@@ -109,6 +110,20 @@ function RightPanel() {
         >
           Tasks
         </button>
+        <button
+          onClick={() => setRightTab("teams")}
+          style={{
+            padding: "3px 10px",
+            background: rightTab() === "teams" ? "var(--ctp-surface0)" : "transparent",
+            border: "none",
+            "border-radius": "4px",
+            color: rightTab() === "teams" ? "var(--ctp-text)" : "var(--ctp-overlay0)",
+            "font-size": "11px",
+            cursor: "pointer",
+          }}
+        >
+          Teams
+        </button>
       </div>
       {rightTab() === "files" ? (
         <>
@@ -119,9 +134,13 @@ function RightPanel() {
             <EditorPanel filePath={selectedFile() || undefined} />
           </div>
         </>
-      ) : (
+      ) : rightTab() === "tasks" ? (
         <div style={{ flex: "1", overflow: "hidden" }}>
           <TaskPanel />
+        </div>
+      ) : (
+        <div style={{ flex: "1", overflow: "hidden" }}>
+          <TeamsPanel />
         </div>
       )}
     </div>
