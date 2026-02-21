@@ -693,6 +693,8 @@ mod tests {
         let msg = parse_raw_to_message(value).unwrap();
 
         assert_eq!(msg.message_type, "summary");
-        assert!(matches!(msg.content, MessageContent::Text(ref s) if s.contains("Push Notification")));
+        assert!(
+            matches!(msg.content, MessageContent::Text(ref s) if s.contains("Push Notification"))
+        );
     }
 }
