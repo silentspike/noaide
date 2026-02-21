@@ -330,13 +330,7 @@ fn assistant_to_message(raw: RawAssistantEntry) -> ClaudeMessage {
             };
             (msg.model, msg.role, content, msg.stop_reason, msg.usage)
         }
-        None => (
-            None,
-            None,
-            MessageContent::Text(String::new()),
-            None,
-            None,
-        ),
+        None => (None, None, MessageContent::Text(String::new()), None, None),
     };
 
     let (input_tokens, output_tokens, cache_creation, cache_read) = match &usage {
@@ -659,7 +653,9 @@ mod tests {
 
         if let MessageContent::Blocks(blocks) = &msg.content {
             assert_eq!(blocks.len(), 1);
-            assert!(matches!(&blocks[0], ContentBlock::ToolResult { is_error, .. } if *is_error == Some(false)));
+            assert!(
+                matches!(&blocks[0], ContentBlock::ToolResult { is_error, .. } if *is_error == Some(false))
+            );
         } else {
             panic!("expected Blocks content");
         }
