@@ -1,7 +1,7 @@
 pub mod blame;
 pub mod status;
 
-pub use blame::{blame_file, BlameError, BlameLine};
+pub use blame::{BlameError, BlameLine, blame_file};
 pub use status::{
-    branches, checkout, commit, log, stage, status, BranchInfo, CommitInfo, FileStatus, GitError,
+    BranchInfo, CommitInfo, FileStatus, GitError, branches, checkout, commit, log, stage, status,
 };
