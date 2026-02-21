@@ -88,9 +88,7 @@ pub fn branches(repo_path: &Path) -> Result<Vec<BranchInfo>, GitError> {
     let mut result = Vec::new();
 
     let head = repo.head().ok();
-    let current_branch = head
-        .as_ref()
-        .and_then(|h| h.shorthand().map(String::from));
+    let current_branch = head.as_ref().and_then(|h| h.shorthand().map(String::from));
 
     for branch_result in repo.branches(Some(BranchType::Local))? {
         let (branch, _) = branch_result?;
@@ -237,14 +235,21 @@ mod tests {
         assert!(result.is_ok(), "status should succeed: {:?}", result.err());
         let files = result.unwrap();
         assert!(!files.is_empty(), "should have at least one file");
-        assert!(files.iter().any(|f| f.path == "new.txt"), "should find new.txt");
+        assert!(
+            files.iter().any(|f| f.path == "new.txt"),
+            "should find new.txt"
+        );
     }
 
     #[test]
     fn branches_lists_current() {
         let dir = create_test_repo();
         let result = branches(dir.path());
-        assert!(result.is_ok(), "branches should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "branches should succeed: {:?}",
+            result.err()
+        );
         let branch_list = result.unwrap();
         assert!(!branch_list.is_empty(), "should have branches");
         assert!(
