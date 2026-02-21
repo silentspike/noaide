@@ -21,6 +21,8 @@ axum = "0.8"
 
 # QUIC / WebTransport
 quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
