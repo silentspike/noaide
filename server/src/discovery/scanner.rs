@@ -275,11 +275,7 @@ mod tests {
         .unwrap();
 
         // Create a non-UUID file (should be skipped)
-        fs::write(
-            projects_dir.join("sessions-index.jsonl"),
-            "not a session",
-        )
-        .unwrap();
+        fs::write(projects_dir.join("sessions-index.jsonl"), "not a session").unwrap();
 
         let sessions = SessionScanner::scan(dir.path()).await.unwrap();
         assert_eq!(sessions.len(), 2);
@@ -321,8 +317,7 @@ mod tests {
         fs::write(subagents_dir.join("agent-abc1234.jsonl"), "{}").unwrap();
         fs::write(subagents_dir.join("agent-def5678.jsonl"), "{}").unwrap();
 
-        let agents =
-            SessionScanner::scan_subagents(dir.path(), "-test", session_id).await;
+        let agents = SessionScanner::scan_subagents(dir.path(), "-test", session_id).await;
         assert_eq!(agents.len(), 2);
         assert!(agents.iter().any(|a| a.agent_id == "abc1234"));
         assert!(agents.iter().any(|a| a.agent_id == "def5678"));
