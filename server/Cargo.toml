@@ -17,6 +17,7 @@ zenoh.workspace = true
 zenoh-shm.workspace = true
 hecs.workspace = true
 limbo.workspace = true
+portable-pty.workspace = true
 notify.workspace = true
 aya.workspace = true
 aya-log.workspace = true
