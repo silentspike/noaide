@@ -23,10 +23,7 @@ pub fn message_to_component(msg: &ClaudeMessage, session_id: Uuid) -> Option<Mes
 
     let (content_text, msg_type) = extract_content_and_type(&msg.content, &msg.message_type);
 
-    let msg_uuid = msg
-        .uuid
-        .parse::<Uuid>()
-        .unwrap_or_else(|_| Uuid::new_v4());
+    let msg_uuid = msg.uuid.parse::<Uuid>().unwrap_or_else(|_| Uuid::new_v4());
 
     let timestamp = msg
         .timestamp
@@ -34,10 +31,7 @@ pub fn message_to_component(msg: &ClaudeMessage, session_id: Uuid) -> Option<Mes
         .and_then(parse_iso_timestamp)
         .unwrap_or(0);
 
-    let tokens = msg
-        .output_tokens
-        .or(msg.input_tokens)
-        .map(|t| t as u32);
+    let tokens = msg.output_tokens.or(msg.input_tokens).map(|t| t as u32);
 
     Some(MessageComponent {
         id: msg_uuid,

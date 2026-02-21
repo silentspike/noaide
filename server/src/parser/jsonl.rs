@@ -3,7 +3,7 @@ use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader};
 use tracing::{debug, instrument, warn};
 
-use super::types::{parse_raw_to_message, ClaudeMessage};
+use super::types::{ClaudeMessage, parse_raw_to_message};
 
 /// Parse a complete JSONL file, returning all messages.
 ///
@@ -44,7 +44,9 @@ pub async fn parse_incremental(
 
     let mut reader = BufReader::with_capacity(64 * 1024, file);
     if effective_offset > 0 {
-        reader.seek(std::io::SeekFrom::Start(effective_offset)).await?;
+        reader
+            .seek(std::io::SeekFrom::Start(effective_offset))
+            .await?;
     }
 
     let mut messages = Vec::new();
