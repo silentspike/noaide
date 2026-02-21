@@ -1,5 +1,17 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, Show, Switch, Match } from "solid-js";
 import type { ContentBlock } from "../../types/messages";
+import EditCard from "../tools/EditCard";
+import BashCard from "../tools/BashCard";
+import ReadCard from "../tools/ReadCard";
+import GrepCard from "../tools/GrepCard";
+import GlobCard from "../tools/GlobCard";
+import WebSearchCard from "../tools/WebSearchCard";
+import WebFetchCard from "../tools/WebFetchCard";
+import LspCard from "../tools/LspCard";
+import NotebookCard from "../tools/NotebookCard";
+import PdfCard from "../tools/PdfCard";
+import PermissionCard from "../tools/PermissionCard";
+import ToolCardBase from "../tools/ToolCardBase";
 
 interface ToolCardProps {
   blocks: ContentBlock[];
@@ -8,154 +20,151 @@ interface ToolCardProps {
 export default function ToolCard(props: ToolCardProps) {
   const toolUse = () => props.blocks.find((b) => b.type === "tool_use");
   const toolResult = () => props.blocks.find((b) => b.type === "tool_result");
-  const [expanded, setExpanded] = createSignal(false);
 
   const toolName = () => toolUse()?.name ?? "tool";
   const isError = () => toolResult()?.is_error === true;
-
-  const inputText = () => {
-    const input = toolUse()?.input;
-    if (!input) return "";
-    return typeof input === "string" ? input : JSON.stringify(input, null, 2);
-  };
-
-  const resultText = () => toolResult()?.content ?? "";
+  const input = () => toolUse()?.input as Record<string, unknown> | undefined;
+  const result = () => toolResult()?.content ?? "";
 
   return (
-    <div
-      style={{
-        margin: "4px 16px",
-        "border-radius": "8px",
-        border: `1px solid ${isError() ? "var(--ctp-red)" : "var(--ctp-surface1)"}`,
-        background: "var(--ctp-surface0)",
-        overflow: "hidden",
-      }}
-    >
-      <button
-        onClick={() => setExpanded(!expanded())}
-        style={{
-          display: "flex",
-          "align-items": "center",
-          gap: "8px",
-          width: "100%",
-          padding: "8px 12px",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: isError() ? "var(--ctp-red)" : "var(--ctp-peach)",
-          "font-size": "12px",
-          "font-weight": "600",
-          "text-align": "left",
-        }}
-      >
-        <span
-          style={{
-            transform: expanded() ? "rotate(90deg)" : "rotate(0deg)",
-            transition: "transform 150ms ease",
-            display: "inline-block",
-          }}
-        >
-          {"\u25B6"}
-        </span>
-        <span
-          style={{
-            "font-family": "var(--font-mono)",
-            "font-size": "12px",
-          }}
-        >
-          {toolName()}
-        </span>
-        <Show when={isError()}>
-          <span
-            style={{
-              "font-size": "10px",
-              padding: "1px 6px",
-              "border-radius": "4px",
-              background: "rgba(243, 139, 168, 0.15)",
-              color: "var(--ctp-red)",
-            }}
-          >
-            error
-          </span>
-        </Show>
-      </button>
+    <Switch fallback={<GenericToolCard toolName={toolName()} input={input()} result={result()} isError={isError()} />}>
+      <Match when={toolName() === "Edit"}>
+        <EditCard
+          filePath={(input()?.file_path as string) ?? ""}
+          oldString={input()?.old_string as string | undefined}
+          newString={input()?.new_string as string | undefined}
+          result={result()}
+          isError={isError()}
+        />
+      </Match>
+      <Match when={toolName() === "Bash"}>
+        <BashCard
+          command={(input()?.command as string) ?? ""}
+          output={result()}
+          exitCode={undefined}
+          isError={isError()}
+        />
+      </Match>
+      <Match when={toolName() === "Read"}>
+        {(() => {
+          const filePath = (input()?.file_path as string) ?? "";
+          const isPdf = filePath.endsWith(".pdf");
+          return isPdf ? (
+            <PdfCard
+              filePath={filePath}
+              pages={input()?.pages as string | undefined}
+              content={result()}
+              isError={isError()}
+            />
+          ) : (
+            <ReadCard
+              filePath={filePath}
+              content={result()}
+              isError={isError()}
+            />
+          );
+        })()}
+      </Match>
+      <Match when={toolName() === "Grep"}>
+        <GrepCard
+          pattern={(input()?.pattern as string) ?? ""}
+          results={result()}
+          isError={isError()}
+        />
+      </Match>
+      <Match when={toolName() === "Glob"}>
+        <GlobCard
+          pattern={(input()?.pattern as string) ?? ""}
+          files={result()}
+          isError={isError()}
+        />
+      </Match>
+      <Match when={toolName() === "WebSearch"}>
+        <WebSearchCard
+          query={(input()?.query as string) ?? ""}
+          results={result()}
+          isError={isError()}
+        />
+      </Match>
+      <Match when={toolName() === "WebFetch"}>
+        <WebFetchCard
+          url={(input()?.url as string) ?? ""}
+          content={result()}
+          isError={isError()}
+        />
+      </Match>
+      <Match when={toolName() === "LSP"}>
+        <LspCard
+          operation={(input()?.operation as string) ?? ""}
+          filePath={(input()?.filePath as string) ?? ""}
+          line={input()?.line as number | undefined}
+          result={result()}
+          isError={isError()}
+        />
+      </Match>
+      <Match when={toolName() === "NotebookEdit"}>
+        <NotebookCard
+          cellType={(input()?.cell_type as string) ?? "code"}
+          content={(input()?.new_source as string) ?? ""}
+          isError={isError()}
+        />
+      </Match>
+      <Match when={toolName() === "AskUserQuestion"}>
+        <PermissionCard
+          tool="AskUserQuestion"
+          description={JSON.stringify(input()?.questions ?? [], null, 2)}
+          isError={isError()}
+        />
+      </Match>
+    </Switch>
+  );
+}
 
-      <Show when={expanded()}>
-        <div
+function GenericToolCard(props: {
+  toolName: string;
+  input?: Record<string, unknown>;
+  result: string;
+  isError: boolean;
+}) {
+  const inputText = () => {
+    if (!props.input) return "";
+    return JSON.stringify(props.input, null, 2);
+  };
+
+  return (
+    <ToolCardBase toolName={props.toolName} isError={props.isError}>
+      <Show when={inputText()}>
+        <pre
           style={{
-            "border-top": "1px solid var(--ctp-surface1)",
+            margin: "0 0 6px",
             "font-family": "var(--font-mono)",
             "font-size": "11px",
-            "line-height": "1.5",
+            color: "var(--ctp-subtext0)",
+            "white-space": "pre-wrap",
+            "word-break": "break-word",
+            "max-height": "200px",
+            overflow: "auto",
           }}
         >
-          <Show when={inputText()}>
-            <div style={{ padding: "8px 12px" }}>
-              <div
-                style={{
-                  "font-size": "10px",
-                  color: "var(--ctp-overlay0)",
-                  "font-weight": "600",
-                  "text-transform": "uppercase",
-                  "margin-bottom": "4px",
-                  "font-family": "var(--font-sans)",
-                }}
-              >
-                input
-              </div>
-              <pre
-                style={{
-                  margin: "0",
-                  "white-space": "pre-wrap",
-                  "word-break": "break-word",
-                  color: "var(--ctp-subtext0)",
-                  "max-height": "300px",
-                  overflow: "auto",
-                }}
-              >
-                {inputText()}
-              </pre>
-            </div>
-          </Show>
-          <Show when={resultText()}>
-            <div
-              style={{
-                padding: "8px 12px",
-                "border-top": "1px solid var(--ctp-surface1)",
-              }}
-            >
-              <div
-                style={{
-                  "font-size": "10px",
-                  color: isError()
-                    ? "var(--ctp-red)"
-                    : "var(--ctp-overlay0)",
-                  "font-weight": "600",
-                  "text-transform": "uppercase",
-                  "margin-bottom": "4px",
-                  "font-family": "var(--font-sans)",
-                }}
-              >
-                {isError() ? "error" : "output"}
-              </div>
-              <pre
-                style={{
-                  margin: "0",
-                  "white-space": "pre-wrap",
-                  "word-break": "break-word",
-                  color: isError()
-                    ? "var(--ctp-red)"
-                    : "var(--ctp-subtext0)",
-                  "max-height": "300px",
-                  overflow: "auto",
-                }}
-              >
-                {resultText()}
-              </pre>
-            </div>
-          </Show>
-        </div>
+          {inputText()}
+        </pre>
       </Show>
-    </div>
+      <Show when={props.result}>
+        <pre
+          style={{
+            margin: "0",
+            "font-family": "var(--font-mono)",
+            "font-size": "11px",
+            color: props.isError ? "var(--ctp-red)" : "var(--ctp-subtext0)",
+            "white-space": "pre-wrap",
+            "word-break": "break-word",
+            "max-height": "300px",
+            overflow: "auto",
+          }}
+        >
+          {props.result}
+        </pre>
+      </Show>
+    </ToolCardBase>
   );
 }
