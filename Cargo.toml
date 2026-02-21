@@ -54,6 +54,12 @@ noaide-common = { path = "crates/noaide-common", features = ["std"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json"] }
 
+# HTTP client (API proxy forwarding)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+regex = "1"
+bytes = "1"
+http-body-util = "0.1"
+
 # Utilities
 uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
