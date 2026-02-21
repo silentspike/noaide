@@ -18,9 +18,16 @@ zenoh-shm.workspace = true
 hecs.workspace = true
 limbo.workspace = true
 notify.workspace = true
+aya.workspace = true
+aya-log.workspace = true
+async-trait.workspace = true
+noaide-common.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 zstd.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
