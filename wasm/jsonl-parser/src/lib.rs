@@ -267,7 +267,7 @@ mod tests {
         let input = "not json\n{\"type\":\"human\",\"uuid\":\"1\"}\n{broken\n";
         let mut count = 0;
         for line in input.lines() {
-            if let Ok(_) = serde_json::from_str::<RawEntry>(line.trim()) {
+            if serde_json::from_str::<RawEntry>(line.trim()).is_ok() {
                 count += 1;
             }
         }
