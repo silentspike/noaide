@@ -41,6 +41,7 @@ export interface ChatMessage {
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
   isGhost?: boolean;
+  hidden?: boolean;
 }
 
 export function totalTokens(msg: ChatMessage): number {
