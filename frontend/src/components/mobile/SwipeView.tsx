@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { createSignal, For, onCleanup, onMount, type JSX } from "solid-js";
 import { useHaptic } from "../../hooks/useHaptic";
 
 interface SwipeViewProps {

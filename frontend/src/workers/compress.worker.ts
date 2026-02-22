@@ -1,3 +1,5 @@
+export {}; // Ensure module scope (isolatedModules)
+
 let wasmReady = false;
 let decompressFn: ((data: Uint8Array) => Uint8Array) | null = null;
 let compressFn: ((data: Uint8Array, level: number) => Uint8Array) | null = null;
