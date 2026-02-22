@@ -27,6 +27,7 @@ function extensionIcon(name: string): string {
 }
 
 export default function FileNode(props: FileNodeProps) {
+  // eslint-disable-next-line solid/reactivity -- one-time init from prop
   const [expanded, setExpanded] = createSignal(props.depth < 1);
   const isSelected = () => props.selectedPath === props.entry.path;
 

@@ -1,6 +1,5 @@
-import { onMount, onCleanup, createSignal, Show } from "solid-js";
+import { onMount, onCleanup, Show } from "solid-js";
 import { MergeView } from "@codemirror/merge";
-import { EditorState } from "@codemirror/state";
 import { EditorView, lineNumbers } from "@codemirror/view";
 
 interface DiffViewProps {
@@ -102,7 +101,7 @@ export default function DiffView(props: DiffViewProps) {
           </Show>
           <Show when={props.onReject}>
             <button
-              onClick={props.onReject}
+              onClick={() => props.onReject?.()}
               style={{
                 padding: "2px 10px",
                 background: "var(--ctp-surface1)",

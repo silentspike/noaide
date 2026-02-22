@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount, onCleanup } from "solid-js";
+import { For, Show, onMount, onCleanup } from "solid-js";
 
 export interface MenuItem {
   label: string;

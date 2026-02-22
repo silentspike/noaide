@@ -42,7 +42,7 @@ export type { ApiRequest };
 export default function RequestRow(props: RequestRowProps) {
   return (
     <button
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       style={{
         display: "grid",
         "grid-template-columns": "60px 1fr 50px 60px 60px",

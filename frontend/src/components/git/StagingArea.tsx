@@ -192,7 +192,7 @@ function FileRow(props: { file: FileEntry; onToggle: () => void }) {
 
   return (
     <button
-      onClick={props.onToggle}
+      onClick={() => props.onToggle()}
       style={{
         display: "flex",
         "align-items": "center",
