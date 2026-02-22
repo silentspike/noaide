@@ -105,10 +105,10 @@ cd frontend && npm run lint
 cd frontend && npm run typecheck
 
 # Rust tests (remote build server)
-cargo remote -- test
+cargo test
 
 # Rust lint
-cargo remote -- clippy
+cargo clippy
 
 # All CI checks locally
 cd frontend && npm run lint && npm run typecheck && npm test
