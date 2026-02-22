@@ -12,7 +12,7 @@ interface TopologyNode {
   y: number;
 }
 
-interface TopologyEdge {
+interface _TopologyEdge {
   from: string;
   to: string;
 }
@@ -68,7 +68,7 @@ export default function TopologyGraph(props: TopologyGraphProps) {
     const cy = height / 2;
     const radius = Math.min(width, height) * 0.3;
 
-    return props.agents.map((agent, i) => {
+    return props.agents.map((agent, _i) => {
       if (agent.isLeader) {
         return { ...agent, x: cx, y: cy };
       }

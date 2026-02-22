@@ -98,7 +98,8 @@ export default function ChatPanel() {
   function handleSend(text: string) {
     // Input will be sent via WebTransport to the active session
     // For now, log it — full PTY integration comes with session manager wiring
-    console.log("[ChatPanel] User input:", text);
+    // TODO: Send via WebTransport to active session (PTY integration)
+    void text;
   }
 
   return (

@@ -1,9 +1,9 @@
 import { createSignal, createMemo, Show, For } from "solid-js";
-import RequestRow, { type ApiRequest } from "./RequestRow";
+import RequestRow from "./RequestRow";
 import RequestDetail, { type RequestDetailFull } from "./RequestDetail";
 
 export default function NetworkPanel() {
-  const [requests, setRequests] = createSignal<RequestDetailFull[]>([]);
+  const [requests, _setRequests] = createSignal<RequestDetailFull[]>([]);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [filter, setFilter] = createSignal("");
   const [methodFilter, setMethodFilter] = createSignal<string>("all");
