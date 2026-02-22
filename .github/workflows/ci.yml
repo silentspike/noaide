@@ -182,6 +182,9 @@ jobs:
       - name: ESLint
         run: cd frontend && npm run lint
 
+      - name: TypeScript type check
+        run: cd frontend && npm run typecheck
+
   # ──────────────────────────────────────────────────────────────
   # Test (Rust): Runs on rust, wasm, or CI changes
   # ──────────────────────────────────────────────────────────────
@@ -371,6 +374,35 @@ jobs:
 
       - name: Integration tests
         run: cargo test --test integration
+
+  # ──────────────────────────────────────────────────────────────
+  # E2E Smoke Tests: Main Gate (only on push to main)
+  # ──────────────────────────────────────────────────────────────
+  e2e-smoke:
+    name: E2E Smoke Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install chromium --with-deps
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Run E2E smoke tests
+        run: cd frontend && npm run e2e
 
   # ──────────────────────────────────────────────────────────────
   # CI Gate: Single required check that always runs.

@@ -1,3 +1,5 @@
+export {}; // Ensure module scope (isolatedModules)
+
 let wasmReady = false;
 let renderFn: ((markdown: string) => string) | null = null;
 
