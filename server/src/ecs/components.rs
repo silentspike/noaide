@@ -29,10 +29,20 @@ pub struct MessageComponent {
     pub session_id: Uuid,
     pub role: MessageRole,
     pub content: String,
+    /// Serialized JSON of the original ContentBlock[] from JSONL.
+    /// Preserves full structure (tool inputs, tool_use_ids, is_error, etc.)
+    /// that gets lost in the flattened `content` string.
+    pub content_blocks_json: Option<String>,
     pub timestamp: i64,
     pub tokens: Option<u32>,
     pub hidden: bool,
     pub message_type: MessageType,
+    pub model: Option<String>,
+    pub stop_reason: Option<String>,
+    pub input_tokens: Option<u32>,
+    pub output_tokens: Option<u32>,
+    pub cache_creation_input_tokens: Option<u32>,
+    pub cache_read_input_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

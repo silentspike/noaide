@@ -18,8 +18,10 @@ tokio = { version = "1", features = ["full"] }
 
 # Web framework
 axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "set-header"] }
 
 # QUIC / WebTransport
+wtransport = "0.7"
 quinn = "0.11"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rustls-pemfile = "2"
@@ -61,6 +63,7 @@ bytes = "1"
 http-body-util = "0.1"
 
 # Utilities
+base64 = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
 anyhow = "1"
