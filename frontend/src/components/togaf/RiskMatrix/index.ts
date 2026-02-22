@@ -1,0 +1,1 @@
+export { RiskMatrix } from "./RiskMatrix";

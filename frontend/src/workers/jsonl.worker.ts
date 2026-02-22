@@ -1,3 +1,5 @@
+export {}; // Ensure module scope (isolatedModules)
+
 let wasmReady = false;
 let parseLine: ((line: string) => unknown) | null = null;
 let parseJsonl: ((input: string) => unknown) | null = null;
