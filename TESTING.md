@@ -34,6 +34,86 @@
 - Evidence is reproducible: command + environment + result + artifact path.
 - All acceptance criteria (AC-IDs) map to at least one test level.
 
+## VERIFY Protocol
+
+Every work package must pass the VERIFY protocol before being marked as done.
+The protocol ensures consistent quality across all changes.
+
+### Steps
+
+1. **Tests**: Run all relevant test commands, document command + output.
+2. **Lint**: Confirm zero warnings from `cargo clippy` and `eslint`.
+3. **Type Check**: Confirm zero errors from `tsc --noEmit`.
+4. **Build**: Confirm successful `cargo build --release` and `npm run build`.
+5. **Observability**: Check that new code has appropriate logging (tracing crate for Rust, console.warn/error for frontend).
+6. **Lessons**: Document any unexpected issues as rules in project config to prevent recurrence.
+
+### Evidence Template
+
+```
+## VERIFY: WP-N — <Title>
+
+### Tests Performed
+- Command: `cargo test -p noaide-server -- <module>`
+  Output: <N> tests passed, 0 failed
+- Command: `cd frontend && npm test`
+  Output: <N> tests passed
+
+### Tests NOT Performed
+- <Description> — Reason: <why>
+
+### Lint & Type Check
+- `cargo clippy`: 0 warnings
+- `eslint src/ --max-warnings 0`: 0 warnings
+- `tsc --noEmit`: 0 errors
+
+### Build
+- `cargo build --release`: OK (<duration>)
+- `npm run build`: OK (<bundle size>)
+
+### Confidence: <N>%
+<One sentence justification>
+```
+
+## Test Coverage
+
+### Current Test Inventory
+
+| Area | Test File | Tests | Type |
+|------|-----------|-------|------|
+| Keyboard shortcuts | `src/shortcuts/keymap.test.ts` | 3 | Unit |
+| Message types & helpers | `src/types/messages.test.ts` | 15 | Unit |
+| Session store | `src/stores/session.test.ts` | 15 | Unit |
+| Fuzzy match (CommandPalette) | `src/components/shared/CommandPalette.test.ts` | 9 | Unit |
+| File extension icons | `src/components/files/FileNode.test.ts` | 9 | Unit |
+| Relative time & path helpers | `src/components/sessions/SessionCard.test.ts` | 8 | Unit |
+| Rust server modules | `cargo test --all-features` | varies | Unit + Integration |
+
+### Running Tests
+
+```bash
+# Frontend unit tests
+cd frontend && npm test
+
+# Frontend tests with coverage
+cd frontend && npm test -- --coverage
+
+# Frontend lint
+cd frontend && npm run lint
+
+# Frontend type check
+cd frontend && npm run typecheck
+
+# Rust tests (remote build server)
+cargo remote -- test
+
+# Rust lint
+cargo remote -- clippy
+
+# All CI checks locally
+cd frontend && npm run lint && npm run typecheck && npm test
+```
+
 ## Performance Benchmarks
 
 | Metric | Target | Command |
