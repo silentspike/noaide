@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, onMount } from "solid-js";
+import { createSignal, createEffect, For, Show } from "solid-js";
 
 interface CommandItem {
   id: string;
@@ -74,7 +74,7 @@ export default function CommandPalette(props: {
           background: "rgba(0, 0, 0, 0.5)",
           "backdrop-filter": "blur(4px)",
         }}
-        onClick={props.onClose}
+        onClick={() => props.onClose()}
       >
         <div
           style={{

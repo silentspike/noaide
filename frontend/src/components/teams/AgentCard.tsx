@@ -80,7 +80,7 @@ export default function AgentCard(props: AgentCardProps) {
         </Show>
         <Show when={props.onClose}>
           <button
-            onClick={props.onClose}
+            onClick={() => props.onClose?.()}
             style={{
               background: "none",
               border: "none",

@@ -1,6 +1,6 @@
 import { onMount, onCleanup, createSignal, Show } from "solid-js";
 import { EditorState } from "@codemirror/state";
-import { EditorView, lineNumbers, keymap } from "@codemirror/view";
+import { EditorView, lineNumbers } from "@codemirror/view";
 import { javascript } from "@codemirror/lang-javascript";
 import { rust } from "@codemirror/lang-rust";
 import { python } from "@codemirror/lang-python";
@@ -93,10 +93,10 @@ const catppuccinTheme = EditorView.theme({
 export default function EditorPanel(props: EditorPanelProps) {
   let containerRef: HTMLDivElement | undefined;
   let editorView: EditorView | undefined;
-  const [claudeEditing, setClaudeEditing] = createSignal(false);
+  const [claudeEditing, _setClaudeEditing] = createSignal(false);
   const [showDiff, setShowDiff] = createSignal(false);
-  const [diffOriginal, setDiffOriginal] = createSignal("");
-  const [diffModified, setDiffModified] = createSignal("");
+  const [diffOriginal, _setDiffOriginal] = createSignal("");
+  const [diffModified, _setDiffModified] = createSignal("");
 
   onMount(() => {
     if (!containerRef) return;
