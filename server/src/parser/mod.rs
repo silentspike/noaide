@@ -23,6 +23,16 @@ pub fn message_to_component(msg: &ClaudeMessage, session_id: Uuid) -> Option<Mes
 
     let (content_text, msg_type) = extract_content_and_type(&msg.content, &msg.message_type);
 
+    // Preserve full ContentBlock structure as JSON for the API to return
+    let content_blocks_json = match &msg.content {
+        MessageContent::Blocks(blocks) => serde_json::to_string(blocks).ok(),
+        MessageContent::Text(s) => {
+            // Wrap plain text as a single text block for consistent API shape
+            let blocks = vec![ContentBlock::Text { text: s.clone() }];
+            serde_json::to_string(&blocks).ok()
+        }
+    };
+
     let msg_uuid = msg.uuid.parse::<Uuid>().unwrap_or_else(|_| Uuid::new_v4());
 
     let timestamp = msg
@@ -38,10 +48,17 @@ pub fn message_to_component(msg: &ClaudeMessage, session_id: Uuid) -> Option<Mes
         session_id,
         role,
         content: content_text,
+        content_blocks_json,
         timestamp,
         tokens,
         hidden: false,
         message_type: msg_type,
+        model: msg.model.clone(),
+        stop_reason: msg.stop_reason.clone(),
+        input_tokens: msg.input_tokens.map(|t| t as u32),
+        output_tokens: msg.output_tokens.map(|t| t as u32),
+        cache_creation_input_tokens: msg.cache_creation_input_tokens.map(|t| t as u32),
+        cache_read_input_tokens: msg.cache_read_input_tokens.map(|t| t as u32),
     })
 }
 

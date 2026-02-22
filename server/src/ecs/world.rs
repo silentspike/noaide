@@ -232,10 +232,17 @@ mod tests {
             session_id,
             role,
             content: format!("Message {id}"),
+            content_blocks_json: None,
             timestamp: 1708000001,
             tokens: Some(100),
             hidden: false,
             message_type: MessageType::Text,
+            model: None,
+            stop_reason: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
         }
     }
 
