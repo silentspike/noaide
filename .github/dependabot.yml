@@ -8,18 +8,16 @@ updates:
       - "type:deps"
       - "type:ci"
 
-  # Uncomment after WP-1 scaffolding creates Cargo.toml
-  # - package-ecosystem: "cargo"
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
-  #   labels:
-  #     - "type:deps"
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "type:deps"
 
-  # Uncomment after WP-1 scaffolding creates frontend/package.json
-  # - package-ecosystem: "npm"
-  #   directory: "/frontend"
-  #   schedule:
-  #     interval: "weekly"
-  #   labels:
-  #     - "type:deps"
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "type:deps"
