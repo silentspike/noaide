@@ -1,5 +1,5 @@
 import { Router, Route } from "@solidjs/router";
-import { createContext, useContext, createSignal, Show, For, onMount, onCleanup, lazy } from "solid-js";
+import { createContext, useContext, createSignal, Show, For, onMount, onCleanup } from "solid-js";
 import ThreePanel from "./layouts/ThreePanel";
 import MobileLayout from "./layouts/MobileLayout";
 import ChatPanel from "./components/chat/ChatPanel";
