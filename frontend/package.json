@@ -30,6 +30,7 @@
     "@dagrejs/dagre": "^2.0.4",
     "@msgpack/msgpack": "^3.0.0",
     "@solidjs/router": "^0.15.0",
+    "fzstd": "^0.1.1",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {

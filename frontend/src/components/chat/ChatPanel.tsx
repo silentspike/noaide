@@ -23,6 +23,32 @@ interface RenderItem {
 function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
   const items: RenderItem[] = [];
 
+  // Index: tool_use_id → tool_use ContentBlock (for cross-message matching)
+  const toolUseById = new Map<string, ContentBlock>();
+  for (const msg of messages) {
+    for (const block of msg.content) {
+      if (block.type === "tool_use" && block.id) {
+        toolUseById.set(block.id, block);
+      }
+    }
+  }
+
+  // Track which tool_use blocks were consumed by a cross-message tool_result
+  const consumedToolUseIds = new Set<string>();
+
+  // First pass: find tool_result-only messages and mark their tool_use as consumed
+  for (const msg of messages) {
+    const hasToolResult = msg.content.some((b) => b.type === "tool_result");
+    const hasToolUse = msg.content.some((b) => b.type === "tool_use");
+    if (hasToolResult && !hasToolUse) {
+      for (const block of msg.content) {
+        if (block.type === "tool_result" && block.tool_use_id) {
+          consumedToolUseIds.add(block.tool_use_id);
+        }
+      }
+    }
+  }
+
   for (const msg of messages) {
     if (msg.isGhost) {
       items.push({ type: "ghost", message: msg, key: msg.uuid });
@@ -41,12 +67,20 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
     let currentToolGroup: ContentBlock[] = [];
 
     for (const block of msg.content) {
-      if (block.type === "tool_use" || block.type === "tool_result") {
+      if (block.type === "tool_use") {
+        // Skip tool_use that will be paired with a cross-message tool_result
+        if (block.id && consumedToolUseIds.has(block.id)) continue;
         currentToolGroup.push(block);
-        if (block.type === "tool_result") {
-          toolGroups.push(currentToolGroup);
-          currentToolGroup = [];
+      } else if (block.type === "tool_result") {
+        // Pair with matching tool_use from another message
+        const matchingUse = block.tool_use_id ? toolUseById.get(block.tool_use_id) : undefined;
+        if (matchingUse) {
+          currentToolGroup = [matchingUse, block];
+        } else {
+          currentToolGroup.push(block);
         }
+        toolGroups.push(currentToolGroup);
+        currentToolGroup = [];
       } else {
         if (currentToolGroup.length > 0) {
           toolGroups.push(currentToolGroup);
