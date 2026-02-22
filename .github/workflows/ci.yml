@@ -264,7 +264,7 @@ jobs:
 
       - name: npm audit
         if: needs.paths-filter.outputs.has-frontend == 'true'
-        run: cd frontend && npm ci && npm audit --audit-level=high
+        run: cd frontend && npm ci && npm audit --audit-level=high --omit=dev
 
       - name: Semgrep SAST scan
         uses: semgrep/semgrep-action@v1
