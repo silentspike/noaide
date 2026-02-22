@@ -538,10 +538,17 @@ fn row_to_message(row: &limbo::Row) -> DbResult<MessageComponent> {
         session_id: text_to_uuid(&row.get_value(1)?)?,
         role: str_to_role(&text_value(&row.get_value(2)?)?),
         content: text_value(&row.get_value(3)?)?,
+        content_blocks_json: None, // DB doesn't store structured blocks (JSONL is SSOT)
         timestamp: int_value(&row.get_value(4)?)?,
         tokens: optional_int(&row.get_value(5)?).map(|v| v as u32),
         hidden: matches!(row.get_value(6)?, Value::Integer(1)),
         message_type: str_to_message_type(&text_value(&row.get_value(7)?)?),
+        model: None,
+        stop_reason: None,
+        input_tokens: None,
+        output_tokens: None,
+        cache_creation_input_tokens: None,
+        cache_read_input_tokens: None,
     })
 }
 
@@ -570,10 +577,17 @@ mod tests {
             session_id,
             role: MessageRole::User,
             content: "Hello, how are you?".to_string(),
+            content_blocks_json: None,
             timestamp: 1708000001,
             tokens: Some(10),
             hidden: false,
             message_type: MessageType::Text,
+            model: None,
+            stop_reason: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
         }
     }
 
@@ -630,10 +644,17 @@ mod tests {
             session_id: sid,
             role: MessageRole::Assistant,
             content: "I'm doing well, thanks!".to_string(),
+            content_blocks_json: None,
             timestamp: 1708000002,
             tokens: Some(15),
             hidden: false,
             message_type: MessageType::Text,
+            model: None,
+            stop_reason: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
         };
 
         db.insert_message(&m1).await.unwrap();
@@ -656,20 +677,34 @@ mod tests {
             session_id: sid,
             role: MessageRole::User,
             content: "implement the ECS world module".to_string(),
+            content_blocks_json: None,
             timestamp: 1708000001,
             tokens: None,
             hidden: false,
             message_type: MessageType::Text,
+            model: None,
+            stop_reason: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
         };
         let m2 = MessageComponent {
             id: Uuid::new_v4(),
             session_id: sid,
             role: MessageRole::Assistant,
             content: "I will create the database schema".to_string(),
+            content_blocks_json: None,
             timestamp: 1708000002,
             tokens: None,
             hidden: false,
             message_type: MessageType::Text,
+            model: None,
+            stop_reason: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
         };
 
         db.insert_message(&m1).await.unwrap();
