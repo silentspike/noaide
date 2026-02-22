@@ -1,4 +1,4 @@
-import { createSignal, Show, Switch, Match } from "solid-js";
+import { Show, Switch, Match } from "solid-js";
 import type { ContentBlock } from "../../types/messages";
 import EditCard from "../tools/EditCard";
 import BashCard from "../tools/BashCard";

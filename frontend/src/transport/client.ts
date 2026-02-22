@@ -102,7 +102,7 @@ export class TransportClient {
     );
     this.reconnectAttempt++;
 
-    console.log(
+    console.warn(
       `[transport] reconnecting in ${backoff}ms (attempt ${this.reconnectAttempt})`,
     );
     this.reconnectTimer = setTimeout(() => {

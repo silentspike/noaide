@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show, For } from "solid-js";
+import { createSignal, onMount, onCleanup, For } from "solid-js";
 
 interface ProfilerMetrics {
   fps: number;

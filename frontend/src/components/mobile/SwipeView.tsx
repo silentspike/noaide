@@ -93,7 +93,7 @@ export default function SwipeView(props: SwipeViewProps) {
           "will-change": "transform",
         }}
       >
-        {props.children.map((child) => (
+        <For each={props.children}>{(child) => (
           <div
             style={{
               "min-width": "100%",
@@ -103,7 +103,7 @@ export default function SwipeView(props: SwipeViewProps) {
           >
             {child}
           </div>
-        ))}
+        )}</For>
       </div>
     </div>
   );
