@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Path, State};
-use axum::routing::get;
 use axum::http::HeaderValue;
+use axum::routing::get;
 use tower_http::cors::CorsLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tracing::info;
@@ -15,8 +15,8 @@ use uuid::Uuid;
 use noaide_server::bus::{self, EventEnvelope, EventSource};
 use noaide_server::db::Db;
 use noaide_server::discovery::SessionScanner;
-use noaide_server::ecs::{EcsWorld, SharedEcsWorld};
 use noaide_server::ecs::components::{SessionComponent, SessionStatus};
+use noaide_server::ecs::{EcsWorld, SharedEcsWorld};
 use noaide_server::parser;
 use noaide_server::transport::TransportServer;
 use noaide_server::watcher::FileEventKind;
@@ -169,7 +169,10 @@ async fn main() -> anyhow::Result<()> {
                 cost: None,
             });
         }
-        info!(sessions = world.session_count(), "sessions registered (parsing in background)");
+        info!(
+            sessions = world.session_count(),
+            "sessions registered (parsing in background)"
+        );
     }
 
     // Phase 3: Parse messages in background — PARALLEL on all cores
@@ -209,7 +212,9 @@ async fn main() -> anyhow::Result<()> {
                             let mut world = ecs_h.write().await;
                             let mut msg_count = 0;
                             for msg in &messages {
-                                if let Some(component) = parser::message_to_component(msg, session_id) {
+                                if let Some(component) =
+                                    parser::message_to_component(msg, session_id)
+                                {
                                     world.spawn_message(component);
                                     msg_count += 1;
                                 }
@@ -223,10 +228,10 @@ async fn main() -> anyhow::Result<()> {
                                     "type": "session_loaded",
                                     "session_id": session_id.to_string(),
                                     "message_count": msg_count,
-                                })).unwrap_or_default();
-                                let envelope = EventEnvelope::new(
-                                    EventSource::Jsonl, 0, 0, None, payload,
-                                );
+                                }))
+                                .unwrap_or_default();
+                                let envelope =
+                                    EventEnvelope::new(EventSource::Jsonl, 0, 0, None, payload);
                                 let _ = bus_h.publish(bus::SESSION_MESSAGES, envelope).await;
                             }
 
@@ -274,9 +279,8 @@ async fn main() -> anyhow::Result<()> {
 
                     match event.kind {
                         FileEventKind::Created | FileEventKind::Modified => {
-                            let from_offset = {
-                                offsets_watch.lock().await.get(path).copied().unwrap_or(0)
-                            };
+                            let from_offset =
+                                { offsets_watch.lock().await.get(path).copied().unwrap_or(0) };
                             match parser::parse_incremental(path, from_offset).await {
                                 Ok((messages, new_offset)) => {
                                     if !messages.is_empty() {
@@ -299,13 +303,19 @@ async fn main() -> anyhow::Result<()> {
                                             drop(world);
 
                                             if new_msgs > 0 {
-                                                let payload = serde_json::to_vec(&serde_json::json!({
-                                                    "type": "new_messages",
-                                                    "session_id": sid.to_string(),
-                                                    "count": new_msgs,
-                                                })).unwrap_or_default();
+                                                let payload =
+                                                    serde_json::to_vec(&serde_json::json!({
+                                                        "type": "new_messages",
+                                                        "session_id": sid.to_string(),
+                                                        "count": new_msgs,
+                                                    }))
+                                                    .unwrap_or_default();
                                                 let envelope = EventEnvelope::new(
-                                                    EventSource::Jsonl, 0, 0, None, payload,
+                                                    EventSource::Jsonl,
+                                                    0,
+                                                    0,
+                                                    None,
+                                                    payload,
                                                 );
                                                 let _ = bus_handle
                                                     .publish(bus::SESSION_MESSAGES, envelope)
@@ -359,9 +369,7 @@ async fn main() -> anyhow::Result<()> {
 
 // ── HTTP API Handlers ───────────────────────────────────────────────────────
 
-async fn api_get_sessions(
-    State(ecs): State<SharedEcsWorld>,
-) -> axum::Json<serde_json::Value> {
+async fn api_get_sessions(State(ecs): State<SharedEcsWorld>) -> axum::Json<serde_json::Value> {
     let world = ecs.read().await;
     let sessions = world.query_sessions();
     let json: Vec<serde_json::Value> = sessions

@@ -132,7 +132,10 @@ impl SessionScanner {
         Ok(sessions)
     }
 
-    async fn scan_codex_recursive(root: &Path, sessions: &mut Vec<SessionInfo>) -> anyhow::Result<()> {
+    async fn scan_codex_recursive(
+        root: &Path,
+        sessions: &mut Vec<SessionInfo>,
+    ) -> anyhow::Result<()> {
         let mut stack = vec![root.to_path_buf()];
         while let Some(dir) = stack.pop() {
             let mut entries = match tokio::fs::read_dir(&dir).await {
@@ -193,7 +196,8 @@ impl SessionScanner {
                 }
 
                 // Extract UUID from filename: session-YYYY-MM-DDThh-mm-UUID.json
-                let session_id = extract_gemini_uuid(&name).unwrap_or_else(|| name.trim_end_matches(".json").to_string());
+                let session_id = extract_gemini_uuid(&name)
+                    .unwrap_or_else(|| name.trim_end_matches(".json").to_string());
 
                 let metadata = match chat_entry.metadata().await {
                     Ok(m) => m,
@@ -322,7 +326,10 @@ fn extract_codex_uuid(filename: &str) -> Option<String> {
     let parts: Vec<&str> = name.rsplitn(6, '-').collect();
     if parts.len() >= 5 {
         // Reassemble: parts are reversed, so [0]=last12, [1]=last4, [2]=last4, [3]=last4, [4]=last8+prefix
-        let candidate = format!("{}-{}-{}-{}-{}", parts[4], parts[3], parts[2], parts[1], parts[0]);
+        let candidate = format!(
+            "{}-{}-{}-{}-{}",
+            parts[4], parts[3], parts[2], parts[1], parts[0]
+        );
         if uuid::Uuid::parse_str(&candidate).is_ok() {
             return Some(candidate);
         }

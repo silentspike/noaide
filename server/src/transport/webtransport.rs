@@ -128,13 +128,9 @@ impl TransportServer {
     /// Generates a fresh ECDSA P-256 certificate valid for 14 days. The SHA-256
     /// hash is exposed via `cert_hash()` so the frontend can use
     /// `serverCertificateHashes` to trust the connection without a CA.
-    pub fn new_self_signed(
-        bind_addr: SocketAddr,
-        bus: Arc<dyn EventBus>,
-    ) -> anyhow::Result<Self> {
-        let identity =
-            wtransport::Identity::self_signed(["localhost", "127.0.0.1", "::1"])
-                .context("generate self-signed identity")?;
+    pub fn new_self_signed(bind_addr: SocketAddr, bus: Arc<dyn EventBus>) -> anyhow::Result<Self> {
+        let identity = wtransport::Identity::self_signed(["localhost", "127.0.0.1", "::1"])
+            .context("generate self-signed identity")?;
 
         let cert_digest = identity.certificate_chain().as_slice()[0].hash();
         let cert_hash: [u8; 32] = *cert_digest.as_ref();
@@ -148,8 +144,8 @@ impl TransportServer {
             .context("invalid idle timeout")?
             .build();
 
-        let endpoint =
-            wtransport::Endpoint::server(config).context("failed to create WebTransport endpoint")?;
+        let endpoint = wtransport::Endpoint::server(config)
+            .context("failed to create WebTransport endpoint")?;
 
         info!(port, "transport server listening (self-signed, dual-stack)");
 
@@ -191,8 +187,8 @@ impl TransportServer {
             .context("invalid idle timeout")?
             .build();
 
-        let endpoint =
-            wtransport::Endpoint::server(config).context("failed to create WebTransport endpoint")?;
+        let endpoint = wtransport::Endpoint::server(config)
+            .context("failed to create WebTransport endpoint")?;
 
         info!(port, "transport server listening (dual-stack)");
 
@@ -344,10 +340,7 @@ async fn handle_connection(
     drop(tx); // Close our sender so rx completes when all forwarders drop
 
     // Open unidirectional stream for event delivery (two await points per wtransport API)
-    let opening = conn
-        .open_uni()
-        .await
-        .context("allocate event stream")?;
+    let opening = conn.open_uni().await.context("allocate event stream")?;
     let mut send = opening.await.context("open event stream")?;
 
     // Delta sync: replay buffered events to new connections.

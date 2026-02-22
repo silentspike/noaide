@@ -129,7 +129,7 @@ export class TransportClient {
         algorithm: string;
         hash: string;
       };
-      console.info(
+      console.warn(
         `[transport] cert hash: ${data.algorithm} ${data.hash.substring(0, 12)}...`,
       );
       return data.hash;
