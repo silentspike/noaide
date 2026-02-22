@@ -4,6 +4,7 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
 interface TransportClientOptions {
   url: string;
+  certHashUrl?: string;
   onEvent?: (topic: string, envelope: EventEnvelope) => void;
   onStatusChange?: (status: ConnectionStatus) => void;
   onTierChange?: (tier: QualityTier) => void;
@@ -12,9 +13,20 @@ interface TransportClientOptions {
 const MAX_BACKOFF_MS = 30_000;
 const INITIAL_BACKOFF_MS = 500;
 
+/** Decode a base64 string to an ArrayBuffer. */
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
 export class TransportClient {
   private transport: WebTransport | null = null;
   private url: string;
+  private certHashUrl: string;
   private status: ConnectionStatus = "disconnected";
   private tier: QualityTier = "Full";
   private reconnectAttempt = 0;
@@ -27,6 +39,9 @@ export class TransportClient {
 
   constructor(options: TransportClientOptions) {
     this.url = options.url;
+    this.certHashUrl =
+      options.certHashUrl ??
+      `http://${window.location.hostname}:8080/api/cert-hash`;
     this.onEvent = options.onEvent;
     this.onStatusChange = options.onStatusChange;
     this.onTierChange = options.onTierChange;
@@ -39,7 +54,20 @@ export class TransportClient {
     this.setStatus("connecting");
 
     try {
-      this.transport = new WebTransport(this.url);
+      // Fetch certificate hash from server HTTP API for self-signed cert trust
+      const certHash = await this.fetchCertHash();
+
+      const options: WebTransportOptions = {};
+      if (certHash) {
+        options.serverCertificateHashes = [
+          {
+            algorithm: "sha-256",
+            value: base64ToArrayBuffer(certHash),
+          },
+        ];
+      }
+
+      this.transport = new WebTransport(this.url, options);
       await this.transport.ready;
 
       this.setStatus("connected");
@@ -91,6 +119,24 @@ export class TransportClient {
   private setStatus(status: ConnectionStatus) {
     this.status = status;
     this.onStatusChange?.(status);
+  }
+
+  private async fetchCertHash(): Promise<string | null> {
+    try {
+      const resp = await fetch(this.certHashUrl);
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as {
+        algorithm: string;
+        hash: string;
+      };
+      console.warn(
+        `[transport] cert hash: ${data.algorithm} ${data.hash.substring(0, 12)}...`,
+      );
+      return data.hash;
+    } catch (e) {
+      console.warn("[transport] failed to fetch cert hash:", e);
+      return null;
+    }
   }
 
   private scheduleReconnect() {

@@ -85,10 +85,17 @@ mod tests {
             session_id,
             role: MessageRole::User,
             content: "test".to_string(),
+            content_blocks_json: None,
             timestamp,
             tokens: None,
             hidden: false,
             message_type: MessageType::Text,
+            model: None,
+            stop_reason: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
         }
     }
 
