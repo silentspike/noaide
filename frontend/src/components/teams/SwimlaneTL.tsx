@@ -204,7 +204,7 @@ export default function SwimlaneTL(props: SwimlaneTLProps) {
           color: "var(--ctp-overlay0)",
         }}
       >
-        {(["active", "thinking", "tool_use", "idle", "error"] as const).map((state) => (
+        <For each={["active", "thinking", "tool_use", "idle", "error"] as const}>{(state) => (
           <div style={{ display: "flex", "align-items": "center", gap: "4px" }}>
             <span
               style={{
@@ -216,7 +216,7 @@ export default function SwimlaneTL(props: SwimlaneTLProps) {
             />
             {state}
           </div>
-        ))}
+        )}</For>
       </div>
     </div>
   );

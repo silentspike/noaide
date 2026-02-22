@@ -30,7 +30,7 @@ function shortPath(path: string): string {
 export default function SessionCard(props: SessionCardProps) {
   return (
     <button
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       style={{
         display: "flex",
         "align-items": "center",

@@ -1,4 +1,4 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, For } from "solid-js";
 import FileNode, { type FileEntry } from "./FileNode";
 
 interface FileTreeProps {

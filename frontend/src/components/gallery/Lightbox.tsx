@@ -59,7 +59,7 @@ export default function Lightbox(props: {
         "align-items": "center",
         "justify-content": "center",
       }}
-      onClick={props.onClose}
+      onClick={() => props.onClose()}
     >
       {/* Toolbar */}
       <div
@@ -91,7 +91,7 @@ export default function Lightbox(props: {
         <button onClick={download} style={toolbarBtnStyle()}>
           DL
         </button>
-        <button onClick={props.onClose} style={toolbarBtnStyle()}>
+        <button onClick={() => props.onClose()} style={toolbarBtnStyle()}>
           X
         </button>
       </div>
