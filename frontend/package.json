@@ -11,7 +11,9 @@
     "test:watch": "vitest",
     "lint": "eslint src/ --max-warnings 0",
     "lint:fix": "eslint src/ --fix",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -31,6 +33,7 @@
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@solidjs/testing-library": "^0.8.10",
     "@typescript-eslint/eslint-plugin": "^8.56.0",
     "@typescript-eslint/parser": "^8.56.0",
