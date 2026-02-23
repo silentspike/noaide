@@ -90,6 +90,9 @@ generated/
 .audit/
 IMPL-PLAN.md
 
+# ── Test Artifacts ────────────────────────────────────────────
+.playwright-cli/
+
 # ── Misc ───────────────────────────────────────────────────────
 __pycache__/
 *.pyc
