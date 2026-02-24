@@ -22,6 +22,11 @@ export default function TeamsPanel() {
     { from: "team-lead", to: "tester" },
   ];
 
+  const messages = [
+    { id: "msg-1", from: "team-lead", to: "researcher", progress: 0.3 },
+    { id: "msg-2", from: "team-lead", to: "implementer", progress: 0.7 },
+  ];
+
   const swimlaneBlocks: SwimlaneBlock[] = [
     { agentName: "team-lead", startMs: 0, endMs: 5000, state: "active", label: "Planning" },
     { agentName: "team-lead", startMs: 5000, endMs: 8000, state: "thinking" },
@@ -109,7 +114,7 @@ export default function TeamsPanel() {
       {/* Content */}
       <div style={{ flex: "1", overflow: "hidden" }}>
         <Show when={viewMode() === "topology"}>
-          <TopologyGraph agents={agents} edges={edges} />
+          <TopologyGraph agents={agents} edges={edges} messages={messages} />
         </Show>
         <Show when={viewMode() === "swimlane"}>
           <div style={{ padding: "8px" }}>
