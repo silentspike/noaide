@@ -17,24 +17,30 @@ apt-get install -y \
   jq python3 python3-pip \
   linux-headers-$(uname -r) || true
 
-# Rust (stable + nightly)
+# Rust (stable + nightly) — download then execute (no curl-pipe-bash)
 if ! command -v rustup &>/dev/null; then
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
+  sh /tmp/rustup-init.sh -y
+  rm -f /tmp/rustup-init.sh
 fi
 source "$HOME/.cargo/env"
 rustup toolchain install stable nightly
 rustup default stable
 rustup component add clippy rustfmt
 
-# Node.js 22
+# Node.js 22 — download then execute (no curl-pipe-bash)
 if ! command -v node &>/dev/null || [[ "$(node --version)" != v22* ]]; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource-setup.sh
+  bash /tmp/nodesource-setup.sh
+  rm -f /tmp/nodesource-setup.sh
   apt-get install -y nodejs
 fi
 
-# wasm-pack
+# wasm-pack — download then execute (no curl-pipe-bash)
 if ! command -v wasm-pack &>/dev/null; then
-  curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+  curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf -o /tmp/wasm-pack-init.sh
+  sh /tmp/wasm-pack-init.sh
+  rm -f /tmp/wasm-pack-init.sh
 fi
 
 # FlatBuffers compiler (flatc)
@@ -64,9 +70,11 @@ if ! command -v gitleaks &>/dev/null; then
   rm /tmp/gitleaks.tar.gz
 fi
 
-# Docker (for Playwright E2E)
+# Docker (for Playwright E2E) — download then execute (no curl-pipe-bash)
 if ! command -v docker &>/dev/null; then
-  curl -fsSL https://get.docker.com | sh
+  curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  sh /tmp/get-docker.sh
+  rm -f /tmp/get-docker.sh
 fi
 
 # bpf-linker (for eBPF/aya)
