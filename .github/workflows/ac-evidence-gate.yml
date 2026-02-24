@@ -64,7 +64,7 @@ jobs:
             if (hasAcAudit) {
               // Extract the AC Audit section
               const auditSectionMatch = body.match(
-                /## AC Audit[\s\S]*?(?=\n## |\n---|\Z|$)/
+                /## AC Audit[\s\S]*?(?=\n## |\n---|$)/
               );
               const auditSection = auditSectionMatch
                 ? auditSectionMatch[0]
