@@ -97,7 +97,7 @@ impl EcsWorld {
 
     pub fn query_sessions(&self) -> Vec<SessionComponent> {
         let mut query = self.world.query::<&SessionComponent>();
-        query.iter().map(|(_, s)| (*s).clone()).collect()
+        query.iter().cloned().collect()
     }
 
     pub fn query_session_by_id(&self, session_id: Uuid) -> Option<SessionComponent> {

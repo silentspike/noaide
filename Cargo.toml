@@ -37,7 +37,7 @@ zenoh = "1"
 zenoh-shm = "1"
 
 # ECS state engine
-hecs = "0.10"
+hecs = "0.11"
 
 # Database
 limbo = { version = "0.0", features = ["index_experimental"] }
