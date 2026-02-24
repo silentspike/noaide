@@ -12,6 +12,9 @@ import NetworkPanel from "./components/network/NetworkPanel";
 import GalleryPanel from "./components/gallery/GalleryPanel";
 import SettingsPanel from "./components/settings/SettingsPanel";
 import ProfilerPanel from "./components/profiler/ProfilerPanel";
+import BranchSelector from "./components/git/BranchSelector";
+import StagingArea from "./components/git/StagingArea";
+import CommitHistory from "./components/git/CommitHistory";
 import CommandPalette from "./components/shared/CommandPalette";
 import { useIsMobile } from "./hooks/useMediaQuery";
 import { useKeymap, type KeyBinding } from "./shortcuts/keymap";
@@ -81,7 +84,7 @@ export default function App() {
 
 // --- Center Tab Definitions ---
 
-type CenterTabId = "chat" | "editor" | "network" | "teams" | "gallery" | "tasks" | "settings" | "profiler";
+type CenterTabId = "chat" | "editor" | "network" | "teams" | "gallery" | "tasks" | "git" | "settings" | "profiler";
 
 interface TabDef {
   id: CenterTabId;
@@ -96,7 +99,8 @@ const CENTER_TABS: TabDef[] = [
   { id: "teams", label: "Teams", shortcut: "4" },
   { id: "gallery", label: "Gallery", shortcut: "5" },
   { id: "tasks", label: "Tasks", shortcut: "6" },
-  { id: "settings", label: "Settings", shortcut: "7" },
+  { id: "git", label: "Git", shortcut: "7" },
+  { id: "settings", label: "Settings", shortcut: "8" },
 ];
 
 // --- Shell ---
@@ -232,6 +236,19 @@ function CenterPanel(props: { activeTab: CenterTabId; onTabChange: (tab: CenterT
         </Show>
         <Show when={props.activeTab === "tasks"}>
           <TaskPanel />
+        </Show>
+        <Show when={props.activeTab === "git"}>
+          <div style={{ display: "flex", "flex-direction": "column", height: "100%", overflow: "auto" }}>
+            <div style={{ padding: "8px", "border-bottom": "1px solid var(--ctp-surface0)" }}>
+              <BranchSelector />
+            </div>
+            <div style={{ padding: "8px", "border-bottom": "1px solid var(--ctp-surface0)" }}>
+              <StagingArea />
+            </div>
+            <div style={{ flex: "1", overflow: "auto", padding: "8px" }}>
+              <CommitHistory />
+            </div>
+          </div>
         </Show>
         <Show when={props.activeTab === "settings"}>
           <SettingsPanel />
