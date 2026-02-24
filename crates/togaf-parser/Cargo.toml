@@ -28,7 +28,7 @@ tracing = "0.1"
 
 # Optional (CLI)
 clap = { version = "4", features = ["derive"], optional = true }
-notify = { version = "7", optional = true }
+notify = { version = "8", optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1"
