@@ -1,4 +1,4 @@
-import { onMount, onCleanup, createSignal, Show } from "solid-js";
+import { createEffect, onCleanup, createSignal, Show } from "solid-js";
 import { EditorState } from "@codemirror/state";
 import { EditorView, lineNumbers } from "@codemirror/view";
 import { javascript } from "@codemirror/lang-javascript";
@@ -98,8 +98,13 @@ export default function EditorPanel(props: EditorPanelProps) {
   const [diffOriginal, _setDiffOriginal] = createSignal("");
   const [diffModified, _setDiffModified] = createSignal("");
 
-  onMount(() => {
-    if (!containerRef) return;
+  createEffect(() => {
+    // Track filePath reactively so editor is created when Show renders the container
+    const filePath = props.filePath;
+    if (!filePath || !containerRef) return;
+
+    // Destroy previous instance if any
+    editorView?.destroy();
 
     const extensions = [
       lineNumbers(),
@@ -108,7 +113,7 @@ export default function EditorPanel(props: EditorPanelProps) {
       EditorState.readOnly.of(props.readOnly ?? false),
     ];
 
-    const lang = props.filePath ? languageFromPath(props.filePath) : null;
+    const lang = languageFromPath(filePath);
     if (lang) extensions.push(lang);
 
     editorView = new EditorView({
