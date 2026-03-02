@@ -235,7 +235,7 @@ export function createSessionStore() {
           return;
         }
       } catch (parseErr) {
-        console.error(`[session] fetchMessages: JSON.parse failed on ${bodyText.length} chars:`, parseErr);
+        console.error("[session] fetchMessages: JSON.parse failed on", bodyText.length, "chars:", parseErr);
         if (!silent) setState("loadingProgress", "loading", false);
         return;
       }
