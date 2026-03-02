@@ -343,7 +343,7 @@ jobs:
         run: cd frontend && npm run build
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: noaide-${{ github.sha }}
           path: |
