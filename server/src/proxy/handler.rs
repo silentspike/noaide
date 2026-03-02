@@ -176,13 +176,13 @@ pub struct ProxyState {
 ///
 /// Returns `(session_id, effective_path_without_prefix)`.
 fn extract_session_prefix(path: &str) -> (Option<String>, &str) {
-    if let Some(after_s) = path.strip_prefix("/s/") {
-        if let Some(slash_pos) = after_s.find('/') {
-            let uuid_str = &after_s[..slash_pos];
-            // Validate it looks like a UUID (36 chars with hyphens)
-            if uuid_str.len() == 36 && uuid_str.chars().filter(|c| *c == '-').count() == 4 {
-                return (Some(uuid_str.to_string()), &after_s[slash_pos..]);
-            }
+    if let Some(after_s) = path.strip_prefix("/s/")
+        && let Some(slash_pos) = after_s.find('/')
+    {
+        let uuid_str = &after_s[..slash_pos];
+        // Validate it looks like a UUID (36 chars with hyphens)
+        if uuid_str.len() == 36 && uuid_str.chars().filter(|c| *c == '-').count() == 4 {
+            return (Some(uuid_str.to_string()), &after_s[slash_pos..]);
         }
     }
     (None, path)

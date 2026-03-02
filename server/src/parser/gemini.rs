@@ -133,17 +133,17 @@ pub async fn parse_gemini_file(path: &Path) -> anyhow::Result<Vec<ClaudeMessage>
     }
 
     // Session summary (if present)
-    if let Some(summary) = &session.summary {
-        if !summary.is_empty() {
-            messages.push(ClaudeMessage {
-                uuid: Uuid::new_v4().to_string(),
-                message_type: "summary".to_string(),
-                role: None,
-                content: MessageContent::Text(summary.clone()),
-                timestamp: session.start_time.clone(),
-                ..Default::default()
-            });
-        }
+    if let Some(summary) = &session.summary
+        && !summary.is_empty()
+    {
+        messages.push(ClaudeMessage {
+            uuid: Uuid::new_v4().to_string(),
+            message_type: "summary".to_string(),
+            role: None,
+            content: MessageContent::Text(summary.clone()),
+            timestamp: session.start_time.clone(),
+            ..Default::default()
+        });
     }
 
     Ok(messages)
