@@ -1,6 +1,6 @@
 /** Frontend mirror of server-side ClaudeMessage / ContentBlock types */
 
-export type MessageRole = "user" | "assistant" | "system";
+export type MessageRole = "user" | "assistant" | "system" | "meta";
 
 export type OrbState = "idle" | "thinking" | "streaming" | "tool_use" | "error";
 
@@ -12,8 +12,15 @@ export interface ContentBlock {
   name?: string;
   input?: unknown;
   tool_use_id?: string;
-  content?: string;
+  content?: string | ToolResultContent[];
   is_error?: boolean;
+  source?: ImageSource;
+}
+
+/** Inner content block within a tool_result (e.g. image from Read tool on PNG) */
+export interface ToolResultContent {
+  type: string;
+  text?: string;
   source?: ImageSource;
 }
 
@@ -70,4 +77,8 @@ export function textContent(msg: ChatMessage): string {
     .filter((b) => b.type === "text")
     .map((b) => b.text ?? "")
     .join("\n");
+}
+
+export function hasImages(msg: ChatMessage): boolean {
+  return msg.content.some((b) => b.type === "image" && b.source);
 }

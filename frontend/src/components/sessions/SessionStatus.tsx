@@ -23,10 +23,12 @@ export default function SessionStatus(props: SessionStatusProps) {
         display: "flex",
         "align-items": "center",
         "justify-content": "space-between",
-        padding: "8px 12px",
-        "border-bottom": "1px solid var(--ctp-surface0)",
-        "font-size": "11px",
-        color: "var(--ctp-overlay1)",
+        padding: "6px 12px",
+        "border-bottom": "1px solid var(--ctp-surface1)",
+        "font-size": "10px",
+        "font-family": "var(--font-mono)",
+        color: "var(--dim, #68687a)",
+        "letter-spacing": "0.03em",
       }}
     >
       <div
@@ -42,6 +44,7 @@ export default function SessionStatus(props: SessionStatusProps) {
             height: "6px",
             "border-radius": "50%",
             background: statusColor(),
+            "box-shadow": `0 0 6px ${statusColor()}`,
             "flex-shrink": "0",
           }}
         />

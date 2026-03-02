@@ -19,6 +19,8 @@ tokio = { version = "1", features = ["full"] }
 # Web framework
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors", "set-header"] }
+hyper = { version = "1", features = ["http1", "server", "client"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 
 # QUIC / WebTransport
 wtransport = "0.7"
@@ -42,8 +44,8 @@ hecs = "0.11"
 # Database
 limbo = { version = "0.0", features = ["index_experimental"] }
 
-# PTY management
-portable-pty = "0.9"
+# PTY management (raw Unix PTY via nix — portable-pty has broken reader on Linux)
+nix = { version = "0.30", features = ["term", "process", "fs", "signal"] }
 
 # File watching
 notify = "8"
@@ -55,12 +57,16 @@ noaide-common = { path = "crates/noaide-common", features = ["std"] }
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.16", features = ["http-listener"] }
 
 # HTTP client (API proxy forwarding)
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "gzip", "deflate", "brotli", "zstd"] }
 regex = "1"
 bytes = "1"
 http-body-util = "0.1"
+futures-util = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # Utilities
 base64 = "0.22"
@@ -71,3 +77,4 @@ zstd = "0.13"
 
 # Git integration
 git2 = "0.20"
+
