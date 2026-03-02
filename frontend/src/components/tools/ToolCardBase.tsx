@@ -1,4 +1,6 @@
-import { createSignal, Show, type JSX } from "solid-js";
+import { Show, type JSX } from "solid-js";
+import { useExpanded } from "../chat/expandedContext";
+import { useItemKey } from "../chat/itemKeyContext";
 
 interface ToolCardBaseProps {
   toolName: string;
@@ -10,15 +12,15 @@ interface ToolCardBaseProps {
 
 function toolColor(name: string): string {
   const colors: Record<string, string> = {
-    Edit: "var(--ctp-green)",
+    Edit: "var(--neon-green, #00ff9d)",
     Bash: "var(--ctp-peach)",
-    Read: "var(--ctp-blue)",
-    Grep: "var(--ctp-yellow)",
-    Glob: "var(--ctp-teal)",
-    Write: "var(--ctp-green)",
-    WebSearch: "var(--ctp-sapphire)",
-    WebFetch: "var(--ctp-sapphire)",
-    LSP: "var(--ctp-mauve)",
+    Read: "var(--neon-blue, #00b8ff)",
+    Grep: "var(--accent-gold, #f59e0b)",
+    Glob: "var(--accent-cyan, #06b6d4)",
+    Write: "var(--neon-green, #00ff9d)",
+    WebSearch: "var(--neon-blue, #00b8ff)",
+    WebFetch: "var(--neon-blue, #00b8ff)",
+    LSP: "var(--neon-purple, #a855f7)",
     NotebookEdit: "var(--ctp-pink)",
     AskUserQuestion: "var(--ctp-flamingo)",
   };
@@ -26,20 +28,34 @@ function toolColor(name: string): string {
 }
 
 export default function ToolCardBase(props: ToolCardBaseProps) {
-  const [expanded, setExpanded] = createSignal(props.defaultExpanded ?? false);
+  const ctx = useExpanded();
+  const itemKey = useItemKey();
+  const defaultVal = props.defaultExpanded ?? false;
+  const expanded = () =>
+    ctx && itemKey
+      ? ctx.isExpanded(itemKey, defaultVal)
+      : defaultVal;
+  const toggleExpanded = () => {
+    if (ctx && itemKey) {
+      ctx.toggle(itemKey);
+    }
+  };
 
   return (
     <div
       style={{
         margin: "4px 16px",
-        "border-radius": "8px",
-        border: `1px solid ${props.isError ? "var(--ctp-red)" : "var(--ctp-surface1)"}`,
-        background: "var(--ctp-surface0)",
+        "border-radius": "6px",
+        border: `1px solid ${props.isError ? "rgba(255,68,68,0.3)" : "var(--ctp-surface1)"}`,
+        background: props.isError ? "rgba(255,68,68,0.04)" : "rgba(14,14,24,0.6)",
+        "backdrop-filter": "blur(8px)",
+        "-webkit-backdrop-filter": "blur(8px)",
         overflow: "hidden",
+        transition: "border-color 200ms ease",
       }}
     >
       <button
-        onClick={() => setExpanded(!expanded())}
+        onClick={toggleExpanded}
         style={{
           display: "flex",
           "align-items": "center",
@@ -97,7 +113,7 @@ export default function ToolCardBase(props: ToolCardBaseProps) {
       <Show when={expanded()}>
         <div
           style={{
-            "border-top": "1px solid var(--ctp-surface1)",
+            "border-top": "1px solid rgba(37,37,53,0.6)",
             padding: "8px 12px",
           }}
         >

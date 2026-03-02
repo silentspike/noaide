@@ -1,8 +1,27 @@
-import { createStore } from "solid-js/store";
+import { createStore, reconcile } from "solid-js/store";
 import { createMemo, batch } from "solid-js";
 import type { ConnectionStatus } from "../transport/client";
 import type { QualityTier, EventEnvelope } from "../transport/codec";
 import type { ChatMessage, OrbState, ContentBlock } from "../types/messages";
+
+/** Shape returned by the API and pushed via SSE bus events. */
+type MessageRow = {
+  uuid: string;
+  sessionId: string;
+  role: string;
+  content: string;
+  contentBlocks: ContentBlock[] | null;
+  timestamp: number;
+  tokens: number | null;
+  hidden: boolean;
+  messageType: string;
+  model: string | null;
+  stopReason: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheCreationInputTokens: number | null;
+  cacheReadInputTokens: number | null;
+};
 
 export interface Session {
   id: string;
@@ -12,6 +31,15 @@ export interface Session {
   startedAt: number;
   messageCount: number;
   cost?: number;
+  cliType?: "claude" | "codex" | "gemini";
+}
+
+export interface LoadingProgress {
+  loading: boolean;
+  bytesLoaded: number;
+  bytesTotal: number;
+  startTime: number;
+  messagesExpected: number;
 }
 
 export interface SessionState {
@@ -25,6 +53,7 @@ export interface SessionState {
   contextTokensUsed: number;
   contextTokensMax: number;
   httpApiUrl: string | null;
+  loadingProgress: LoadingProgress;
 }
 
 export function createSessionStore() {
@@ -39,6 +68,13 @@ export function createSessionStore() {
     contextTokensUsed: 0,
     contextTokensMax: 200_000,
     httpApiUrl: null,
+    loadingProgress: {
+      loading: false,
+      bytesLoaded: 0,
+      bytesTotal: 0,
+      startTime: 0,
+      messagesExpected: 0,
+    },
   });
 
   const activeSession = createMemo(
@@ -82,6 +118,7 @@ export function createSessionStore() {
         startedAt: number;
         cost: number | null;
         messageCount: number;
+        cliType?: string;
       }> = await resp.json();
 
       // Batch-update all sessions in one reactive flush
@@ -93,66 +130,128 @@ export function createSessionStore() {
         startedAt: s.startedAt * 1000,
         messageCount: s.messageCount,
         cost: s.cost ?? undefined,
+        cliType: (s.cliType as Session["cliType"]) ?? "claude",
       }));
       batch(() => {
-        setState("sessions", sessions);
+        setState("sessions", reconcile(sessions, { key: "id" }));
       });
     } catch (e) {
       console.warn("[session] fetchSessions failed:", e);
     }
   }
 
-  async function fetchMessages(sessionId: string) {
+  async function fetchMessages(sessionId: string, silent = false) {
     const base = state.httpApiUrl;
-    if (!base) return;
+    if (!base) {
+      console.warn("[session] fetchMessages: no httpApiUrl set");
+      return;
+    }
+
+    // Find expected message count from session metadata
+    const session = state.sessions.find((s) => s.id === sessionId);
+    const expectedMsgs = session?.messageCount ?? 0;
+
+    // Only show loading indicator for initial loads (not SSE-triggered refreshes)
+    if (!silent) {
+      batch(() => {
+        setState("loadingProgress", {
+          loading: true,
+          bytesLoaded: 0,
+          bytesTotal: 0,
+          startTime: Date.now(),
+          messagesExpected: expectedMsgs,
+        });
+      });
+    }
 
     try {
       const resp = await fetch(`${base}/api/sessions/${sessionId}/messages`);
-      if (!resp.ok) return;
-      const data: Array<{
-        uuid: string;
-        sessionId: string;
-        role: string;
-        content: string;
-        contentBlocks: ContentBlock[] | null;
-        timestamp: number;
-        tokens: number | null;
-        hidden: boolean;
-        messageType: string;
-        model: string | null;
-        stopReason: string | null;
-        inputTokens: number | null;
-        outputTokens: number | null;
-        cacheCreationInputTokens: number | null;
-        cacheReadInputTokens: number | null;
-      }> = await resp.json();
+      if (!resp.ok) {
+        console.warn(`[session] fetchMessages: HTTP ${resp.status} ${resp.statusText}`);
+        if (!silent) setState("loadingProgress", "loading", false);
+        return;
+      }
 
-      // Batch-convert all messages (no reactive updates during loop)
-      const messages: ChatMessage[] = [];
+      // Read Content-Length for progress calculation
+      const contentLength = parseInt(resp.headers.get("Content-Length") ?? "0", 10);
+      if (!silent && contentLength > 0) {
+        setState("loadingProgress", "bytesTotal", contentLength);
+      }
+
+      // Stream response body for progress tracking (throttle UI updates to ~10/sec)
+      let bodyText: string;
+      if (!silent && resp.body && contentLength > 50_000) {
+        const reader = resp.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let loaded = 0;
+        let lastProgressUpdate = 0;
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          loaded += value.byteLength;
+
+          // Throttle progress updates: max every 100ms
+          const now = performance.now();
+          if (now - lastProgressUpdate > 100) {
+            setState("loadingProgress", "bytesLoaded", loaded);
+            lastProgressUpdate = now;
+          }
+        }
+        // Final progress update
+        setState("loadingProgress", "bytesLoaded", loaded);
+
+        // Concatenate chunks and decode
+        const fullBuffer = new Uint8Array(loaded);
+        let offset = 0;
+        for (const chunk of chunks) {
+          fullBuffer.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        bodyText = new TextDecoder().decode(fullBuffer);
+      } else {
+        bodyText = await resp.text();
+        if (!silent) {
+          setState("loadingProgress", "bytesLoaded", bodyText.length);
+        }
+      }
+
+      // Parse JSON (can be slow for large responses — yield to UI first)
+      await new Promise((r) => setTimeout(r, 0));
+
+      let data: MessageRow[];
+
+      try {
+        const parsed = JSON.parse(bodyText);
+        // Support paginated response { messages: [...], total: N } and legacy array
+        if (Array.isArray(parsed)) {
+          data = parsed;
+        } else if (parsed && Array.isArray(parsed.messages)) {
+          data = parsed.messages;
+        } else {
+          console.error("[session] fetchMessages: unexpected response format");
+          if (!silent) setState("loadingProgress", "loading", false);
+          return;
+        }
+      } catch (parseErr) {
+        console.error(`[session] fetchMessages: JSON.parse failed on ${bodyText.length} chars:`, parseErr);
+        if (!silent) setState("loadingProgress", "loading", false);
+        return;
+      }
+
+      // Release the large string early to free memory
+      bodyText = "";
+
+      // Convert all messages and populate seenUuids for dedup
+      const converted: ChatMessage[] = new Array(data.length);
       let totalTokenCount = 0;
       let lastModel: string | undefined;
 
-      for (const m of data) {
-        // Use structured contentBlocks from API if available, else fallback
-        const contentBlocks = m.contentBlocks && m.contentBlocks.length > 0
-          ? m.contentBlocks
-          : parseContentToBlocks(m.content, m.messageType);
-
-        const msg: ChatMessage = {
-          uuid: m.uuid,
-          role: mapRole(m.role),
-          messageType: m.messageType.toLowerCase(),
-          content: contentBlocks,
-          timestamp: m.timestamp > 0 ? new Date(m.timestamp * 1000).toISOString() : undefined,
-          model: m.model ?? undefined,
-          stopReason: m.stopReason ?? undefined,
-          inputTokens: m.inputTokens ?? undefined,
-          outputTokens: m.outputTokens ?? undefined,
-          cacheCreationInputTokens: m.cacheCreationInputTokens ?? undefined,
-          cacheReadInputTokens: m.cacheReadInputTokens ?? undefined,
-          hidden: m.hidden,
-        };
-        messages.push(msg);
+      for (let i = 0; i < data.length; i++) {
+        const m = data[i];
+        converted[i] = convertMessageRow(m);
+        seenUuids.add(m.uuid);
 
         const msgTokens = (m.inputTokens ?? 0) + (m.outputTokens ?? 0)
           + (m.cacheCreationInputTokens ?? 0) + (m.cacheReadInputTokens ?? 0);
@@ -161,24 +260,79 @@ export function createSessionStore() {
         if (m.model) lastModel = m.model;
       }
 
-      // Single batch update — one reactive flush for all messages
+      // Single batch update — replaces array once for initial load.
+      // After this, all updates come through addMessage (fine-grained).
       batch(() => {
-        setState("messages", messages);
+        setState("messages", converted);
         setState("contextTokensUsed", totalTokenCount);
         if (lastModel) setState("activeModel", lastModel);
+        if (!silent) setState("loadingProgress", "loading", false);
       });
     } catch (e) {
-      console.warn("[session] fetchMessages failed:", e);
+      console.error("[session] fetchMessages failed:", e);
+      if (!silent) setState("loadingProgress", "loading", false);
+    }
+  }
+
+  // SSE connection for realtime event streaming
+  let sseConnection: EventSource | null = null;
+
+  function connectSSE(sessionId: string) {
+    disconnectSSE();
+    const base = state.httpApiUrl;
+    if (!base) return;
+
+    const url = `${base}/api/events?session_id=${sessionId}&topics=session/messages`;
+    const es = new EventSource(url);
+
+    es.addEventListener("session/messages", (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data);
+        // Defense-in-depth: verify session_id matches active session
+        if (data.session_id && data.session_id !== sessionId) return;
+
+        // payload is a JSON string (from Rust's String::from_utf8_lossy)
+        const payload = typeof data.payload === "string"
+          ? JSON.parse(data.payload)
+          : data.payload;
+
+        if (payload?.type === "new_messages" && Array.isArray(payload.messages)) {
+          batch(() => {
+            for (const m of payload.messages) {
+              addMessage(convertMessageRow(m));
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("[sse] failed to parse event payload:", e);
+      }
+    });
+
+    es.onerror = () => {};
+    es.onopen = () => {
+      console.warn("[sse] connected for session", sessionId);
+    };
+
+    sseConnection = es;
+  }
+
+  function disconnectSSE() {
+    if (sseConnection) {
+      sseConnection.close();
+      sseConnection = null;
     }
   }
 
   function setActiveSession(id: string | null) {
     if (id === state.activeSessionId) return;
+    disconnectSSE();
+    seenUuids.clear();
     setState("activeSessionId", id);
     setState("messages", []);
     setState("contextTokensUsed", 0);
     if (id) {
-      fetchMessages(id);
+      fetchMessages(id, false); // initial load with loading indicator
+      connectSSE(id);           // realtime push via SSE (no polling, no fetching)
     }
   }
 
@@ -213,11 +367,17 @@ export function createSessionStore() {
     }
   }
 
+  // UUID set for O(1) dedup — survives across addMessage calls
+  const seenUuids = new Set<string>();
+
   function addMessage(msg: ChatMessage) {
-    setState("messages", (msgs) => {
-      if (msgs.some((m) => m.uuid === msg.uuid)) return msgs;
-      return [...msgs, msg];
-    });
+    // O(1) dedup via Set instead of O(n) array scan
+    if (seenUuids.has(msg.uuid)) return;
+    seenUuids.add(msg.uuid);
+
+    // Fine-grained append: set at specific index, SolidJS only
+    // re-renders the NEW item, not the entire list. No array copy.
+    setState("messages", state.messages.length, msg);
 
     if (msg.model) {
       setState("activeModel", msg.model);
@@ -252,16 +412,35 @@ export function createSessionStore() {
       case "session/messages": {
         if (envelope.sessionId) {
           const sid = envelope.sessionId;
-          // Update message count for the session
-          setState(
-            "sessions",
-            (s) => s.id === sid,
-            "messageCount",
-            (c) => c + 1,
-          );
-          // If this session is currently selected, fetch new messages
-          if (state.activeSessionId === sid) {
-            fetchMessages(sid);
+          // Push messages directly if this is the active session
+          if (state.activeSessionId === sid && envelope.payload) {
+            try {
+              const payloadStr = new TextDecoder().decode(envelope.payload);
+              const payload = JSON.parse(payloadStr);
+              if (payload?.type === "new_messages" && Array.isArray(payload.messages)) {
+                batch(() => {
+                  setState(
+                    "sessions",
+                    (s) => s.id === sid,
+                    "messageCount",
+                    (c) => c + payload.messages.length,
+                  );
+                  for (const m of payload.messages) {
+                    addMessage(convertMessageRow(m));
+                  }
+                });
+              }
+            } catch (e) {
+              console.warn("[handleEvent] failed to parse payload:", e);
+            }
+          } else {
+            // Not active session — just update count
+            setState(
+              "sessions",
+              (s) => s.id === sid,
+              "messageCount",
+              (c) => c + 1,
+            );
           }
         }
         break;
@@ -306,11 +485,12 @@ function mapStatus(s: string): Session["status"] {
   }
 }
 
-function mapRole(r: string): "user" | "assistant" | "system" {
+function mapRole(r: string): "user" | "assistant" | "system" | "meta" {
   switch (r) {
     case "user": return "user";
     case "assistant": return "assistant";
     case "system": return "system";
+    case "meta": return "meta";
     default: return "user";
   }
 }
@@ -323,12 +503,35 @@ function parseContentToBlocks(content: string, messageType: string): ContentBloc
     case "Thinking":
       return [{ type: "thinking", thinking: content }];
     case "ToolUse":
-      return [{ type: "text", text: content }];
     case "ToolResult":
-      return [{ type: "text", text: content }];
     case "SystemReminder":
+    case "Progress":
+    case "Summary":
+    case "FileSnapshot":
       return [{ type: "text", text: content }];
     default:
       return [{ type: "text", text: content }];
   }
+}
+
+/** Convert a MessageRow (from API or SSE payload) to a ChatMessage for the store. */
+function convertMessageRow(m: MessageRow): ChatMessage {
+  const contentBlocks = m.contentBlocks && m.contentBlocks.length > 0
+    ? m.contentBlocks
+    : parseContentToBlocks(m.content, m.messageType);
+
+  return {
+    uuid: m.uuid,
+    role: mapRole(m.role),
+    messageType: m.messageType.toLowerCase(),
+    content: contentBlocks,
+    timestamp: m.timestamp > 0 ? new Date(m.timestamp * 1000).toISOString() : undefined,
+    model: m.model ?? undefined,
+    stopReason: m.stopReason ?? undefined,
+    inputTokens: m.inputTokens ?? undefined,
+    outputTokens: m.outputTokens ?? undefined,
+    cacheCreationInputTokens: m.cacheCreationInputTokens ?? undefined,
+    cacheReadInputTokens: m.cacheReadInputTokens ?? undefined,
+    hidden: m.hidden,
+  };
 }

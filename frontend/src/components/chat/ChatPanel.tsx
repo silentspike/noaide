@@ -1,7 +1,8 @@
-import { Show, createMemo } from "solid-js";
+import { Show, createMemo, createSignal, createEffect } from "solid-js";
 import { useSession } from "../../App";
-import type { ChatMessage, ContentBlock } from "../../types/messages";
+import type { ChatMessage, ContentBlock, ImageSource } from "../../types/messages";
 import { totalTokens } from "../../types/messages";
+import type { GalleryImage } from "../gallery/GalleryPanel";
 import VirtualScroller from "./VirtualScroller";
 import MessageCard from "./MessageCard";
 import SystemMessage from "./SystemMessage";
@@ -11,10 +12,15 @@ import BreathingOrb from "./BreathingOrb";
 import ContextMeter from "./ContextMeter";
 import ModelBadge from "./ModelBadge";
 import InputField from "./InputField";
+import MetaMessage from "./MetaMessage";
+import LoadingProgress from "./LoadingProgress";
+import Lightbox from "../gallery/Lightbox";
+import { ExpandedProvider, type ExpandedState } from "./expandedContext";
+import { ItemKeyProvider } from "./itemKeyContext";
 
 /** Collect consecutive tool_use + tool_result blocks into a single ToolCard entry */
 interface RenderItem {
-  type: "message" | "system" | "ghost" | "tool";
+  type: "message" | "system" | "ghost" | "tool" | "meta";
   message?: ChatMessage;
   toolBlocks?: ContentBlock[];
   key: string;
@@ -52,6 +58,25 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
   for (const msg of messages) {
     if (msg.isGhost) {
       items.push({ type: "ghost", message: msg, key: msg.uuid });
+      continue;
+    }
+
+    // Meta entries: progress, summary, file-history-snapshot, unknown non-conversation
+    // Skip empty meta messages (e.g. messageType "text" with no content)
+    // Collapse consecutive meta entries of the same messageType (e.g. bash_progress
+    // heartbeats) into a single entry — show only the latest one.
+    if (msg.role === "meta") {
+      const metaText = msg.content
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join("");
+      if (!metaText.trim()) continue;
+      const prev = items[items.length - 1];
+      if (prev?.type === "meta" && prev.message?.messageType === msg.messageType) {
+        items[items.length - 1] = { type: "meta", message: msg, key: msg.uuid };
+      } else {
+        items.push({ type: "meta", message: msg, key: msg.uuid });
+      }
       continue;
     }
 
@@ -116,6 +141,35 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
 export default function ChatPanel() {
   const store = useSession();
 
+  // Persistent expanded state that survives virtual scroll recycling
+  const expandedMap = new Map<string, boolean>();
+  const [expandedVersion, setExpandedVersion] = createSignal(0);
+
+  const expandedState: ExpandedState = {
+    isExpanded(key: string, defaultValue: boolean): boolean {
+      expandedVersion(); // track reactivity
+      const val = expandedMap.get(key);
+      if (val == null) {
+        // Lazily initialize with default so toggle() always has a value to flip
+        expandedMap.set(key, defaultValue);
+        return defaultValue;
+      }
+      return val;
+    },
+    toggle(key: string) {
+      const current = expandedMap.get(key) ?? false;
+      expandedMap.set(key, !current);
+      setExpandedVersion((v) => v + 1);
+    },
+  };
+
+  // Clear expanded state when session changes
+  createEffect(() => {
+    store.state.activeSessionId; // track
+    expandedMap.clear();
+    setExpandedVersion(0);
+  });
+
   const renderItems = createMemo(() =>
     buildRenderItems(store.activeMessages()),
   );
@@ -129,20 +183,107 @@ export default function ChatPanel() {
     return max || 1;
   });
 
-  function handleSend(text: string) {
-    // Input will be sent via WebTransport to the active session
-    // For now, log it — full PTY integration comes with session manager wiring
-    // TODO: Send via WebTransport to active session (PTY integration)
-    void text;
+  // Lightbox state for chat images
+  const [lightboxImages, setLightboxImages] = createSignal<GalleryImage[]>([]);
+  const [lightboxIndex, setLightboxIndex] = createSignal<number | null>(null);
+
+  function openLightbox(images: GalleryImage[], index: number) {
+    setLightboxImages(images);
+    setLightboxIndex(index);
+  }
+
+  /** Append a JSONL entry to the session file via backend. */
+  function appendToJsonl(sessionId: string, entry: Record<string, unknown>) {
+    const base = store.state.httpApiUrl;
+    if (!base) return;
+    fetch(`${base}/api/sessions/${sessionId}/append`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entry }),
+    }).catch((e) => console.warn("[chat] JSONL append failed:", e));
+  }
+
+  async function handleSend(payload: { text: string; images: ImageSource[] }) {
+    const sessionId = store.state.activeSessionId;
+    const base = store.state.httpApiUrl;
+    if (!sessionId || !base) return;
+    if (!payload.text && payload.images.length === 0) return;
+
+    // Optimistic user message — appears immediately in chat
+    const userUuid = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const contentBlocks: ContentBlock[] = [];
+    if (payload.text) {
+      contentBlocks.push({ type: "text", text: payload.text });
+    }
+    for (const img of payload.images) {
+      contentBlocks.push({ type: "image", source: img });
+    }
+    const optimisticMsg: ChatMessage = {
+      uuid: userUuid,
+      role: "user",
+      messageType: "user",
+      content: contentBlocks,
+      timestamp: now,
+    };
+    store.addMessage(optimisticMsg);
+    store.updateOrbState("streaming");
+
+    // Send text via PTY input to Claude CLI
+    if (payload.text) {
+      try {
+        const resp = await fetch(`${base}/api/sessions/${sessionId}/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: payload.text }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: "unknown" }));
+          console.warn("[chat] send failed:", err);
+          store.updateOrbState("error");
+          return;
+        }
+      } catch (e) {
+        console.warn("[chat] send failed:", e);
+        store.updateOrbState("error");
+        return;
+      }
+    }
+
+    // For image-only messages: append directly to JSONL
+    if (payload.images.length > 0 && !payload.text) {
+      appendToJsonl(sessionId, {
+        parentUuid: null,
+        isSidechain: false,
+        userType: "external",
+        sessionId,
+        version: "noaide",
+        type: "user",
+        message: {
+          role: "user",
+          content: payload.images.map((img) => ({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: img.media_type,
+              data: img.data,
+            },
+          })),
+        },
+        uuid: userUuid,
+        timestamp: now,
+      });
+    }
+
+    // SSE push will deliver the assistant's response — no polling needed
   }
 
   return (
-    <div
+    <div class="chat-canvas"
       style={{
         display: "flex",
         "flex-direction": "column",
         height: "100%",
-        background: "var(--ctp-base)",
       }}
     >
       {/* Header bar with orb, model badge, context meter */}
@@ -152,8 +293,10 @@ export default function ChatPanel() {
           "align-items": "center",
           gap: "8px",
           padding: "8px 16px",
-          "border-bottom": "1px solid var(--ctp-surface0)",
-          background: "var(--ctp-mantle)",
+          "border-bottom": "1px solid var(--ctp-surface1)",
+          background: "rgba(14,14,24,0.88)",
+          "backdrop-filter": "blur(16px)",
+          "-webkit-backdrop-filter": "blur(16px)",
           "min-height": "40px",
         }}
       >
@@ -181,57 +324,84 @@ export default function ChatPanel() {
       {/* Messages area */}
       <div style={{ flex: "1", "min-height": "0" }}>
         <Show
-          when={renderItems().length > 0}
+          when={!store.state.loadingProgress.loading}
           fallback={
-            <div
-              style={{
-                display: "flex",
-                "align-items": "center",
-                "justify-content": "center",
-                height: "100%",
-                color: "var(--ctp-overlay1)",
-                "flex-direction": "column",
-                gap: "8px",
-              }}
-            >
-              <div
-                style={{
-                  "font-family": "var(--font-mono)",
-                  "font-size": "24px",
-                  color: "var(--ctp-blue)",
-                }}
-              >
-                noaide
-              </div>
-              <div style={{ "font-size": "13px" }}>
-                Select a session to begin
-              </div>
-            </div>
+            <LoadingProgress progress={store.state.loadingProgress} />
           }
         >
-          <VirtualScroller
-            items={renderItems()}
-            estimateHeight={80}
-            overscan={5}
-            renderItem={(item) => {
-              switch (item.type) {
-                case "system":
-                  return <SystemMessage message={item.message!} />;
-                case "ghost":
-                  return <GhostMessage message={item.message!} />;
-                case "tool":
-                  return <ToolCard blocks={item.toolBlocks!} />;
-                case "message":
-                default:
-                  return (
-                    <MessageCard
-                      message={item.message!}
-                      maxTokens={maxTokensInSession()}
-                    />
-                  );
-              }
-            }}
-          />
+          <Show
+            when={renderItems().length > 0}
+            fallback={
+              <div
+                style={{
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  height: "100%",
+                  color: "var(--ctp-overlay1)",
+                  "flex-direction": "column",
+                  gap: "8px",
+                }}
+              >
+                <div
+                  style={{
+                    "font-family": "var(--font-mono)",
+                    "font-size": "28px",
+                    "font-weight": "800",
+                    background: "linear-gradient(135deg, #00ff9d, #00b8ff)",
+                    "-webkit-background-clip": "text",
+                    "background-clip": "text",
+                    "-webkit-text-fill-color": "transparent",
+                    "letter-spacing": "-0.02em",
+                  }}
+                >
+                  noaide
+                </div>
+                <div style={{
+                  "font-size": "12px",
+                  "font-family": "var(--font-mono)",
+                  color: "var(--dim, #68687a)",
+                  "letter-spacing": "0.05em",
+                }}>
+                  Select a session to begin
+                </div>
+              </div>
+            }
+          >
+            <ExpandedProvider value={expandedState}>
+              <VirtualScroller
+                items={renderItems()}
+                estimateHeight={80}
+                overscan={5}
+                getKey={(item) => item.key}
+                renderItem={(item) => (
+                  <ItemKeyProvider value={item.key}>
+                    {(() => {
+                      switch (item.type) {
+                        case "system":
+                          return <SystemMessage message={item.message!} />;
+                        case "ghost":
+                          return <GhostMessage message={item.message!} />;
+                        case "tool":
+                          return <ToolCard blocks={item.toolBlocks!} />;
+                        case "meta":
+                          return <MetaMessage message={item.message!} />;
+                        case "message":
+                        default:
+                          return (
+                            <MessageCard
+                              message={item.message!}
+                              maxTokens={maxTokensInSession()}
+                              onImageClick={openLightbox}
+                            />
+                          );
+                      }
+                    })()}
+                  </ItemKeyProvider>
+                )}
+              />
+            </ExpandedProvider>
+          </Show>
         </Show>
       </div>
 
@@ -240,6 +410,15 @@ export default function ChatPanel() {
         disabled={!store.state.activeSessionId}
         onSubmit={handleSend}
       />
+
+      {/* Lightbox for chat images */}
+      <Show when={lightboxIndex() !== null}>
+        <Lightbox
+          images={lightboxImages()}
+          initialIndex={lightboxIndex()!}
+          onClose={() => setLightboxIndex(null)}
+        />
+      </Show>
     </div>
   );
 }

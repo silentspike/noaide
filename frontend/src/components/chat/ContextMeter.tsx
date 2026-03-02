@@ -24,16 +24,17 @@ export default function ContextMeter(props: ContextMeterProps) {
         display: "flex",
         "align-items": "center",
         gap: "8px",
-        "font-size": "11px",
-        color: "var(--ctp-subtext0)",
+        "font-size": "10px",
+        "font-family": "var(--font-mono)",
+        color: "var(--dim, #68687a)",
         padding: "0 4px",
       }}
     >
       <div
         style={{
           flex: "1",
-          height: "4px",
-          background: "var(--ctp-surface0)",
+          height: "3px",
+          background: "var(--ctp-surface1)",
           "border-radius": "2px",
           overflow: "hidden",
           "min-width": "60px",
@@ -46,6 +47,7 @@ export default function ContextMeter(props: ContextMeterProps) {
             background: meterColor(ratio()),
             "border-radius": "2px",
             transition: "width 300ms ease, background 300ms ease",
+            "box-shadow": `0 0 6px ${meterColor(ratio())}`,
           }}
         />
       </div>

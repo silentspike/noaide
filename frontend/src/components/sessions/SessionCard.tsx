@@ -22,80 +22,192 @@ function relativeTime(timestamp: number): string {
   return `${days}d ago`;
 }
 
-function shortPath(path: string): string {
-  const parts = path.split("/");
-  return parts[parts.length - 1] || path;
+/** CLI type → accent color for left border + badge */
+function cliColor(cliType?: string): string {
+  switch (cliType) {
+    case "codex":
+      return "#10a37f"; // OpenAI green
+    case "gemini":
+      return "#4285f4"; // Google blue
+    default:
+      return "#d4a373"; // Claude warm amber
+  }
+}
+
+/** CLI type → short display label */
+function cliLabel(cliType?: string): string {
+  switch (cliType) {
+    case "codex":
+      return "CDX";
+    case "gemini":
+      return "GEM";
+    default:
+      return "CLD";
+  }
+}
+
+/** Extract meaningful project name from path */
+function projectName(path: string): string {
+  // Codex date paths like "2026/03/01"
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(path)) return path;
+  // Gemini hash prefix like "gemini/2cc974af"
+  if (path.startsWith("gemini/")) return path;
+  // Full paths like "/work/noaide" or "/work/daw/synth/s1/foundation"
+  if (path.startsWith("/")) {
+    const parts = path.split("/").filter(Boolean);
+    // Skip "work" prefix for brevity, show the rest
+    if (parts[0] === "work" && parts.length > 1) {
+      return parts.slice(1).join("/");
+    }
+    return parts.join("/");
+  }
+  return path;
+}
+
+/** Format message count: 55766 → "55.7k" */
+function formatCount(n: number): string {
+  if (n >= 10000) return `${(n / 1000).toFixed(1)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }
 
 export default function SessionCard(props: SessionCardProps) {
+  const accent = () => cliColor(props.session.cliType);
+  const label = () => cliLabel(props.session.cliType);
+
   return (
     <button
+      data-testid={`session-card-${props.session.id}`}
+      data-session-id={props.session.id}
+      data-cli-type={props.session.cliType ?? "claude"}
       onClick={() => props.onClick()}
       style={{
         display: "flex",
-        "align-items": "center",
-        gap: "10px",
+        "align-items": "stretch",
         width: "100%",
-        padding: "10px 12px",
+        padding: "0",
         background: props.isActive
-          ? "var(--ctp-surface0)"
+          ? `${accent()}0F`
           : "transparent",
-        border: "none",
-        "border-radius": "8px",
+        border: props.isActive
+          ? `1px solid ${accent()}30`
+          : "1px solid transparent",
+        "border-radius": "6px",
         cursor: "pointer",
         "text-align": "left",
-        color: "var(--ctp-text)",
-        transition: "background 150ms ease",
-        opacity: props.session.status === "archived" ? "0.5" : "1",
+        color: props.isActive ? "var(--bright, #f0f0f5)" : "var(--ctp-text)",
+        transition: "all 200ms ease",
+        opacity: props.session.status === "archived" ? "0.4" : "1",
+        overflow: "hidden",
       }}
     >
-      <BreathingOrb state={props.orbState} />
-
+      {/* Left accent bar — CLI type color */}
       <div
         style={{
+          width: "3px",
+          "flex-shrink": "0",
+          background: accent(),
+          "border-radius": "6px 0 0 6px",
+          opacity: props.isActive ? "1" : "0.5",
+          transition: "opacity 200ms ease",
+        }}
+      />
+
+      {/* Content area */}
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          gap: "8px",
+          padding: "8px 10px",
           flex: "1",
           "min-width": "0",
-          display: "flex",
-          "flex-direction": "column",
-          gap: "2px",
         }}
       >
-        <div
-          style={{
-            "font-size": "13px",
-            "font-weight": props.isActive ? "600" : "400",
-            "white-space": "nowrap",
-            overflow: "hidden",
-            "text-overflow": "ellipsis",
-          }}
-        >
-          {shortPath(props.session.path)}
-        </div>
+        <BreathingOrb state={props.orbState} />
 
         <div
           style={{
+            flex: "1",
+            "min-width": "0",
             display: "flex",
-            "align-items": "center",
-            gap: "6px",
-            "font-size": "11px",
-            color: "var(--ctp-overlay1)",
+            "flex-direction": "column",
+            gap: "3px",
           }}
         >
-          <Show when={props.session.model}>
+          {/* Row 1: CLI badge + project name */}
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              gap: "6px",
+            }}
+          >
+            {/* CLI type badge — ALWAYS visible */}
             <span
               style={{
                 "font-family": "var(--font-mono)",
-                "font-size": "10px",
-                padding: "1px 4px",
+                "font-size": "9px",
+                "font-weight": "700",
+                padding: "1px 5px",
                 "border-radius": "3px",
-                background: "var(--ctp-surface1)",
+                "letter-spacing": "0.06em",
+                "flex-shrink": "0",
+                background: `${accent()}20`,
+                color: accent(),
               }}
             >
-              {props.session.model!.split("-").slice(0, 2).join("-")}
+              {label()}
             </span>
-          </Show>
-          <span>{relativeTime(props.session.startedAt)}</span>
-          <span>{props.session.messageCount} msgs</span>
+
+            {/* Project name */}
+            <span
+              style={{
+                "font-size": "12px",
+                "font-weight": props.isActive ? "600" : "500",
+                "white-space": "nowrap",
+                overflow: "hidden",
+                "text-overflow": "ellipsis",
+              }}
+            >
+              {projectName(props.session.path)}
+            </span>
+          </div>
+
+          {/* Row 2: model + time + count */}
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              gap: "6px",
+              "font-size": "10px",
+              color: "var(--ctp-overlay1)",
+              "font-family": "var(--font-mono)",
+            }}
+          >
+            <Show when={props.session.model}>
+              <span
+                style={{
+                  "font-size": "9px",
+                  "font-weight": "600",
+                  padding: "1px 4px",
+                  "border-radius": "3px",
+                  background: "rgba(168,85,247,0.10)",
+                  color: "var(--neon-purple, #a855f7)",
+                  "letter-spacing": "0.02em",
+                  "white-space": "nowrap",
+                }}
+              >
+                {props.session.model!.split("-").slice(0, 2).join("-")}
+              </span>
+            </Show>
+            <span>{relativeTime(props.session.startedAt)}</span>
+            <Show when={props.session.messageCount > 0}>
+              <span style={{ color: "var(--ctp-overlay0)" }}>
+                {formatCount(props.session.messageCount)}
+              </span>
+            </Show>
+          </div>
         </div>
       </div>
     </button>

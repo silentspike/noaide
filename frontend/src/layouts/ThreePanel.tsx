@@ -102,16 +102,17 @@ export default function ThreePanel(props: ThreePanelProps) {
         display: "flex",
         height: "100%",
         overflow: "hidden",
-        background: "var(--ctp-base)",
+        background: "var(--void, #020204)",
       }}
     >
       <div
+        data-testid="panel-left"
         style={{
           width: `${leftW()}px`,
           "min-width": leftCollapsed() ? "0" : `${MIN_PANEL_WIDTH}px`,
           overflow: "hidden auto",
           background: "var(--ctp-mantle)",
-          "border-right": "1px solid var(--ctp-surface0)",
+          "border-right": "1px solid var(--ctp-surface1)",
           transition: dragging() ? "none" : "width 0.2s ease",
         }}
       >
@@ -123,15 +124,17 @@ export default function ThreePanel(props: ThreePanelProps) {
           width: `${HANDLE_WIDTH}px`,
           cursor: "col-resize",
           background:
-            dragging() === "left" ? "var(--ctp-blue)" : "transparent",
+            dragging() === "left" ? "var(--neon-blue, #00b8ff)" : "transparent",
           "flex-shrink": "0",
           "z-index": "10",
+          transition: "background 150ms ease",
         }}
         onPointerDown={(e) => onPointerDown("left", e)}
         onDblClick={() => onHandleDoubleClick("left")}
       />
 
       <div
+        data-testid="panel-center"
         style={{
           flex: "1",
           "min-width": `${MIN_PANEL_WIDTH}px`,
@@ -147,21 +150,23 @@ export default function ThreePanel(props: ThreePanelProps) {
           width: `${HANDLE_WIDTH}px`,
           cursor: "col-resize",
           background:
-            dragging() === "right" ? "var(--ctp-blue)" : "transparent",
+            dragging() === "right" ? "var(--neon-blue, #00b8ff)" : "transparent",
           "flex-shrink": "0",
           "z-index": "10",
+          transition: "background 150ms ease",
         }}
         onPointerDown={(e) => onPointerDown("right", e)}
         onDblClick={() => onHandleDoubleClick("right")}
       />
 
       <div
+        data-testid="panel-right"
         style={{
           width: `${rightW()}px`,
           "min-width": rightCollapsed() ? "0" : `${MIN_PANEL_WIDTH}px`,
           overflow: "hidden auto",
           background: "var(--ctp-mantle)",
-          "border-left": "1px solid var(--ctp-surface0)",
+          "border-left": "1px solid var(--ctp-surface1)",
           transition: dragging() ? "none" : "width 0.2s ease",
         }}
       >
