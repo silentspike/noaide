@@ -23,6 +23,12 @@ pub struct EcsWorld {
     task_index: HashMap<Uuid, Vec<Entity>>,
     agent_index: HashMap<Uuid, Vec<Entity>>,
     api_request_index: HashMap<Uuid, Vec<Entity>>,
+    /// Maps JSONL session UUID → managed session UUID.
+    /// When a managed session spawns a CLI process, the CLI creates its own
+    /// session ID in its JSONL file. This alias redirects all data (messages,
+    /// files, tasks, etc.) from the CLI's session to the managed session so
+    /// the frontend sees everything under one session.
+    session_aliases: HashMap<Uuid, Uuid>,
 }
 
 impl EcsWorld {
@@ -35,12 +41,36 @@ impl EcsWorld {
             task_index: HashMap::new(),
             agent_index: HashMap::new(),
             api_request_index: HashMap::new(),
+            session_aliases: HashMap::new(),
         }
     }
 
     /// Create a thread-safe shared handle.
     pub fn shared(self) -> SharedEcsWorld {
         Arc::new(RwLock::new(self))
+    }
+
+    // === Session Aliases (managed ↔ JSONL linking) ===
+
+    /// Register an alias: data for `jsonl_id` will be stored under `managed_id`.
+    /// This links a CLI-created JSONL session to its noaide-managed session.
+    pub fn add_session_alias(&mut self, jsonl_id: Uuid, managed_id: Uuid) {
+        self.session_aliases.insert(jsonl_id, managed_id);
+    }
+
+    /// Resolve a session ID through the alias table.
+    /// Returns the managed session ID if an alias exists, otherwise the input ID.
+    pub fn resolve_alias(&self, id: Uuid) -> Uuid {
+        self.session_aliases.get(&id).copied().unwrap_or(id)
+    }
+
+    /// Reverse-resolve: find the JSONL session ID that maps to a managed session ID.
+    /// Returns None if no alias points to this managed ID.
+    pub fn reverse_alias(&self, managed_id: Uuid) -> Option<Uuid> {
+        self.session_aliases
+            .iter()
+            .find(|(_, mid)| **mid == managed_id)
+            .map(|(jsonl_id, _)| *jsonl_id)
     }
 
     // === Spawn ===
@@ -52,8 +82,11 @@ impl EcsWorld {
         entity
     }
 
-    pub fn spawn_message(&mut self, msg: MessageComponent) -> Entity {
-        let session_id = msg.session_id;
+    pub fn spawn_message(&mut self, mut msg: MessageComponent) -> Entity {
+        // Resolve alias: if this message belongs to a JSONL session that's linked
+        // to a managed session, redirect it to the managed session.
+        let session_id = self.resolve_alias(msg.session_id);
+        msg.session_id = session_id;
         let entity = self.world.spawn((msg,));
         self.message_index
             .entry(session_id)
@@ -62,35 +95,44 @@ impl EcsWorld {
         entity
     }
 
-    pub fn spawn_file(&mut self, file: FileComponent) -> Entity {
-        let session_id = file.session_id;
+    pub fn spawn_file(&mut self, mut file: FileComponent) -> Entity {
+        let session_id = self.resolve_alias(file.session_id);
+        file.session_id = session_id;
         let entity = self.world.spawn((file,));
         self.file_index.entry(session_id).or_default().push(entity);
         entity
     }
 
-    pub fn spawn_task(&mut self, task: TaskComponent) -> Entity {
-        let session_id = task.session_id;
+    pub fn spawn_task(&mut self, mut task: TaskComponent) -> Entity {
+        let session_id = self.resolve_alias(task.session_id);
+        task.session_id = session_id;
         let entity = self.world.spawn((task,));
         self.task_index.entry(session_id).or_default().push(entity);
         entity
     }
 
-    pub fn spawn_agent(&mut self, agent: AgentComponent) -> Entity {
-        let session_id = agent.session_id;
+    pub fn spawn_agent(&mut self, mut agent: AgentComponent) -> Entity {
+        let session_id = self.resolve_alias(agent.session_id);
+        agent.session_id = session_id;
         let entity = self.world.spawn((agent,));
         self.agent_index.entry(session_id).or_default().push(entity);
         entity
     }
 
-    pub fn spawn_api_request(&mut self, req: ApiRequestComponent) -> Entity {
-        let session_id = req.session_id;
+    pub fn spawn_api_request(&mut self, mut req: ApiRequestComponent) -> Entity {
+        let session_id = self.resolve_alias(req.session_id);
+        req.session_id = session_id;
         let entity = self.world.spawn((req,));
         self.api_request_index
             .entry(session_id)
             .or_default()
             .push(entity);
         entity
+    }
+
+    /// Check if a JSONL session ID is already aliased to a managed session.
+    pub fn is_aliased(&self, jsonl_id: Uuid) -> bool {
+        self.session_aliases.contains_key(&jsonl_id)
     }
 
     // === Query (returns cloned data — hecs::Ref cannot escape borrow) ===
@@ -367,6 +409,10 @@ mod tests {
             status_code: Some(200),
             latency_ms: Some(1500),
             timestamp: 1708000003,
+            request_headers: None,
+            response_headers: None,
+            request_size: None,
+            response_size: None,
         });
 
         assert_eq!(world.query_files_by_session(sid).len(), 1);

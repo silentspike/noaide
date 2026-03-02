@@ -1,25 +1,35 @@
-import { createSignal, Show, For } from "solid-js";
+import { Show, For } from "solid-js";
 import type { ChatMessage } from "../../types/messages";
+import { useExpanded } from "./expandedContext";
+import { useItemKey } from "./itemKeyContext";
 
 interface SystemMessageProps {
   message: ChatMessage;
 }
 
 export default function SystemMessage(props: SystemMessageProps) {
-  const [expanded, setExpanded] = createSignal(true);
+  const ctx = useExpanded();
+  const itemKey = useItemKey();
+  const expanded = () => {
+    return ctx && itemKey ? ctx.isExpanded(itemKey, true) : true;
+  };
+  const toggleExpanded = () => {
+    if (ctx && itemKey) ctx.toggle(itemKey);
+  };
 
   return (
     <div
       style={{
         margin: "4px 16px",
-        "border-left": "3px solid var(--ctp-yellow)",
-        "border-radius": "0 8px 8px 0",
-        background: "var(--ctp-surface0)",
+        "border-radius": "0 6px 6px 0",
+        background: "rgba(245, 158, 11, 0.04)",
+        border: "1px solid rgba(245, 158, 11, 0.12)",
+        "border-left": "3px solid var(--accent-gold, #f59e0b)",
         overflow: "hidden",
       }}
     >
       <button
-        onClick={() => setExpanded(!expanded())}
+        onClick={toggleExpanded}
         style={{
           display: "flex",
           "align-items": "center",
