@@ -24,15 +24,16 @@ impl SessionManager {
         }
     }
 
-    /// Spawn a new managed Claude Code session via PTY.
+    /// Spawn a new managed CLI session (claude, codex, or gemini) via PTY.
     ///
     /// Returns the session ID on success.
     pub fn spawn_managed(
         &mut self,
         working_dir: &Path,
         anthropic_base_url: Option<&str>,
+        cli_type: &str,
     ) -> Result<SessionId, SessionError> {
-        let session = ManagedSession::spawn(working_dir, anthropic_base_url)?;
+        let session = ManagedSession::spawn(working_dir, anthropic_base_url, cli_type)?;
         let id = session.id().clone();
         self.sessions.insert(id.clone(), session);
         info!(session = %id, mode = "managed", "session registered");
@@ -116,22 +117,27 @@ mod tests {
         assert!(!mgr.remove(&id));
     }
 
-    #[test]
-    fn spawn_managed_with_missing_claude() {
-        // claude binary may not be installed — we still test that
-        // the PTY system works (it will fail at spawn, not at PTY alloc)
+    #[tokio::test]
+    async fn spawn_managed_with_missing_binary() {
+        // With raw fork+exec, fork() always succeeds. If the binary doesn't
+        // exist, execvp fails in the child (exit 127) and the session transitions
+        // to Closed via PTY EOF. This tests the graceful cleanup path.
         let mut mgr = SessionManager::new();
-        let result = mgr.spawn_managed(Path::new("/tmp"), None);
-        // May succeed or fail depending on whether `claude` is in PATH
-        // Either way, no panic
-        match result {
-            Ok(id) => {
-                assert_eq!(mgr.count(), 1);
-                assert!(mgr.get(&id).is_some());
-            }
-            Err(_) => {
-                assert_eq!(mgr.count(), 0);
-            }
-        }
+        let result = mgr.spawn_managed(Path::new("/tmp"), None, "noaide-nonexistent-cli-99");
+        // fork+exec always succeeds from parent's perspective
+        let id = result.expect("spawn should succeed (fork succeeds, exec fails in child)");
+        assert_eq!(mgr.count(), 1);
+        assert!(mgr.get(&id).is_some());
+
+        // Give the child time to exec-fail and close
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Session should transition to Closed after exec failure
+        let session = mgr.get(&id).unwrap();
+        assert_eq!(
+            session.state(),
+            SessionState::Closed,
+            "Session should be Closed after exec failure in child"
+        );
     }
 }

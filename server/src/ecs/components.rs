@@ -51,6 +51,8 @@ pub enum MessageRole {
     User,
     Assistant,
     System,
+    /// Non-conversation JSONL entries: progress, summary, file-history-snapshot, etc.
+    Meta,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -62,6 +64,12 @@ pub enum MessageType {
     Thinking,
     SystemReminder,
     Error,
+    /// Hook/tool progress events
+    Progress,
+    /// Conversation summary (context compaction)
+    Summary,
+    /// File history snapshot
+    FileSnapshot,
 }
 
 // === File ===
@@ -110,4 +118,10 @@ pub struct ApiRequestComponent {
     pub status_code: Option<u16>,
     pub latency_ms: Option<u32>,
     pub timestamp: i64,
+    /// JSON-serialized Vec<(String, String)> of request headers
+    pub request_headers: Option<String>,
+    /// JSON-serialized Vec<(String, String)> of response headers
+    pub response_headers: Option<String>,
+    pub request_size: Option<u64>,
+    pub response_size: Option<u64>,
 }
