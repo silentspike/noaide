@@ -4,12 +4,31 @@ use std::time::SystemTime;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
+/// Which CLI tool created the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CliType {
+    #[default]
+    Claude,
+    Codex,
+    Gemini,
+}
+
+impl CliType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CliType::Claude => "claude",
+            CliType::Codex => "codex",
+            CliType::Gemini => "gemini",
+        }
+    }
+}
+
 /// Metadata about a discovered JSONL session file.
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
     /// Session UUID extracted from filename.
     pub id: String,
-    /// Full path to the .jsonl file.
+    /// Full path to the .jsonl/.json file.
     pub jsonl_path: PathBuf,
     /// Decoded project path (e.g., `/work/noaide`).
     pub project_path: Option<PathBuf>,
@@ -17,6 +36,10 @@ pub struct SessionInfo {
     pub last_modified: SystemTime,
     /// File size in bytes.
     pub size_bytes: u64,
+    /// Which CLI tool created this session.
+    pub cli_type: CliType,
+    /// Estimated message count (cheap: line-count for JSONL, JSON parse for Gemini).
+    pub message_count_hint: usize,
 }
 
 /// Info about a discovered subagent JSONL file.
@@ -160,12 +183,33 @@ impl SessionScanner {
                         Err(_) => continue,
                     };
 
+                    // Derive project label from Codex path structure:
+                    // ~/.codex/sessions/YYYY/MM/DD/rollout-....jsonl
+                    let codex_label = entry.path().parent().map(|p| {
+                        // Extract YYYY/MM/DD components
+                        let components: Vec<_> = p
+                            .components()
+                            .rev()
+                            .take(3)
+                            .map(|c| c.as_os_str().to_string_lossy().to_string())
+                            .collect();
+                        if components.len() == 3 {
+                            format!("{}/{}/{}", components[2], components[1], components[0])
+                        } else {
+                            "codex".to_string()
+                        }
+                    });
+
+                    let line_count = estimate_line_count(&entry.path()).await;
+
                     sessions.push(SessionInfo {
                         id: session_id,
                         jsonl_path: entry.path(),
-                        project_path: None,
+                        project_path: codex_label.map(PathBuf::from),
                         last_modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
                         size_bytes: metadata.len(),
+                        cli_type: CliType::Codex,
+                        message_count_hint: line_count,
                     });
                 }
             }
@@ -204,12 +248,28 @@ impl SessionScanner {
                     Err(_) => continue,
                 };
 
+                // Derive project label from Gemini path:
+                // ~/.gemini/tmp/{project-name-or-hash}/chats/session-*.json
+                let gemini_label = hash_entry.file_name().to_string_lossy().to_string();
+                // If it's a 64-char hex hash, truncate for display
+                let gemini_project = if gemini_label.len() == 64
+                    && gemini_label.chars().all(|c| c.is_ascii_hexdigit())
+                {
+                    format!("gemini/{}", &gemini_label[..8])
+                } else {
+                    gemini_label
+                };
+
+                let msg_count = estimate_gemini_message_count(&chat_entry.path()).await;
+
                 sessions.push(SessionInfo {
                     id: session_id,
                     jsonl_path: chat_entry.path(), // .json not .jsonl, but same field
-                    project_path: None,
+                    project_path: Some(PathBuf::from(&gemini_project)),
                     last_modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
                     size_bytes: metadata.len(),
+                    cli_type: CliType::Gemini,
+                    message_count_hint: msg_count,
                 });
             }
         }
@@ -248,12 +308,17 @@ impl SessionScanner {
                 }
             };
 
+            // Estimate message count by counting newlines (cheap)
+            let line_count = estimate_line_count(&entry.path()).await;
+
             sessions.push(SessionInfo {
                 id: session_id,
                 jsonl_path: entry.path(),
                 project_path: Some(PathBuf::from(project_path)),
                 last_modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
                 size_bytes: metadata.len(),
+                cli_type: CliType::Claude,
+                message_count_hint: line_count,
             });
         }
 
@@ -313,6 +378,29 @@ impl SessionScanner {
     /// Notify watchers about a newly discovered session.
     pub fn notify_new_session(&self, info: SessionInfo) {
         let _ = self.tx.send(info);
+    }
+}
+
+/// Estimate message count from file size (no I/O beyond stat).
+///
+/// Average JSONL line is ~1500 bytes. Using file size avoids reading
+/// the entire file into memory — critical for 200+ MB session files
+/// that would cause glibc malloc heap fragmentation and RSS spikes.
+async fn estimate_line_count(path: &Path) -> usize {
+    match tokio::fs::metadata(path).await {
+        Ok(m) => (m.len() / 1500).max(1) as usize,
+        Err(_) => 0,
+    }
+}
+
+/// Estimate message count for a Gemini JSON file from file size.
+///
+/// Gemini JSON files contain a `messages` array. Average message is ~2000 bytes.
+/// Reading and parsing the entire file every 30s would spike RSS for large sessions.
+async fn estimate_gemini_message_count(path: &Path) -> usize {
+    match tokio::fs::metadata(path).await {
+        Ok(m) => (m.len() / 2000).max(1) as usize,
+        Err(_) => 0,
     }
 }
 
@@ -493,6 +581,8 @@ mod tests {
             project_path: Some(PathBuf::from("/test")),
             last_modified: SystemTime::now(),
             size_bytes: 100,
+            cli_type: CliType::Claude,
+            message_count_hint: 0,
         };
 
         scanner.notify_new_session(info.clone());

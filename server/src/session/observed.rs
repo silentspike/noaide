@@ -257,4 +257,117 @@ mod tests {
         // (or tmux itself isn't running — both are expected failures)
         assert!(result.is_err());
     }
+
+    /// Helper: try to create a tmux session. Returns None if tmux unavailable.
+    async fn create_tmux_session(name: &str, cmd: Option<&str>) -> Option<()> {
+        let mut args = vec!["new-session", "-d", "-s", name];
+        if let Some(c) = cmd {
+            args.push(c);
+        }
+        let result = tokio::process::Command::new("tmux")
+            .args(&args)
+            .output()
+            .await;
+        match result {
+            Ok(out) if out.status.success() => Some(()),
+            _ => None,
+        }
+    }
+
+    /// Helper: kill a tmux session (cleanup).
+    async fn kill_tmux_session(name: &str) {
+        let _ = tokio::process::Command::new("tmux")
+            .args(["kill-session", "-t", name])
+            .output()
+            .await;
+    }
+
+    /// AC-5-4: Observed session detects existing JSONL + tmux session
+    #[tokio::test]
+    async fn attach_existing_tmux_session() {
+        let session_name = format!(
+            "noaide-test-{}",
+            Uuid::new_v4().as_simple().to_string().get(..8).unwrap()
+        );
+
+        // Create a tmux session; skip if tmux server can't start (e.g., no PTY in CI)
+        if create_tmux_session(&session_name, None).await.is_none() {
+            eprintln!("SKIP: tmux server not available");
+            return;
+        }
+
+        // Create a temp JSONL file
+        let dir = tempfile::tempdir().unwrap();
+        let jsonl_path = dir.path().join("test.jsonl");
+        tokio::fs::write(&jsonl_path, "{}\n").await.unwrap();
+
+        // Attach observed session — should succeed
+        let result = ObservedSession::attach(&jsonl_path, &session_name).await;
+
+        // Clean up
+        kill_tmux_session(&session_name).await;
+
+        let session = result.expect("attach should succeed with valid JSONL + tmux session");
+        assert_eq!(session.mode(), SessionMode::Observed);
+        assert_eq!(session.state(), SessionState::Active);
+        session.close().await.unwrap();
+    }
+
+    /// AC-5-5: tmux send-keys input is delivered to target session
+    #[tokio::test]
+    async fn tmux_send_keys_delivers_input() {
+        let session_name = format!(
+            "noaide-test-{}",
+            Uuid::new_v4().as_simple().to_string().get(..8).unwrap()
+        );
+
+        // Create a tmux session running `cat` (echoes input to pane)
+        if create_tmux_session(&session_name, Some("cat"))
+            .await
+            .is_none()
+        {
+            eprintln!("SKIP: tmux server not available");
+            return;
+        }
+
+        // Give tmux+cat a moment to start
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        // Create temp JSONL file
+        let dir = tempfile::tempdir().unwrap();
+        let jsonl_path = dir.path().join("test.jsonl");
+        tokio::fs::write(&jsonl_path, "{}\n").await.unwrap();
+
+        // Attach
+        let session = ObservedSession::attach(&jsonl_path, &session_name)
+            .await
+            .expect("attach should succeed");
+
+        // Send input via tmux send-keys
+        session
+            .send_input("hello from tmux test")
+            .await
+            .expect("send_input should succeed");
+
+        // Wait for tmux to process the keys
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Verify: capture tmux pane content — should contain sent text
+        let capture = tokio::process::Command::new("tmux")
+            .args(["capture-pane", "-t", &session_name, "-p"])
+            .output()
+            .await
+            .expect("capture-pane should work");
+
+        let pane_content = String::from_utf8_lossy(&capture.stdout);
+
+        // Clean up
+        session.close().await.unwrap();
+        kill_tmux_session(&session_name).await;
+
+        assert!(
+            pane_content.contains("hello from tmux test"),
+            "tmux pane should contain sent text, got: {pane_content}"
+        );
+    }
 }

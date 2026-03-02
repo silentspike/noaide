@@ -143,7 +143,7 @@ export default function CommitHistory() {
             >
               <code
                 style={{
-                  "font-family": "'Monaspace Neon', monospace",
+                  "font-family": "var(--font-mono)",
                   color: "var(--ctp-peach)",
                   "font-size": "10px",
                 }}
@@ -165,7 +165,7 @@ export default function CommitHistory() {
               >
                 <div style={{ "margin-bottom": "2px" }}>
                   <span style={{ color: "var(--ctp-overlay0)" }}>Hash: </span>
-                  <code style={{ "font-family": "'Monaspace Neon', monospace", "font-size": "10px" }}>
+                  <code style={{ "font-family": "var(--font-mono)", "font-size": "10px" }}>
                     {commit.hash}
                   </code>
                 </div>

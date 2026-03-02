@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// This is the public API type that flattens the nested JSONL structure
 /// into a single struct. Internal raw types handle deserialization from
 /// the actual JSONL format, then convert to this type.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ClaudeMessage {
     pub uuid: String,
     #[serde(rename = "type")]
@@ -37,6 +37,25 @@ pub struct ClaudeMessage {
 pub enum MessageContent {
     Text(String),
     Blocks(Vec<ContentBlock>),
+}
+
+impl Default for MessageContent {
+    fn default() -> Self {
+        MessageContent::Text(String::new())
+    }
+}
+
+impl MessageContent {
+    /// Get text content if this is a Text variant.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            MessageContent::Text(s) => Some(s),
+            MessageContent::Blocks(blocks) => blocks.iter().find_map(|b| match b {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -449,11 +468,17 @@ fn summary_to_message(raw: RawSummaryEntry) -> ClaudeMessage {
 }
 
 fn file_snapshot_to_message(raw: RawFileHistorySnapshot) -> ClaudeMessage {
+    // Preserve snapshot data in content for Full Transparency display
+    let content_text = match raw.snapshot {
+        Some(val) => val.to_string(),
+        None => String::new(),
+    };
+
     ClaudeMessage {
         uuid: raw.uuid.unwrap_or_default(),
         message_type: "file-history-snapshot".to_string(),
         role: None,
-        content: MessageContent::Text(String::new()),
+        content: MessageContent::Text(content_text),
         timestamp: raw.timestamp,
         model: None,
         stop_reason: None,

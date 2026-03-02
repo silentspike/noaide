@@ -93,6 +93,13 @@ IMPL-PLAN.md
 # ── Test Artifacts ────────────────────────────────────────────
 .playwright-cli/
 
+# ── External Source References ────────────────────────────────
+.codex-src/
+
+# ── Dev/Debug Scripts ────────────────────────────────────────
+frontend/public/test-*.js
+claude-cli-flags-index.html
+
 # ── Misc ───────────────────────────────────────────────────────
 __pycache__/
 *.pyc

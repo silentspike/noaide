@@ -13,7 +13,7 @@
   border-radius: 50%;
   background: var(--orb-color);
   will-change: transform, opacity;
-  box-shadow: 0 0 8px var(--orb-color);
+  box-shadow: 0 0 12px var(--orb-color), 0 0 4px var(--orb-color);
 }
 
 /* IDLE: Slow pulse 2s */

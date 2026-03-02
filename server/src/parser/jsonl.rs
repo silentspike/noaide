@@ -74,10 +74,18 @@ pub async fn parse_incremental(
             Ok(msg) => messages.push(msg),
             Err(e) => {
                 errors += 1;
+                // Find a valid UTF-8 boundary at or before 100 bytes
+                let max_preview = 100;
+                let boundary = trimmed
+                    .char_indices()
+                    .take_while(|(i, _)| *i < max_preview)
+                    .last()
+                    .map(|(i, c)| i + c.len_utf8())
+                    .unwrap_or(trimmed.len().min(max_preview));
                 warn!(
                     error = %e,
                     line = lines_parsed,
-                    preview = &trimmed[..trimmed.len().min(100)],
+                    preview = &trimmed[..boundary],
                     "skipping malformed JSONL line"
                 );
             }
