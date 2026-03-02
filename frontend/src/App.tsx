@@ -35,6 +35,9 @@ export function useSession(): SessionStore {
 
 export default function App() {
   const store = createSessionStore();
+  // Expose store for Playwright E2E testing / debugging
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__noaide_store = store;
   let client: TransportClient | undefined;
 
   onMount(() => {
@@ -179,8 +182,10 @@ function CenterPanel(props: { activeTab: CenterTabId; onTabChange: (tab: CenterT
           "align-items": "center",
           gap: "1px",
           padding: "0 8px",
-          background: "var(--ctp-mantle)",
-          "border-bottom": "1px solid var(--ctp-surface0)",
+          background: "rgba(14,14,24,0.88)",
+          "backdrop-filter": "blur(16px)",
+          "-webkit-backdrop-filter": "blur(16px)",
+          "border-bottom": "1px solid var(--ctp-surface1)",
           "min-height": "32px",
           "flex-shrink": "0",
         }}
@@ -188,19 +193,23 @@ function CenterPanel(props: { activeTab: CenterTabId; onTabChange: (tab: CenterT
         <For each={CENTER_TABS}>
           {(tab) => (
             <button
+              data-testid={`tab-${tab.id}`}
               onClick={() => props.onTabChange(tab.id)}
               style={{
                 padding: "6px 12px",
-                background: props.activeTab === tab.id ? "var(--ctp-base)" : "transparent",
+                background: props.activeTab === tab.id ? "rgba(0,184,255,0.06)" : "transparent",
                 border: "none",
                 "border-bottom": props.activeTab === tab.id
-                  ? "2px solid var(--ctp-blue)"
+                  ? "2px solid var(--neon-blue, #00b8ff)"
                   : "2px solid transparent",
-                color: props.activeTab === tab.id ? "var(--ctp-text)" : "var(--ctp-overlay1)",
-                "font-size": "11px",
-                "font-weight": props.activeTab === tab.id ? "600" : "400",
+                color: props.activeTab === tab.id ? "var(--bright, #f0f0f5)" : "var(--dim, #68687a)",
+                "font-size": "10px",
+                "font-weight": "700",
+                "font-family": "var(--font-mono)",
+                "text-transform": "uppercase",
+                "letter-spacing": "0.08em",
                 cursor: "pointer",
-                transition: "color 150ms ease, border-color 150ms ease",
+                transition: "color 200ms ease, border-color 200ms ease, background 200ms ease",
                 "white-space": "nowrap",
               }}
             >
@@ -290,8 +299,10 @@ function RightPanel() {
           display: "flex",
           gap: "1px",
           padding: "0 8px",
-          "border-bottom": "1px solid var(--ctp-surface0)",
-          background: "var(--ctp-mantle)",
+          "border-bottom": "1px solid var(--ctp-surface1)",
+          background: "rgba(14,14,24,0.88)",
+          "backdrop-filter": "blur(16px)",
+          "-webkit-backdrop-filter": "blur(16px)",
           "min-height": "32px",
           "align-items": "center",
         }}
@@ -302,17 +313,19 @@ function RightPanel() {
               onClick={() => setRightTab(tab)}
               style={{
                 padding: "6px 10px",
-                background: rightTab() === tab ? "var(--ctp-base)" : "transparent",
+                background: rightTab() === tab ? "rgba(0,184,255,0.06)" : "transparent",
                 border: "none",
                 "border-bottom": rightTab() === tab
-                  ? "2px solid var(--ctp-blue)"
+                  ? "2px solid var(--neon-blue, #00b8ff)"
                   : "2px solid transparent",
-                color: rightTab() === tab ? "var(--ctp-text)" : "var(--ctp-overlay1)",
-                "font-size": "11px",
-                "font-weight": rightTab() === tab ? "600" : "400",
+                color: rightTab() === tab ? "var(--bright, #f0f0f5)" : "var(--dim, #68687a)",
+                "font-size": "10px",
+                "font-weight": "700",
+                "font-family": "var(--font-mono)",
+                "text-transform": "uppercase",
+                "letter-spacing": "0.08em",
                 cursor: "pointer",
-                "text-transform": "capitalize",
-                transition: "color 150ms ease, border-color 150ms ease",
+                transition: "color 200ms ease, border-color 200ms ease, background 200ms ease",
               }}
             >
               {tab}

@@ -1,13 +1,113 @@
-import { createSignal, createMemo, Show, For } from "solid-js";
+import { createSignal, createMemo, Show, For, onMount, onCleanup } from "solid-js";
+import { useSession } from "../../App";
 import RequestRow from "./RequestRow";
 import RequestDetail, { type RequestDetailFull } from "./RequestDetail";
+import InterceptQueue from "./InterceptQueue";
 
 export default function NetworkPanel() {
-  const [requests, _setRequests] = createSignal<RequestDetailFull[]>([]);
+  const store = useSession();
+  const [requests, setRequests] = createSignal<RequestDetailFull[]>([]);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [filter, setFilter] = createSignal("");
   const [methodFilter, setMethodFilter] = createSignal<string>("all");
   const [statusFilter, setStatusFilter] = createSignal<string>("all");
+  const [interceptMode, setInterceptMode] = createSignal<"auto" | "manual">("auto");
+  const [pendingCount, setPendingCount] = createSignal(0);
+
+  async function fetchInterceptStatus() {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      const res = await fetch(`${base}/api/proxy/intercept/${sid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setInterceptMode(data.mode);
+        setPendingCount(data.pendingCount + (data.pendingResponseCount || 0));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function toggleInterceptMode() {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    const newMode = interceptMode() === "auto" ? "manual" : "auto";
+    try {
+      await fetch(`${base}/api/proxy/intercept/${sid}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: newMode }),
+      });
+      setInterceptMode(newMode);
+      if (newMode === "auto") setPendingCount(0);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function fetchRequests() {
+    const base = store.state.httpApiUrl;
+    if (!base) return;
+    const sid = store.state.activeSessionId;
+    const url = sid
+      ? `${base}/api/proxy/requests?session_id=${sid}`
+      : `${base}/api/proxy/requests`;
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const data: RequestDetailFull[] = await res.json();
+        // Merge: preserve loaded detail data (bodies/headers) from previous fetches
+        const prev = requests();
+        const detailed = new Map(
+          prev
+            .filter((r) => r.requestBody || r.responseBody)
+            .map((r) => [r.id, r]),
+        );
+        setRequests(
+          data.map((r) => {
+            const existing = detailed.get(r.id);
+            return existing ? { ...r, ...existing } : r;
+          }),
+        );
+      }
+    } catch {
+      /* ignore fetch errors — proxy may not be running */
+    }
+  }
+
+  async function selectRequest(id: string) {
+    const base = store.state.httpApiUrl;
+    if (!base) return;
+    if (selectedId() === id) {
+      setSelectedId(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${base}/api/proxy/requests/${id}`);
+      if (res.ok) {
+        const full = await res.json();
+        setRequests((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, ...full } : r)),
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    setSelectedId(id);
+  }
+
+  onMount(() => {
+    fetchRequests();
+    fetchInterceptStatus();
+    const interval = setInterval(() => {
+      fetchRequests();
+      fetchInterceptStatus();
+    }, interceptMode() === "manual" ? 1000 : 2000);
+    onCleanup(() => clearInterval(interval));
+  });
 
   const filteredRequests = createMemo(() => {
     let items = requests();
@@ -38,6 +138,22 @@ export default function NetworkPanel() {
     return items;
   });
 
+  const timelineStart = createMemo(() => {
+    const items = filteredRequests();
+    if (items.length === 0) return 0;
+    return Math.min(...items.map((r) => r.timestamp));
+  });
+
+  const timelineDuration = createMemo(() => {
+    const items = filteredRequests();
+    if (items.length === 0) return 1;
+    const start = timelineStart();
+    const end = Math.max(
+      ...items.map((r) => r.timestamp + r.latencyMs),
+    );
+    return Math.max(end - start, 1); // avoid division by zero
+  });
+
   const selectedRequest = createMemo(() => {
     const id = selectedId();
     if (!id) return null;
@@ -65,6 +181,7 @@ export default function NetworkPanel() {
         }}
       >
         <input
+          data-testid="network-filter"
           type="text"
           placeholder="Filter URL..."
           value={filter()}
@@ -81,6 +198,7 @@ export default function NetworkPanel() {
           }}
         />
         <select
+          data-testid="method-filter"
           value={methodFilter()}
           onChange={(e) => setMethodFilter(e.currentTarget.value)}
           style={{
@@ -99,6 +217,7 @@ export default function NetworkPanel() {
           <option value="DELETE">DELETE</option>
         </select>
         <select
+          data-testid="status-filter"
           value={statusFilter()}
           onChange={(e) => setStatusFilter(e.currentTarget.value)}
           style={{
@@ -115,7 +234,72 @@ export default function NetworkPanel() {
           <option value="4xx">4xx</option>
           <option value="5xx">5xx</option>
         </select>
+
+        {/* Intercept Mode Toggle */}
+        <Show when={store.state.activeSessionId}>
+          <button
+            data-testid="intercept-toggle"
+            onClick={toggleInterceptMode}
+            style={{
+              display: "flex",
+              "align-items": "center",
+              gap: "4px",
+              padding: "3px 10px",
+              "font-size": "10px",
+              "font-weight": "600",
+              background:
+                interceptMode() === "manual"
+                  ? "var(--ctp-red)"
+                  : "var(--ctp-surface1)",
+              color:
+                interceptMode() === "manual"
+                  ? "var(--ctp-base)"
+                  : "var(--ctp-overlay0)",
+              border: "none",
+              "border-radius": "4px",
+              cursor: "pointer",
+              "white-space": "nowrap",
+            }}
+          >
+            <Show when={interceptMode() === "manual"}>
+              <span
+                style={{
+                  width: "5px",
+                  height: "5px",
+                  "border-radius": "50%",
+                  background: "var(--ctp-base)",
+                  animation: "pulse-dot 1.5s ease-in-out infinite",
+                }}
+              />
+            </Show>
+            {interceptMode() === "manual" ? "Manual" : "Auto"}
+            <Show when={pendingCount() > 0}>
+              <span
+                style={{
+                  padding: "0 4px",
+                  "border-radius": "8px",
+                  background:
+                    interceptMode() === "manual"
+                      ? "var(--ctp-base)"
+                      : "var(--ctp-red)",
+                  color:
+                    interceptMode() === "manual"
+                      ? "var(--ctp-red)"
+                      : "var(--ctp-base)",
+                  "font-size": "9px",
+                  "line-height": "14px",
+                  "min-width": "14px",
+                  "text-align": "center",
+                }}
+              >
+                {pendingCount()}
+              </span>
+            </Show>
+          </button>
+        </Show>
+
         <span
+          data-testid="request-count"
           style={{
             "font-size": "11px",
             color: "var(--ctp-overlay0)",
@@ -130,7 +314,7 @@ export default function NetworkPanel() {
       <div
         style={{
           display: "grid",
-          "grid-template-columns": "60px 1fr 50px 60px 60px",
+          "grid-template-columns": "60px 58px 1fr 50px 60px 60px 160px",
           gap: "8px",
           padding: "4px 12px",
           "font-size": "10px",
@@ -142,11 +326,27 @@ export default function NetworkPanel() {
         }}
       >
         <span>Method</span>
+        <span>Time</span>
         <span>URL</span>
         <span>Status</span>
         <span>Size</span>
-        <span>Time</span>
+        <span>Latency</span>
+        <span>Waterfall</span>
       </div>
+
+      {/* Intercept Queue */}
+      <Show
+        when={
+          interceptMode() === "manual" &&
+          store.state.activeSessionId &&
+          store.state.httpApiUrl
+        }
+      >
+        <InterceptQueue
+          sessionId={store.state.activeSessionId!}
+          httpApiUrl={store.state.httpApiUrl!}
+        />
+      </Show>
 
       {/* Request list */}
       <div
@@ -178,11 +378,9 @@ export default function NetworkPanel() {
               <RequestRow
                 request={request}
                 isSelected={selectedId() === request.id}
-                onClick={() =>
-                  setSelectedId(
-                    selectedId() === request.id ? null : request.id,
-                  )
-                }
+                onClick={() => selectRequest(request.id)}
+                timelineStart={timelineStart()}
+                timelineDuration={timelineDuration()}
               />
             )}
           </For>

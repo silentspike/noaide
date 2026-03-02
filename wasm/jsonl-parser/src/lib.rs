@@ -273,4 +273,44 @@ mod tests {
         }
         assert_eq!(count, 1);
     }
+
+    #[test]
+    fn bench_10k_lines() {
+        // Generate 10000 JSONL lines
+        let mut lines = String::new();
+        for i in 0..10_000 {
+            lines.push_str(&format!(
+                r#"{{"type":"assistant","uuid":"msg-{}","message":{{"role":"assistant","content":[{{"type":"text","text":"Message {}"}}],"model":"claude-3","stop_reason":"end_turn","usage":{{"input_tokens":100,"output_tokens":50}}}}}}"#,
+                i, i
+            ));
+            lines.push('\n');
+        }
+
+        let start = std::time::Instant::now();
+        let mut count = 0;
+        for line in lines.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(entry) = serde_json::from_str::<RawEntry>(trimmed) {
+                let _msg = entry_to_message(entry);
+                count += 1;
+            }
+        }
+        let elapsed = start.elapsed();
+
+        assert_eq!(count, 10_000, "should parse all 10000 lines");
+        assert!(
+            elapsed.as_millis() < 1000,
+            "10000 lines should parse in <1000ms, took {}ms",
+            elapsed.as_millis()
+        );
+        eprintln!(
+            "bench_10k_lines: parsed {} lines in {:?} ({:.0} lines/sec)",
+            count,
+            elapsed,
+            count as f64 / elapsed.as_secs_f64()
+        );
+    }
 }

@@ -63,7 +63,11 @@ CREATE TABLE IF NOT EXISTS api_requests (
     response_body TEXT,
     status_code INTEGER,
     latency_ms INTEGER,
-    timestamp INTEGER NOT NULL
+    timestamp INTEGER NOT NULL,
+    request_headers TEXT,
+    response_headers TEXT,
+    request_size INTEGER,
+    response_size INTEGER
 )";
 
 // Standalone FTS5 table (no content= since Limbo lacks triggers)

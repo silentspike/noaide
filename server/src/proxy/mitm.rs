@@ -3,22 +3,36 @@ use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
-/// Regex patterns for API key redaction
+/// Regex patterns for API key redaction (all providers)
 static BEARER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"Bearer\s+[A-Za-z0-9_\-]+").unwrap());
+/// Anthropic keys: sk-ant-api03-...
 static SK_ANT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"sk-ant-[A-Za-z0-9_\-]+").unwrap());
+/// OpenAI keys: sk-proj-..., sk-... (but not sk-ant which is handled above)
+static SK_OPENAI_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"sk-proj-[A-Za-z0-9_\-]+").unwrap());
+/// Google API keys: AIza...
+static GOOGLE_KEY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"AIza[A-Za-z0-9_\-]{30,}").unwrap());
 
-/// Redact all API keys from a string
+/// Redact all API keys from a string (supports Anthropic, OpenAI, Google)
 pub fn redact(input: &str) -> String {
     let result = BEARER_RE.replace_all(input, "Bearer [REDACTED]");
-    SK_ANT_RE.replace_all(&result, "[REDACTED]").into_owned()
+    let result = SK_ANT_RE.replace_all(&result, "[REDACTED]");
+    let result = SK_OPENAI_RE.replace_all(&result, "[REDACTED]");
+    GOOGLE_KEY_RE
+        .replace_all(&result, "[REDACTED]")
+        .into_owned()
 }
 
 /// Logged API request record
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiRequestLog {
     pub id: String,
+    /// Session UUID that originated this request (extracted from /s/{uuid}/ proxy path prefix).
+    /// None for observed sessions or CONNECT tunnels where session attribution is not possible.
+    pub session_id: Option<String>,
     pub method: String,
     pub url: String,
     pub request_body: String,
@@ -36,6 +50,7 @@ pub struct ApiRequestLog {
 #[allow(clippy::too_many_arguments)]
 pub fn build_log(
     id: String,
+    session_id: Option<String>,
     method: &str,
     url: &str,
     request_body: &[u8],
@@ -51,6 +66,7 @@ pub fn build_log(
 
     ApiRequestLog {
         id,
+        session_id,
         method: method.to_string(),
         url: redact(url),
         request_body: redact(&req_str),
@@ -108,5 +124,48 @@ mod tests {
         assert!(!result.contains("abc123"));
         assert!(!result.contains("sk-ant-key1"));
         assert!(!result.contains("sk-ant-key2"));
+    }
+
+    #[test]
+    fn redacts_openai_project_key() {
+        let input = r#"{"key": "sk-proj-abc123def456ghi789"}"#; // gitleaks:allow
+        let result = redact(input);
+        assert!(!result.contains("sk-proj-"));
+        assert!(result.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redacts_google_api_key() {
+        let input = "x-goog-api-key: AIzaSyB1234567890abcdefghijklmnopqrst"; // gitleaks:allow
+        let result = redact(input);
+        assert!(!result.contains("AIzaSy"));
+        assert!(result.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn redacts_all_providers_in_one_string() {
+        let input = // gitleaks:allow
+            "sk-ant-api03-key1 sk-proj-key2 AIzaSyB1234567890abcdefghijklmnopqrst Bearer tok123";
+        let result = redact(input);
+        assert!(!result.contains("sk-ant-"));
+        assert!(!result.contains("sk-proj-"));
+        assert!(!result.contains("AIzaSy"));
+        assert!(!result.contains("tok123"));
+    }
+
+    #[test]
+    fn bench_redaction_overhead() {
+        let input = "Bearer sk-ant-api03-long-key-value-here and more text with sk-ant-another-key"; // gitleaks:allow
+        let start = std::time::Instant::now();
+        for _ in 0..1000 {
+            let _ = redact(input);
+        }
+        let elapsed = start.elapsed();
+        // 1000 redactions in <500ms → <0.5ms per call → well within 5ms proxy overhead budget
+        // (Debug mode is ~10x slower than release; CI may have shared-resource contention)
+        assert!(
+            elapsed.as_millis() < 500,
+            "redaction overhead too high: {elapsed:?}"
+        );
     }
 }

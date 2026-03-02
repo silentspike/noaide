@@ -1,5 +1,5 @@
-import { Show, Switch, Match } from "solid-js";
-import type { ContentBlock } from "../../types/messages";
+import { Show, For, Switch, Match } from "solid-js";
+import type { ContentBlock, ToolResultContent } from "../../types/messages";
 import EditCard from "../tools/EditCard";
 import BashCard from "../tools/BashCard";
 import ReadCard from "../tools/ReadCard";
@@ -24,23 +24,45 @@ export default function ToolCard(props: ToolCardProps) {
   const toolName = () => toolUse()?.name ?? "tool";
   const isError = () => toolResult()?.is_error === true;
   const input = () => toolUse()?.input as Record<string, unknown> | undefined;
-  const result = () => toolResult()?.content ?? "";
+
+  /** Extract text content from tool_result (handles both string and array) */
+  const resultText = (): string => {
+    const c = toolResult()?.content;
+    if (!c) return "";
+    if (typeof c === "string") return c;
+    if (Array.isArray(c)) {
+      return (c as ToolResultContent[])
+        .filter((item) => item.type === "text" && item.text)
+        .map((item) => item.text!)
+        .join("\n");
+    }
+    return String(c);
+  };
+
+  /** Extract image blocks from tool_result content array */
+  const resultImages = (): ToolResultContent[] => {
+    const c = toolResult()?.content;
+    if (!c || typeof c === "string" || !Array.isArray(c)) return [];
+    return (c as ToolResultContent[]).filter(
+      (item) => item.type === "image" && item.source,
+    );
+  };
 
   return (
-    <Switch fallback={<GenericToolCard toolName={toolName()} input={input()} result={result()} isError={isError()} />}>
+    <Switch fallback={<GenericToolCard toolName={toolName()} input={input()} result={resultText()} images={resultImages()} isError={isError()} />}>
       <Match when={toolName() === "Edit"}>
         <EditCard
           filePath={(input()?.file_path as string) ?? ""}
           oldString={input()?.old_string as string | undefined}
           newString={input()?.new_string as string | undefined}
-          result={result()}
+          result={resultText()}
           isError={isError()}
         />
       </Match>
       <Match when={toolName() === "Bash"}>
         <BashCard
           command={(input()?.command as string) ?? ""}
-          output={result()}
+          output={resultText()}
           exitCode={undefined}
           isError={isError()}
         />
@@ -53,13 +75,14 @@ export default function ToolCard(props: ToolCardProps) {
             <PdfCard
               filePath={filePath}
               pages={input()?.pages as string | undefined}
-              content={result()}
+              content={resultText()}
               isError={isError()}
             />
           ) : (
             <ReadCard
               filePath={filePath}
-              content={result()}
+              content={resultText()}
+              images={resultImages()}
               isError={isError()}
             />
           );
@@ -68,28 +91,28 @@ export default function ToolCard(props: ToolCardProps) {
       <Match when={toolName() === "Grep"}>
         <GrepCard
           pattern={(input()?.pattern as string) ?? ""}
-          results={result()}
+          results={resultText()}
           isError={isError()}
         />
       </Match>
       <Match when={toolName() === "Glob"}>
         <GlobCard
           pattern={(input()?.pattern as string) ?? ""}
-          files={result()}
+          files={resultText()}
           isError={isError()}
         />
       </Match>
       <Match when={toolName() === "WebSearch"}>
         <WebSearchCard
           query={(input()?.query as string) ?? ""}
-          results={result()}
+          results={resultText()}
           isError={isError()}
         />
       </Match>
       <Match when={toolName() === "WebFetch"}>
         <WebFetchCard
           url={(input()?.url as string) ?? ""}
-          content={result()}
+          content={resultText()}
           isError={isError()}
         />
       </Match>
@@ -98,7 +121,7 @@ export default function ToolCard(props: ToolCardProps) {
           operation={(input()?.operation as string) ?? ""}
           filePath={(input()?.filePath as string) ?? ""}
           line={input()?.line as number | undefined}
-          result={result()}
+          result={resultText()}
           isError={isError()}
         />
       </Match>
@@ -124,6 +147,7 @@ function GenericToolCard(props: {
   toolName: string;
   input?: Record<string, unknown>;
   result: string;
+  images?: ToolResultContent[];
   isError: boolean;
 }) {
   const inputText = () => {
@@ -149,6 +173,9 @@ function GenericToolCard(props: {
           {inputText()}
         </pre>
       </Show>
+      <Show when={props.images && props.images.length > 0}>
+        <ToolResultImages images={props.images!} />
+      </Show>
       <Show when={props.result}>
         <pre
           style={{
@@ -166,5 +193,36 @@ function GenericToolCard(props: {
         </pre>
       </Show>
     </ToolCardBase>
+  );
+}
+
+/** Render images from tool_result content (e.g. Read tool on PNG/JPG) */
+function ToolResultImages(props: { images: ToolResultContent[] }) {
+  return (
+    <div style={{ display: "flex", "flex-wrap": "wrap", gap: "8px", margin: "6px 0" }}>
+      <For each={props.images}>
+        {(img) => (
+          <div
+            style={{
+              "border-radius": "8px",
+              overflow: "hidden",
+              border: "1px solid var(--ctp-surface1)",
+              "max-width": "100%",
+            }}
+          >
+            <img
+              src={`data:${img.source!.media_type};base64,${img.source!.data}`}
+              alt="Tool result image"
+              style={{
+                "max-width": "100%",
+                "max-height": "400px",
+                "object-fit": "contain",
+                display: "block",
+              }}
+            />
+          </div>
+        )}
+      </For>
+    </div>
   );
 }

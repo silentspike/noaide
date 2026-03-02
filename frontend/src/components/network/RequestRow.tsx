@@ -1,3 +1,5 @@
+import { createSignal, Show } from "solid-js";
+
 interface ApiRequest {
   id: string;
   method: string;
@@ -7,19 +9,34 @@ interface ApiRequest {
   requestSize: number;
   responseSize: number;
   timestamp: number;
+  requestPreview?: string;
+  responsePreview?: string;
 }
 
 interface RequestRowProps {
   request: ApiRequest;
   isSelected: boolean;
   onClick: () => void;
+  /** Earliest timestamp in the current request set (ms) */
+  timelineStart: number;
+  /** Total timeline duration (ms) */
+  timelineDuration: number;
 }
 
 function statusColor(code: number): string {
-  if (code >= 200 && code < 300) return "var(--ctp-green)";
-  if (code >= 400 && code < 500) return "var(--ctp-yellow)";
-  if (code >= 500) return "var(--ctp-red)";
-  return "var(--ctp-overlay1)";
+  if (code >= 200 && code < 300) return "#a6e3a1"; // ctp-green
+  if (code >= 300 && code < 400) return "#89b4fa"; // ctp-blue (redirects)
+  if (code >= 400 && code < 500) return "#f9e2af"; // ctp-yellow
+  if (code >= 500) return "#f38ba8"; // ctp-red
+  return "#a6adc8"; // ctp-overlay1
+}
+
+function statusColorDark(code: number): string {
+  if (code >= 200 && code < 300) return "#40a02b";
+  if (code >= 300 && code < 400) return "#1e66f5";
+  if (code >= 400 && code < 500) return "#df8e1d";
+  if (code >= 500) return "#d20f39";
+  return "#6c7086";
 }
 
 function formatSize(bytes: number): string {
@@ -28,9 +45,19 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+function formatTime(timestamp: number): string {
+  const d = new Date(timestamp);
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+
 function shortUrl(url: string): string {
   try {
     const u = new URL(url);
+    // CONNECT tunnel URLs like tunnel://host:port have no useful pathname
+    if (u.protocol === "tunnel:") return u.host;
     return u.pathname;
   } catch {
     return url;
@@ -40,61 +67,216 @@ function shortUrl(url: string): string {
 export type { ApiRequest };
 
 export default function RequestRow(props: RequestRowProps) {
+  const [hovered, setHovered] = createSignal(false);
+
+  const barOffset = () => {
+    if (props.timelineDuration <= 0) return 0;
+    return (
+      ((props.request.timestamp - props.timelineStart) /
+        props.timelineDuration) *
+      100
+    );
+  };
+
+  const barWidth = () => {
+    if (props.timelineDuration <= 0) return 100;
+    const pct = (props.request.latencyMs / props.timelineDuration) * 100;
+    return Math.max(pct, 4); // minimum 4% for visibility
+  };
+
+  const color = () => statusColor(props.request.statusCode);
+  const colorDark = () => statusColorDark(props.request.statusCode);
+
+  const hasPreview = () =>
+    props.request.requestPreview || props.request.responsePreview;
+
   return (
     <button
+      data-testid={`request-row-${props.request.id}`}
       onClick={() => props.onClick()}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display: "grid",
-        "grid-template-columns": "60px 1fr 50px 60px 60px",
-        gap: "8px",
-        "align-items": "center",
+        display: "flex",
+        "flex-direction": "column",
         width: "100%",
-        padding: "6px 12px",
+        padding: "0",
         background: props.isSelected
           ? "var(--ctp-surface0)"
-          : "transparent",
+          : hovered()
+            ? "var(--ctp-surface0)80"
+            : "transparent",
         border: "none",
         "border-bottom": "1px solid var(--ctp-surface0)",
         cursor: "pointer",
         "text-align": "left",
         color: "var(--ctp-text)",
-        "font-size": "12px",
         "font-family": "var(--font-mono)",
+        transition: "background 150ms ease",
       }}
     >
-      <span
+      {/* Primary row: method, url, status, size, time, waterfall */}
+      <div
         style={{
-          "font-weight": "600",
-          color: "var(--ctp-blue)",
+          display: "grid",
+          "grid-template-columns": "60px 58px 1fr 50px 60px 60px 160px",
+          gap: "8px",
+          "align-items": "center",
+          padding: "6px 12px 2px 12px",
+          "font-size": "12px",
         }}
       >
-        {props.request.method}
-      </span>
-      <span
-        style={{
-          overflow: "hidden",
-          "text-overflow": "ellipsis",
-          "white-space": "nowrap",
-          color: "var(--ctp-subtext0)",
-        }}
-        title={props.request.url}
-      >
-        {shortUrl(props.request.url)}
-      </span>
-      <span
-        style={{
-          "font-weight": "600",
-          color: statusColor(props.request.statusCode),
-        }}
-      >
-        {props.request.statusCode}
-      </span>
-      <span style={{ color: "var(--ctp-overlay1)" }}>
-        {formatSize(props.request.responseSize)}
-      </span>
-      <span style={{ color: "var(--ctp-overlay1)" }}>
-        {props.request.latencyMs}ms
-      </span>
+        <span style={{ "font-weight": "600", color: "var(--ctp-blue)" }}>
+          {props.request.method}
+        </span>
+        <span
+          style={{
+            "font-size": "10px",
+            color: "var(--ctp-overlay1)",
+            "font-variant-numeric": "tabular-nums",
+          }}
+        >
+          {formatTime(props.request.timestamp)}
+        </span>
+        <span
+          style={{
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
+            color: "var(--ctp-subtext0)",
+          }}
+          title={props.request.url}
+        >
+          {shortUrl(props.request.url)}
+        </span>
+        <span style={{ "font-weight": "600", color: color() }}>
+          {props.request.statusCode}
+        </span>
+        <span style={{ color: "var(--ctp-overlay1)" }}>
+          {formatSize(props.request.responseSize)}
+        </span>
+        <span style={{ color: "var(--ctp-overlay1)" }}>
+          {props.request.latencyMs}ms
+        </span>
+        {/* Waterfall bar */}
+        <div
+          style={{
+            position: "relative",
+            height: "16px",
+            background: "var(--ctp-mantle)",
+            "border-radius": "2px",
+            overflow: "hidden",
+          }}
+          title={`${props.request.latencyMs}ms — offset ${Math.round(props.request.timestamp - props.timelineStart)}ms`}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: "0",
+              width: `${barOffset()}%`,
+              top: "7px",
+              height: "2px",
+              background: `${color()}30`,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: `${barOffset()}%`,
+              width: `${barWidth()}%`,
+              top: "2px",
+              height: "12px",
+              background: `linear-gradient(180deg, ${color()}, ${colorDark()})`,
+              "border-radius": "2px",
+              "box-shadow": `0 1px 3px ${color()}50, inset 0 1px 0 ${color()}40`,
+              transition: "opacity 150ms ease",
+              opacity: hovered() ? "1" : "0.85",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: `calc(${barOffset() + barWidth()}% + 4px)`,
+              top: "1px",
+              "font-size": "9px",
+              "font-weight": "500",
+              color: color(),
+              "white-space": "nowrap",
+              opacity: hovered() ? "1" : "0",
+              transition: "opacity 150ms ease",
+            }}
+          >
+            {props.request.latencyMs}ms
+          </div>
+        </div>
+      </div>
+
+      {/* Preview row: shows request/response content summary */}
+      <Show when={hasPreview()}>
+        <div
+          style={{
+            display: "grid",
+            "grid-template-columns": "60px 58px 1fr 1fr",
+            gap: "8px",
+            padding: "0 12px 5px 12px",
+            "font-size": "10px",
+            "line-height": "1.4",
+          }}
+        >
+          {/* Spacers to align with method + time columns */}
+          <span />
+          <span />
+          {/* Request preview */}
+          <Show when={props.request.requestPreview}>
+            <span
+              style={{
+                color: "var(--ctp-overlay0)",
+                overflow: "hidden",
+                "text-overflow": "ellipsis",
+                "white-space": "nowrap",
+              }}
+              title={props.request.requestPreview}
+            >
+              <span
+                style={{
+                  color: "var(--ctp-mauve)",
+                  "font-weight": "500",
+                  "margin-right": "4px",
+                }}
+              >
+                REQ
+              </span>
+              {props.request.requestPreview}
+            </span>
+          </Show>
+          <Show when={!props.request.requestPreview}>
+            <span />
+          </Show>
+          {/* Response preview */}
+          <Show when={props.request.responsePreview}>
+            <span
+              style={{
+                color: "var(--ctp-overlay0)",
+                overflow: "hidden",
+                "text-overflow": "ellipsis",
+                "white-space": "nowrap",
+              }}
+              title={props.request.responsePreview}
+            >
+              <span
+                style={{
+                  color: color(),
+                  "font-weight": "500",
+                  "margin-right": "4px",
+                }}
+              >
+                RES
+              </span>
+              {props.request.responsePreview}
+            </span>
+          </Show>
+        </div>
+      </Show>
     </button>
   );
 }

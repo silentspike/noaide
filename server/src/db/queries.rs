@@ -332,7 +332,7 @@ impl Db {
     pub async fn insert_api_request(&self, r: &ApiRequestComponent) -> DbResult<()> {
         self.conn
             .execute(
-                "INSERT INTO api_requests (id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO api_requests (id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 limbo::params!(
                     r.id.to_string(),
                     r.session_id.to_string(),
@@ -342,7 +342,11 @@ impl Db {
                     option_to_value(&r.response_body),
                     option_u16_to_value(r.status_code),
                     option_u32_to_value(r.latency_ms),
-                    r.timestamp
+                    r.timestamp,
+                    option_to_value(&r.request_headers),
+                    option_to_value(&r.response_headers),
+                    option_u64_to_value(r.request_size),
+                    option_u64_to_value(r.response_size)
                 ),
             )
             .await?;
@@ -356,24 +360,31 @@ impl Db {
         let mut rows = self
             .conn
             .query(
-                "SELECT id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp FROM api_requests WHERE session_id = ?1",
+                "SELECT id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size FROM api_requests WHERE session_id = ?1 ORDER BY timestamp",
                 limbo::params!(session_id.to_string()),
             )
             .await?;
 
         let mut result = Vec::new();
         while let Some(row) = rows.next().await? {
-            result.push(ApiRequestComponent {
-                id: text_to_uuid(&row.get_value(0)?)?,
-                session_id: text_to_uuid(&row.get_value(1)?)?,
-                method: text_value(&row.get_value(2)?)?,
-                url: text_value(&row.get_value(3)?)?,
-                request_body: optional_text(&row.get_value(4)?),
-                response_body: optional_text(&row.get_value(5)?),
-                status_code: optional_int(&row.get_value(6)?).map(|v| v as u16),
-                latency_ms: optional_int(&row.get_value(7)?).map(|v| v as u32),
-                timestamp: int_value(&row.get_value(8)?)?,
-            });
+            result.push(row_to_api_request(&row)?);
+        }
+        Ok(result)
+    }
+
+    /// Get all captured API requests (across all sessions), ordered by timestamp.
+    pub async fn get_all_api_requests(&self) -> DbResult<Vec<ApiRequestComponent>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size FROM api_requests ORDER BY timestamp",
+                (),
+            )
+            .await?;
+
+        let mut result = Vec::new();
+        while let Some(row) = rows.next().await? {
+            result.push(row_to_api_request(&row)?);
         }
         Ok(result)
     }
@@ -466,6 +477,13 @@ fn option_u16_to_value(opt: Option<u16>) -> Value {
     }
 }
 
+fn option_u64_to_value(opt: Option<u64>) -> Value {
+    match opt {
+        Some(v) => Value::Integer(v as i64),
+        None => Value::Null,
+    }
+}
+
 fn option_uuid_to_value(opt: &Option<Uuid>) -> Value {
     match opt {
         Some(u) => Value::Text(u.to_string()),
@@ -497,6 +515,7 @@ fn role_to_str(r: MessageRole) -> &'static str {
         MessageRole::User => "user",
         MessageRole::Assistant => "assistant",
         MessageRole::System => "system",
+        MessageRole::Meta => "meta",
     }
 }
 
@@ -505,6 +524,7 @@ fn str_to_role(s: &str) -> MessageRole {
         "user" => MessageRole::User,
         "assistant" => MessageRole::Assistant,
         "system" => MessageRole::System,
+        "meta" => MessageRole::Meta,
         _ => MessageRole::User,
     }
 }
@@ -517,6 +537,9 @@ fn message_type_to_str(t: MessageType) -> &'static str {
         MessageType::Thinking => "thinking",
         MessageType::SystemReminder => "system_reminder",
         MessageType::Error => "error",
+        MessageType::Progress => "progress",
+        MessageType::Summary => "summary",
+        MessageType::FileSnapshot => "file_snapshot",
     }
 }
 
@@ -528,8 +551,29 @@ fn str_to_message_type(s: &str) -> MessageType {
         "thinking" => MessageType::Thinking,
         "system_reminder" => MessageType::SystemReminder,
         "error" => MessageType::Error,
+        "progress" => MessageType::Progress,
+        "summary" => MessageType::Summary,
+        "file_snapshot" => MessageType::FileSnapshot,
         _ => MessageType::Text,
     }
+}
+
+fn row_to_api_request(row: &limbo::Row) -> DbResult<ApiRequestComponent> {
+    Ok(ApiRequestComponent {
+        id: text_to_uuid(&row.get_value(0)?)?,
+        session_id: text_to_uuid(&row.get_value(1)?)?,
+        method: text_value(&row.get_value(2)?)?,
+        url: text_value(&row.get_value(3)?)?,
+        request_body: optional_text(&row.get_value(4)?),
+        response_body: optional_text(&row.get_value(5)?),
+        status_code: optional_int(&row.get_value(6)?).map(|v| v as u16),
+        latency_ms: optional_int(&row.get_value(7)?).map(|v| v as u32),
+        timestamp: int_value(&row.get_value(8)?)?,
+        request_headers: optional_text(&row.get_value(9)?),
+        response_headers: optional_text(&row.get_value(10)?),
+        request_size: optional_int(&row.get_value(11)?).map(|v| v as u64),
+        response_size: optional_int(&row.get_value(12)?).map(|v| v as u64),
+    })
 }
 
 fn row_to_message(row: &limbo::Row) -> DbResult<MessageComponent> {

@@ -1,11 +1,24 @@
-import { createSignal, Show } from "solid-js";
+import { Show } from "solid-js";
+import { useExpanded } from "./expandedContext";
+import { useItemKey } from "./itemKeyContext";
 
 interface ThinkingBlockProps {
   text: string;
+  thinkingIndex?: number;
 }
 
 export default function ThinkingBlock(props: ThinkingBlockProps) {
-  const [expanded, setExpanded] = createSignal(false);
+  const ctx = useExpanded();
+  const itemKey = useItemKey();
+  const thinkingKey = () => itemKey ? `${itemKey}-thinking-${props.thinkingIndex ?? 0}` : undefined;
+  const expanded = () => {
+    const key = thinkingKey();
+    return ctx && key ? ctx.isExpanded(key, false) : false;
+  };
+  const toggleExpanded = () => {
+    const key = thinkingKey();
+    if (ctx && key) ctx.toggle(key);
+  };
 
   const preview = () => {
     const lines = props.text.split("\n");
@@ -17,14 +30,14 @@ export default function ThinkingBlock(props: ThinkingBlockProps) {
     <div
       style={{
         margin: "6px 0",
-        "border-left": "3px solid var(--ctp-mauve)",
+        "border-left": "3px solid var(--neon-purple, #a855f7)",
         "border-radius": "0 6px 6px 0",
-        background: "rgba(203, 166, 247, 0.08)",
+        background: "rgba(168, 85, 247, 0.06)",
         overflow: "hidden",
       }}
     >
       <button
-        onClick={() => setExpanded(!expanded())}
+        onClick={toggleExpanded}
         style={{
           display: "flex",
           "align-items": "center",

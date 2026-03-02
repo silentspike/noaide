@@ -1,6 +1,10 @@
+pub mod codex;
+pub mod gemini;
 pub mod jsonl;
 pub mod types;
 
+pub use codex::parse_codex_file;
+pub use gemini::parse_gemini_file;
 pub use jsonl::{parse_file, parse_incremental, parse_line};
 pub use types::{ClaudeMessage, ContentBlock, ImageSource, MessageContent};
 
@@ -10,18 +14,37 @@ use crate::ecs::components::{MessageComponent, MessageRole, MessageType};
 
 /// Convert a parsed ClaudeMessage into an ECS MessageComponent.
 ///
-/// Returns `None` for message types that don't map to conversation
-/// messages (e.g., `progress`, `file-history-snapshot`).
+/// Full Transparency: ALL JSONL entry types are converted — nothing is dropped.
+/// Non-conversation types (progress, summary, file-history-snapshot) get
+/// `MessageRole::Meta` and a specific `MessageType` variant.
 pub fn message_to_component(msg: &ClaudeMessage, session_id: Uuid) -> Option<MessageComponent> {
-    let role = match msg.message_type.as_str() {
-        "user" => MessageRole::User,
-        "assistant" => MessageRole::Assistant,
-        "system" | "system-reminder" => MessageRole::System,
-        // progress, summary, file-history-snapshot etc. are not conversation messages
-        _ => return None,
+    let (role, meta_type) = match msg.message_type.as_str() {
+        "user" => (MessageRole::User, None),
+        "assistant" => (MessageRole::Assistant, None),
+        "system" | "system-reminder" => (MessageRole::System, None),
+        "progress" => (MessageRole::Meta, Some(MessageType::Progress)),
+        "summary" => (MessageRole::Meta, Some(MessageType::Summary)),
+        "file-history-snapshot" => (MessageRole::Meta, Some(MessageType::FileSnapshot)),
+        _ => (MessageRole::Meta, Some(MessageType::Text)),
     };
 
-    let (content_text, msg_type) = extract_content_and_type(&msg.content, &msg.message_type);
+    let (content_text, msg_type) = if let Some(mt) = meta_type {
+        // For meta entries, content is already a flat string (from types.rs)
+        let text = match &msg.content {
+            MessageContent::Text(s) => s.clone(),
+            MessageContent::Blocks(blocks) => blocks
+                .iter()
+                .filter_map(|b| match b {
+                    ContentBlock::Text { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        (text, mt)
+    } else {
+        extract_content_and_type(&msg.content, &msg.message_type)
+    };
 
     // Preserve full ContentBlock structure as JSON for the API to return
     let content_blocks_json = match &msg.content {
@@ -245,12 +268,12 @@ mod tests {
     }
 
     #[test]
-    fn message_to_component_skips_progress() {
+    fn message_to_component_includes_progress() {
         let msg = ClaudeMessage {
             uuid: "test".to_string(),
             message_type: "progress".to_string(),
             role: None,
-            content: MessageContent::Text(String::new()),
+            content: MessageContent::Text("{\"type\":\"hook_progress\"}".to_string()),
             timestamp: None,
             model: None,
             stop_reason: None,
@@ -265,6 +288,62 @@ mod tests {
             output_tokens: None,
         };
 
-        assert!(message_to_component(&msg, Uuid::new_v4()).is_none());
+        let component = message_to_component(&msg, Uuid::new_v4()).unwrap();
+        assert_eq!(component.role, MessageRole::Meta);
+        assert_eq!(component.message_type, MessageType::Progress);
+        assert!(component.content.contains("hook_progress"));
+    }
+
+    #[test]
+    fn message_to_component_includes_summary() {
+        let msg = ClaudeMessage {
+            uuid: "sum-1".to_string(),
+            message_type: "summary".to_string(),
+            role: None,
+            content: MessageContent::Text("Push Notification Plan".to_string()),
+            timestamp: None,
+            model: None,
+            stop_reason: None,
+            cost_usd: None,
+            duration_ms: None,
+            is_sidechain: None,
+            parent_uuid: None,
+            agent_id: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
+            input_tokens: None,
+            output_tokens: None,
+        };
+
+        let component = message_to_component(&msg, Uuid::new_v4()).unwrap();
+        assert_eq!(component.role, MessageRole::Meta);
+        assert_eq!(component.message_type, MessageType::Summary);
+        assert_eq!(component.content, "Push Notification Plan");
+    }
+
+    #[test]
+    fn message_to_component_includes_file_snapshot() {
+        let msg = ClaudeMessage {
+            uuid: "snap-1".to_string(),
+            message_type: "file-history-snapshot".to_string(),
+            role: None,
+            content: MessageContent::Text("{\"files\":[\"a.rs\"]}".to_string()),
+            timestamp: None,
+            model: None,
+            stop_reason: None,
+            cost_usd: None,
+            duration_ms: None,
+            is_sidechain: None,
+            parent_uuid: None,
+            agent_id: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
+            input_tokens: None,
+            output_tokens: None,
+        };
+
+        let component = message_to_component(&msg, Uuid::new_v4()).unwrap();
+        assert_eq!(component.role, MessageRole::Meta);
+        assert_eq!(component.message_type, MessageType::FileSnapshot);
     }
 }
