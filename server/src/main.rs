@@ -474,14 +474,12 @@ async fn main() -> anyhow::Result<()> {
 
                                         // Strategy 2: Match by CLI type (Codex/Gemini — their
                                         // JSONL paths don't encode the project directory)
-                                        if managed_id.is_none() {
-                                            if let Some(cli_type) = detect_cli_type_from_path(path)
-                                            {
-                                                if cli_type != "claude" {
-                                                    let pending = pending_cli_watch.read().await;
-                                                    managed_id = pending.get(cli_type).copied();
-                                                }
-                                            }
+                                        if managed_id.is_none()
+                                            && let Some(cli_type) = detect_cli_type_from_path(path)
+                                            && cli_type != "claude"
+                                        {
+                                            let pending = pending_cli_watch.read().await;
+                                            managed_id = pending.get(cli_type).copied();
                                         }
 
                                         if let Some(mid) = managed_id {
@@ -686,15 +684,13 @@ async fn main() -> anyhow::Result<()> {
                                 };
 
                                 // Strategy 2: Match by CLI type (Codex/Gemini)
-                                if managed_id.is_none() {
-                                    if let Some(cli_type) =
+                                if managed_id.is_none()
+                                    && let Some(cli_type) =
                                         detect_cli_type_from_path(&session_info.jsonl_path)
-                                    {
-                                        if cli_type != "claude" {
-                                            let pending = pending_cli_rescan.read().await;
-                                            managed_id = pending.get(cli_type).copied();
-                                        }
-                                    }
+                                    && cli_type != "claude"
+                                {
+                                    let pending = pending_cli_rescan.read().await;
+                                    managed_id = pending.get(cli_type).copied();
                                 }
 
                                 if let Some(mid) = managed_id {
@@ -1131,8 +1127,8 @@ async fn api_get_messages(
             Ok(messages) => {
                 let total = messages.len();
                 // Paginate from the end: newest entries first by default
-                let start = if offset < total { total - offset } else { 0 };
-                let range_start = if start > limit { start - limit } else { 0 };
+                let start = total.saturating_sub(offset);
+                let range_start = start.saturating_sub(limit);
 
                 let json: Vec<serde_json::Value> = messages[range_start..start]
                     .iter()
@@ -1157,11 +1153,11 @@ async fn api_get_messages(
     let world = state.ecs.read().await;
     let messages = world.query_messages_by_session(uuid);
     let total = messages.len();
-    let start = if offset < total { total - offset } else { 0 };
-    let range_start = if start > limit { start - limit } else { 0 };
+    let start = total.saturating_sub(offset);
+    let range_start = start.saturating_sub(limit);
     let json: Vec<serde_json::Value> = messages[range_start..start]
         .iter()
-        .map(|m| component_to_json(m))
+        .map(component_to_json)
         .collect();
     axum::Json(serde_json::json!({
         "messages": json,
@@ -1693,17 +1689,17 @@ fn extract_request_preview(body: &str) -> String {
     if let Some(model) = val.get("model").and_then(|m| m.as_str()) {
         parts.push(model.to_string());
     }
-    if let Some(msgs) = val.get("messages").and_then(|m| m.as_array()) {
-        if let Some(last) = msgs.last() {
-            let role = last.get("role").and_then(|r| r.as_str()).unwrap_or("?");
-            let content = last.get("content").and_then(|c| c.as_str()).unwrap_or("");
-            let truncated = if content.len() > 60 {
-                format!("{}...", &content[..60])
-            } else {
-                content.to_string()
-            };
-            parts.push(format!("[{role}] {truncated}"));
-        }
+    if let Some(msgs) = val.get("messages").and_then(|m| m.as_array())
+        && let Some(last) = msgs.last()
+    {
+        let role = last.get("role").and_then(|r| r.as_str()).unwrap_or("?");
+        let content = last.get("content").and_then(|c| c.as_str()).unwrap_or("");
+        let truncated = if content.len() > 60 {
+            format!("{}...", &content[..60])
+        } else {
+            content.to_string()
+        };
+        parts.push(format!("[{role}] {truncated}"));
     }
     if parts.is_empty() {
         truncate_preview(body, 80)
