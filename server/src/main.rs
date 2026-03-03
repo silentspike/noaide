@@ -538,13 +538,18 @@ async fn main() -> anyhow::Result<()> {
                                             .duration_since(std::time::UNIX_EPOCH)
                                             .map(|d| d.as_secs() as i64)
                                             .unwrap_or(0);
-                                        let first_ts = discovery::extract_first_timestamp(path).await;
+                                        let first_ts =
+                                            discovery::extract_first_timestamp(path).await;
                                         world.spawn_session(SessionComponent {
                                             id: effective_sid,
                                             path: project_path.unwrap_or_default(),
                                             status: SessionStatus::Active,
                                             model: None,
-                                            started_at: if first_ts > 0 { first_ts } else { now_epoch },
+                                            started_at: if first_ts > 0 {
+                                                first_ts
+                                            } else {
+                                                now_epoch
+                                            },
                                             last_activity_at: now_epoch,
                                             cost: None,
                                         });
@@ -569,7 +574,10 @@ async fn main() -> anyhow::Result<()> {
                                             .filter_map(discovery::parse_iso_to_epoch_secs)
                                             .max();
                                         if let Some(ts) = latest_ts {
-                                            ecs_handle.write().await.update_last_activity_at(effective_sid, ts);
+                                            ecs_handle
+                                                .write()
+                                                .await
+                                                .update_last_activity_at(effective_sid, ts);
                                         }
 
                                         // Serialize ALL new messages for push to browser via bus.
