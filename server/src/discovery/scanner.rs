@@ -538,8 +538,8 @@ pub fn parse_iso_to_epoch_secs(s: &str) -> Option<i64> {
 
     // Months
     let is_leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    for m in 0..(month - 1) as usize {
-        total_days += days_in_month[m];
+    for (m, &d) in days_in_month.iter().enumerate().take((month - 1) as usize) {
+        total_days += d;
         if m == 1 && is_leap {
             total_days += 1;
         }
