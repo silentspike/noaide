@@ -1,5 +1,5 @@
 import { createStore, reconcile } from "solid-js/store";
-import { createMemo, batch } from "solid-js";
+import { createMemo, createSignal, batch } from "solid-js";
 import type { ConnectionStatus } from "../transport/client";
 import type { QualityTier, EventEnvelope } from "../transport/codec";
 import type { ChatMessage, OrbState, ContentBlock } from "../types/messages";
@@ -29,6 +29,8 @@ export interface Session {
   status: "active" | "idle" | "archived" | "error";
   model?: string;
   startedAt: number;
+  /** Most recent activity timestamp (updated on SSE events), used for sort. */
+  lastActivityAt: number;
   messageCount: number;
   cost?: number;
   cliType?: "claude" | "codex" | "gemini";
@@ -56,6 +58,28 @@ export interface SessionState {
   loadingProgress: LoadingProgress;
 }
 
+/** Map model name to context window size (tokens). */
+function modelContextWindow(model: string | null | undefined): number {
+  if (!model) return 200_000;
+  const m = model.toLowerCase();
+
+  // Gemini models — 1M context
+  if (m.includes("gemini")) return 1_048_576;
+
+  // Codex / OpenAI models
+  if (m.includes("codex")) return 258_400;
+  if (m.includes("o3")) return 200_000;
+  if (m.includes("o4-mini") || m.includes("o1")) return 200_000;
+  if (m.includes("gpt-4o")) return 128_000;
+  if (m.includes("gpt-4")) return 128_000;
+  if (m.includes("gpt-3.5")) return 16_385;
+
+  // Claude models — 200K context
+  if (m.includes("claude")) return 200_000;
+
+  return 200_000;
+}
+
 export function createSessionStore() {
   const [state, setState] = createStore<SessionState>({
     sessions: [],
@@ -76,6 +100,10 @@ export function createSessionStore() {
       messagesExpected: 0,
     },
   });
+
+  // Bumped on every fetchSessions / bus event that changes session data.
+  // Dependents (e.g., sorted session list) read this to guarantee re-evaluation.
+  const [sessionsVersion, setSessionsVersion] = createSignal(0);
 
   const activeSession = createMemo(
     () => state.sessions.find((s) => s.id === state.activeSessionId) ?? null,
@@ -116,6 +144,7 @@ export function createSessionStore() {
         status: string;
         model: string | null;
         startedAt: number;
+        lastActivityAt: number;
         cost: number | null;
         messageCount: number;
         cliType?: string;
@@ -128,12 +157,14 @@ export function createSessionStore() {
         status: mapStatus(s.status),
         model: s.model ?? undefined,
         startedAt: s.startedAt * 1000,
+        lastActivityAt: (s.lastActivityAt || s.startedAt) * 1000,
         messageCount: s.messageCount,
         cost: s.cost ?? undefined,
         cliType: (s.cliType as Session["cliType"]) ?? "claude",
       }));
       batch(() => {
         setState("sessions", reconcile(sessions, { key: "id" }));
+        setSessionsVersion((v) => v + 1);
       });
     } catch (e) {
       console.warn("[session] fetchSessions failed:", e);
@@ -253,9 +284,11 @@ export function createSessionStore() {
         converted[i] = convertMessageRow(m);
         seenUuids.add(m.uuid);
 
-        const msgTokens = (m.inputTokens ?? 0) + (m.outputTokens ?? 0)
-          + (m.cacheCreationInputTokens ?? 0) + (m.cacheReadInputTokens ?? 0);
-        totalTokenCount += msgTokens || (m.tokens ?? 0);
+        // inputTokens on an assistant response = current context window usage
+        // (includes entire conversation up to that point). Use the LAST value.
+        if (m.inputTokens && m.inputTokens > 0) {
+          totalTokenCount = m.inputTokens;
+        }
 
         if (m.model) lastModel = m.model;
       }
@@ -265,7 +298,10 @@ export function createSessionStore() {
       batch(() => {
         setState("messages", converted);
         setState("contextTokensUsed", totalTokenCount);
-        if (lastModel) setState("activeModel", lastModel);
+        if (lastModel) {
+          setState("activeModel", lastModel);
+          setState("contextTokensMax", modelContextWindow(lastModel));
+        }
         if (!silent) setState("loadingProgress", "loading", false);
       });
     } catch (e) {
@@ -298,6 +334,8 @@ export function createSessionStore() {
 
         if (payload?.type === "new_messages" && Array.isArray(payload.messages)) {
           batch(() => {
+            // Update last activity timestamp for sort order
+            setState("sessions", (s) => s.id === sessionId, "lastActivityAt", Date.now());
             for (const m of payload.messages) {
               addMessage(convertMessageRow(m));
             }
@@ -381,15 +419,14 @@ export function createSessionStore() {
 
     if (msg.model) {
       setState("activeModel", msg.model);
+      setState("contextTokensMax", modelContextWindow(msg.model));
     }
 
-    const tokens =
-      (msg.inputTokens ?? 0) +
-      (msg.outputTokens ?? 0) +
-      (msg.cacheCreationInputTokens ?? 0) +
-      (msg.cacheReadInputTokens ?? 0);
-    if (tokens > 0) {
-      setState("contextTokensUsed", (prev) => prev + tokens);
+    // inputTokens on an assistant response = current context window usage.
+    // Replace (not accumulate) — each API call's inputTokens already includes
+    // the full conversation context up to that point.
+    if (msg.inputTokens && msg.inputTokens > 0) {
+      setState("contextTokensUsed", msg.inputTokens);
     }
 
     if (msg.stopReason === "end_turn") {
@@ -412,6 +449,7 @@ export function createSessionStore() {
       case "session/messages": {
         if (envelope.sessionId) {
           const sid = envelope.sessionId;
+          const now = Date.now();
           // Push messages directly if this is the active session
           if (state.activeSessionId === sid && envelope.payload) {
             try {
@@ -425,6 +463,7 @@ export function createSessionStore() {
                     "messageCount",
                     (c) => c + payload.messages.length,
                   );
+                  setState("sessions", (s) => s.id === sid, "lastActivityAt", now);
                   for (const m of payload.messages) {
                     addMessage(convertMessageRow(m));
                   }
@@ -434,13 +473,16 @@ export function createSessionStore() {
               console.warn("[handleEvent] failed to parse payload:", e);
             }
           } else {
-            // Not active session — just update count
-            setState(
-              "sessions",
-              (s) => s.id === sid,
-              "messageCount",
-              (c) => c + 1,
-            );
+            // Not active session — just update count and activity timestamp
+            batch(() => {
+              setState(
+                "sessions",
+                (s) => s.id === sid,
+                "messageCount",
+                (c) => c + 1,
+              );
+              setState("sessions", (s) => s.id === sid, "lastActivityAt", now);
+            });
           }
         }
         break;
@@ -457,6 +499,7 @@ export function createSessionStore() {
     sessionCount,
     activeMessages,
     totalSessionCost,
+    sessionsVersion,
     setHttpApiUrl,
     fetchSessions,
     fetchMessages,
