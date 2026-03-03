@@ -4,6 +4,7 @@ import {
   createMemo,
   onCleanup,
   For,
+  Show,
   type JSX,
 } from "solid-js";
 
@@ -163,7 +164,7 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
   // Tracks whether the user is at (or near) the bottom of the scroll.
   // When pinned, ANY content change (new items, height corrections) scrolls to end.
   // When user scrolls up, they unpin. Scrolling back to bottom re-pins.
-  let pinnedToBottom = true;
+  const [pinnedToBottom, setPinnedToBottom] = createSignal(true);
 
   // ── Scroll handler ────────────────────────────────────────────────
   function handleScroll() {
@@ -172,7 +173,7 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
     const distFromBottom =
       containerRef.scrollHeight - containerRef.scrollTop - containerRef.clientHeight;
     // Unpin when user scrolls away, re-pin when they scroll back
-    pinnedToBottom = distFromBottom < 50;
+    setPinnedToBottom(distFromBottom < 50);
     if (distFromBottom < 100) props.onScrollNearBottom?.();
   }
 
@@ -200,13 +201,13 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
     if (needsScrollToEnd && props.items.length > 0) {
       containerRef.scrollTop = containerRef.scrollHeight;
       needsScrollToEnd = false;
-      pinnedToBottom = true;
+      setPinnedToBottom(true);
       return;
     }
 
-    // Stay pinned: scroll to end on ANY content change
-    if (pinnedToBottom) {
-      containerRef.scrollTop = containerRef.scrollHeight;
+    // Stay pinned: scroll to end on ANY content change (smooth for calm UX)
+    if (pinnedToBottom()) {
+      containerRef.scrollTo({ top: containerRef.scrollHeight, behavior: "smooth" });
     }
   });
 
@@ -236,31 +237,43 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
   createEffect(() => {
     const len = props.items.length;
     if (len <= animateFrontier) return; // no new items
-    if (!pinnedToBottom) {
+    if (!pinnedToBottom()) {
       // User scrolled up — skip animation for these items
       animateFrontier = len;
     }
     // else: user pinned to bottom — animateFrontier stays, new items animate
   });
 
+  function scrollToBottom() {
+    if (!containerRef) return;
+    containerRef.scrollTo({ top: containerRef.scrollHeight, behavior: "smooth" });
+    setPinnedToBottom(true);
+  }
+
   // ── Render ────────────────────────────────────────────────────────
   return (
     <div
-      ref={containerRef}
-      onScroll={handleScroll}
       style={{
-        overflow: "auto",
-        height: "100%",
         position: "relative",
-        "will-change": "scroll-position",
+        height: "100%",
       }}
     >
       <div
+        ref={containerRef}
+        onScroll={handleScroll}
         style={{
-          height: `${getTotalHeight()}px`,
+          overflow: "auto",
+          height: "100%",
           position: "relative",
+          "will-change": "scroll-position",
         }}
       >
+        <div
+          style={{
+            height: `${getTotalHeight()}px`,
+            position: "relative",
+          }}
+        >
         <For each={visibleIndices()}>
           {(index) => {
             // Key-based memoization: item "unchanged" if its key is the same.
@@ -295,7 +308,7 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
                   right: "0",
                   ...(shouldAnimate
                     ? {
-                        animation: "chat-enter 280ms cubic-bezier(0.16, 1, 0.3, 1) both",
+                        animation: "chat-enter 420ms ease-out both",
                       }
                     : {}),
                 }}
@@ -305,7 +318,46 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
             );
           }}
         </For>
+        </div>
       </div>
+
+      {/* Scroll-to-bottom button — appears when user scrolls up */}
+      <Show when={!pinnedToBottom() && props.items.length > 0}>
+        <button
+          onClick={scrollToBottom}
+          style={{
+            position: "absolute",
+            bottom: "16px",
+            right: "16px",
+            width: "36px",
+            height: "36px",
+            "border-radius": "50%",
+            background: "var(--ctp-surface1)",
+            border: "1px solid var(--ctp-surface2)",
+            color: "var(--ctp-text)",
+            cursor: "pointer",
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "center",
+            "box-shadow": "0 2px 8px rgba(0,0,0,0.4)",
+            "z-index": "10",
+            transition: "all 200ms ease",
+            "font-size": "16px",
+            "line-height": "1",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "var(--neon-blue)";
+            e.currentTarget.style.color = "var(--ctp-crust)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "var(--ctp-surface1)";
+            e.currentTarget.style.color = "var(--ctp-text)";
+          }}
+          title="Scroll to bottom"
+        >
+          ↓
+        </button>
+      </Show>
     </div>
   );
 }

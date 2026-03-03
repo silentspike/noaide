@@ -75,6 +75,7 @@ mod tests {
             status: SessionStatus::Active,
             model: None,
             started_at: 1708000000,
+            last_activity_at: 1708000000,
             cost: None,
         }
     }

@@ -15,6 +15,7 @@ import InputField from "./InputField";
 import MetaMessage from "./MetaMessage";
 import LoadingProgress from "./LoadingProgress";
 import Lightbox from "../gallery/Lightbox";
+import WorkingIndicator from "./WorkingIndicator";
 import { ExpandedProvider, type ExpandedState } from "./expandedContext";
 import { ItemKeyProvider } from "./itemKeyContext";
 
@@ -302,7 +303,7 @@ export default function ChatPanel() {
       >
         <BreathingOrb state={store.state.orbState} />
         <ModelBadge model={store.state.activeModel} />
-        <div style={{ flex: "1" }}>
+        <div style={{ flex: "1", "min-width": "0", overflow: "hidden" }}>
           <ContextMeter
             used={store.state.contextTokensUsed}
             max={store.state.contextTokensMax}
@@ -404,6 +405,12 @@ export default function ChatPanel() {
           </Show>
         </Show>
       </div>
+
+      {/* Working indicator */}
+      <WorkingIndicator
+        orbState={store.state.orbState}
+        contextTokensUsed={store.state.contextTokensUsed}
+      />
 
       {/* Input field */}
       <InputField

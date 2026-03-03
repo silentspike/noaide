@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use noaide_server::bus::{self, EventEnvelope, EventSource};
 use noaide_server::db::Db;
-use noaide_server::discovery::SessionScanner;
+use noaide_server::discovery::{self, SessionScanner};
 use noaide_server::ecs::components::{ApiRequestComponent, SessionComponent, SessionStatus};
 use noaide_server::ecs::{EcsWorld, SharedEcsWorld};
 use noaide_server::parser;
@@ -346,11 +346,8 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or_default(),
                 status: SessionStatus::Idle,
                 model: None,
-                started_at: session_info
-                    .last_modified
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0),
+                started_at: session_info.started_at,
+                last_activity_at: session_info.last_activity_at,
                 cost: None,
             });
         }
@@ -532,24 +529,28 @@ async fn main() -> anyhow::Result<()> {
 
                                 if !exists {
                                     let project_path = extract_project_path_from_jsonl(path);
-                                    let metadata = tokio::fs::metadata(path).await.ok();
+                                    let _metadata = tokio::fs::metadata(path).await.ok();
 
                                     let mut world = ecs_handle.write().await;
                                     // Double-check after acquiring write lock
                                     if world.query_session_by_id(effective_sid).is_none() {
+                                        let now_epoch = std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .map(|d| d.as_secs() as i64)
+                                            .unwrap_or(0);
+                                        let first_ts =
+                                            discovery::extract_first_timestamp(path).await;
                                         world.spawn_session(SessionComponent {
                                             id: effective_sid,
                                             path: project_path.unwrap_or_default(),
                                             status: SessionStatus::Active,
                                             model: None,
-                                            started_at: metadata
-                                                .as_ref()
-                                                .and_then(|m| m.modified().ok())
-                                                .and_then(|t| {
-                                                    t.duration_since(std::time::UNIX_EPOCH).ok()
-                                                })
-                                                .map(|d| d.as_secs() as i64)
-                                                .unwrap_or(0),
+                                            started_at: if first_ts > 0 {
+                                                first_ts
+                                            } else {
+                                                now_epoch
+                                            },
+                                            last_activity_at: now_epoch,
                                             cost: None,
                                         });
                                         info!(
@@ -566,6 +567,19 @@ async fn main() -> anyhow::Result<()> {
                             match parser::parse_incremental(path, from_offset).await {
                                 Ok((messages, new_offset)) => {
                                     if !messages.is_empty() {
+                                        // Update last_activity_at from the latest message timestamp.
+                                        let latest_ts = messages
+                                            .iter()
+                                            .filter_map(|m| m.timestamp.as_deref())
+                                            .filter_map(discovery::parse_iso_to_epoch_secs)
+                                            .max();
+                                        if let Some(ts) = latest_ts {
+                                            ecs_handle
+                                                .write()
+                                                .await
+                                                .update_last_activity_at(effective_sid, ts);
+                                        }
+
                                         // Serialize ALL new messages for push to browser via bus.
                                         // Messages are NOT stored in ECS — the API endpoint parses
                                         // from JSONL on demand (zero-copy, no RAM overhead).
@@ -762,11 +776,8 @@ async fn main() -> anyhow::Result<()> {
                                     .unwrap_or_default(),
                                 status: SessionStatus::Idle,
                                 model: None,
-                                started_at: session_info
-                                    .last_modified
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .map(|d| d.as_secs() as i64)
-                                    .unwrap_or(0),
+                                started_at: session_info.started_at,
+                                last_activity_at: session_info.last_activity_at,
                                 cost: None,
                             });
                             new_count += 1;
@@ -1051,6 +1062,7 @@ async fn api_get_sessions(State(state): State<AppState>) -> axum::Json<serde_jso
                 "status": format!("{:?}", s.status).to_lowercase(),
                 "model": s.model,
                 "startedAt": s.started_at,
+                "lastActivityAt": s.last_activity_at,
                 "cost": s.cost,
                 "messageCount": message_count,
                 "cliType": cli,
@@ -1062,7 +1074,7 @@ async fn api_get_sessions(State(state): State<AppState>) -> axum::Json<serde_jso
 
 #[derive(serde::Deserialize, Default)]
 struct MessagesQuery {
-    /// Max number of entries to return (default: 500, max: 10000)
+    /// Max number of entries to return (default: all, 0 = unlimited)
     limit: Option<usize>,
     /// Offset from the END of the list (0 = last N entries)
     offset: Option<usize>,
@@ -1077,7 +1089,11 @@ async fn api_get_messages(
         return axum::Json(serde_json::json!({"error": "invalid session id"}));
     };
 
-    let limit = query.limit.unwrap_or(500).min(10000);
+    // 0 = unlimited (return all messages)
+    let limit = match query.limit {
+        Some(0) | None => usize::MAX,
+        Some(n) => n,
+    };
     let offset = query.offset.unwrap_or(0);
 
     // Full Transparency: parse JSONL fresh to include ALL entry types
@@ -1362,15 +1378,17 @@ async fn api_create_managed_session(
             // Register in ECS world so it shows up in session list
             {
                 let mut world = state.ecs.write().await;
+                let now_epoch = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
                 world.spawn_session(SessionComponent {
                     id: sid,
                     path: body.working_dir.clone(),
                     status: SessionStatus::Active,
                     model: None,
-                    started_at: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs() as i64)
-                        .unwrap_or(0),
+                    started_at: now_epoch,
+                    last_activity_at: now_epoch,
                     cost: None,
                 });
             }

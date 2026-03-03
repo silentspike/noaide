@@ -1,4 +1,4 @@
-import { createSignal, createMemo, For, Show } from "solid-js";
+import { createSignal, createMemo, onMount, onCleanup, For, Show } from "solid-js";
 import { useSession } from "../../App";
 import type { Session } from "../../stores/session";
 import type { OrbState } from "../../types/messages";
@@ -6,21 +6,6 @@ import SessionCard from "./SessionCard";
 import SessionStatus from "./SessionStatus";
 import ThemeSlider from "./ThemeSlider";
 import FontSlider from "./FontSlider";
-
-function sessionSortKey(s: Session): number {
-  switch (s.status) {
-    case "active":
-      return 0;
-    case "idle":
-      return 1;
-    case "error":
-      return 2;
-    case "archived":
-      return 3;
-    default:
-      return 4;
-  }
-}
 
 function orbStateForSession(session: Session): OrbState {
   switch (session.status) {
@@ -83,11 +68,37 @@ const CLI_OPTIONS: { type: CliType; label: string; desc: string; color: string; 
   { type: "gemini", label: "Gemini", desc: "Google", color: "#4285f4", Logo: GeminiLogo },
 ];
 
+/** Format bytes to human readable. */
+function formatMB(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1000 ? `${(mb / 1024).toFixed(1)}G` : `${Math.round(mb)}M`;
+}
+
 export default function SessionList() {
   const store = useSession();
   const [filter, setFilter] = createSignal("");
   const [showCliPicker, setShowCliPicker] = createSignal(false);
   const [spawning, setSpawning] = createSignal(false);
+  const [memUsage, setMemUsage] = createSignal("");
+
+  // Poll browser memory usage (Chrome performance.memory API)
+  onMount(() => {
+    function updateMem() {
+      const perf = performance as Performance & {
+        memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number };
+      };
+      if (perf.memory) {
+        const used = formatMB(perf.memory.usedJSHeapSize);
+        const limit = formatMB(perf.memory.jsHeapSizeLimit);
+        setMemUsage(`${used} / ${limit}`);
+      } else {
+        setMemUsage("");
+      }
+    }
+    updateMem();
+    const interval = setInterval(updateMem, 3000);
+    onCleanup(() => clearInterval(interval));
+  });
 
   async function spawnSession(cliType: CliType) {
     const base = store.state.httpApiUrl;
@@ -115,6 +126,10 @@ export default function SessionList() {
   }
 
   const sortedSessions = createMemo(() => {
+    // Read version signal to force re-sort when fetchSessions updates data.
+    // SolidJS reconcile updates properties in-place, which may not trigger
+    // array-level memo dependencies without this explicit dependency.
+    store.sessionsVersion();
     const query = filter().toLowerCase();
     return [...store.state.sessions]
       .filter(
@@ -126,10 +141,8 @@ export default function SessionList() {
           (s.cliType ?? "").toLowerCase().includes(query),
       )
       .sort((a, b) => {
-        const sa = sessionSortKey(a);
-        const sb = sessionSortKey(b);
-        if (sa !== sb) return sa - sb;
-        return b.startedAt - a.startedAt;
+        // Primary: sort by last activity (most recent first)
+        return b.lastActivityAt - a.lastActivityAt;
       });
   });
 
@@ -143,19 +156,41 @@ export default function SessionList() {
     >
       {/* Header */}
       <div style={{ padding: "16px 16px 8px" }}>
-        <h2
+        <div
           style={{
-            "font-family": "var(--font-mono)",
-            "font-size": "10px",
-            "font-weight": "700",
-            color: "var(--neon-green, #00ff9d)",
-            "text-transform": "uppercase",
-            "letter-spacing": "0.15em",
+            display: "flex",
+            "align-items": "baseline",
+            "justify-content": "space-between",
             margin: "0 0 12px",
           }}
         >
-          Sessions
-        </h2>
+          <h2
+            style={{
+              "font-family": "var(--font-mono)",
+              "font-size": "10px",
+              "font-weight": "700",
+              color: "var(--neon-green, #00ff9d)",
+              "text-transform": "uppercase",
+              "letter-spacing": "0.15em",
+              margin: "0",
+            }}
+          >
+            Sessions
+          </h2>
+          <Show when={memUsage()}>
+            <span
+              style={{
+                "font-family": "var(--font-mono)",
+                "font-size": "9px",
+                color: "var(--ctp-overlay1)",
+                "letter-spacing": "0.02em",
+              }}
+              title="JS Heap Usage"
+            >
+              {memUsage()}
+            </span>
+          </Show>
+        </div>
 
         {/* Theme Slider */}
         <ThemeSlider />

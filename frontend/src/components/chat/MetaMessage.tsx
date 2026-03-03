@@ -23,11 +23,18 @@ const META_STYLES: Record<string, {
     icon: "\u25CB", // circle
   },
   summary: {
-    label: "SUMMARY",
-    color: "var(--ctp-mauve)",
-    bg: "rgba(203, 166, 247, 0.04)",
-    border: "rgba(203, 166, 247, 0.15)",
-    icon: "\u2261", // triple bar
+    label: "CONTEXT COMPACTED",
+    color: "var(--ctp-yellow)",
+    bg: "rgba(249, 226, 175, 0.06)",
+    border: "rgba(249, 226, 175, 0.20)",
+    icon: "\u21BB", // clockwise arrow (compress symbol)
+  },
+  compactboundary: {
+    label: "COMPACTING",
+    color: "var(--ctp-peach)",
+    bg: "rgba(250, 179, 135, 0.06)",
+    border: "rgba(250, 179, 135, 0.20)",
+    icon: "\u29BB", // circle with superimposed X (compress)
   },
   filesnapshot: {
     label: "FILE SNAPSHOT",
@@ -92,6 +99,18 @@ export default function MetaMessage(props: MetaMessageProps) {
 
     if (t === "summary") {
       return text.substring(0, 150) || "conversation summary";
+    }
+
+    if (t === "compactboundary") {
+      try {
+        const data = JSON.parse(text);
+        const preTokens = data.preTokens ?? 0;
+        const trigger = data.trigger ?? "auto";
+        const formatted = preTokens >= 1000 ? `${(preTokens / 1000).toFixed(0)}K` : String(preTokens);
+        return `${formatted} tokens → compacting (${trigger})`;
+      } catch {
+        return "context compacting...";
+      }
     }
 
     if (t === "filesnapshot") {

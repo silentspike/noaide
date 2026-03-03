@@ -24,6 +24,7 @@ pub fn message_to_component(msg: &ClaudeMessage, session_id: Uuid) -> Option<Mes
         "system" | "system-reminder" => (MessageRole::System, None),
         "progress" => (MessageRole::Meta, Some(MessageType::Progress)),
         "summary" => (MessageRole::Meta, Some(MessageType::Summary)),
+        "compact_boundary" => (MessageRole::Meta, Some(MessageType::CompactBoundary)),
         "file-history-snapshot" => (MessageRole::Meta, Some(MessageType::FileSnapshot)),
         _ => (MessageRole::Meta, Some(MessageType::Text)),
     };

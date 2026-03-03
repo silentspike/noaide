@@ -9,6 +9,8 @@ pub struct SessionComponent {
     pub status: SessionStatus,
     pub model: Option<String>,
     pub started_at: i64,
+    /// Epoch seconds of the last message in the JSONL (actual activity, not file mtime).
+    pub last_activity_at: i64,
     pub cost: Option<f64>,
 }
 
@@ -70,6 +72,8 @@ pub enum MessageType {
     Summary,
     /// File history snapshot
     FileSnapshot,
+    /// Context compaction boundary marker (signals compaction just occurred)
+    CompactBoundary,
 }
 
 // === File ===
