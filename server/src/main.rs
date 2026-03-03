@@ -529,7 +529,7 @@ async fn main() -> anyhow::Result<()> {
 
                                 if !exists {
                                     let project_path = extract_project_path_from_jsonl(path);
-                                    let metadata = tokio::fs::metadata(path).await.ok();
+                                    let _metadata = tokio::fs::metadata(path).await.ok();
 
                                     let mut world = ecs_handle.write().await;
                                     // Double-check after acquiring write lock
