@@ -397,16 +397,21 @@ fn system_to_message(raw: RawSystemEntry) -> ClaudeMessage {
 
     // For compact_boundary, include preTokens as JSON so the frontend can display it
     let content_text = if is_compact {
-        let pre_tokens = raw.compact_metadata.as_ref()
+        let pre_tokens = raw
+            .compact_metadata
+            .as_ref()
             .and_then(|m| m.pre_tokens)
             .unwrap_or(0);
-        let trigger = raw.compact_metadata.as_ref()
+        let trigger = raw
+            .compact_metadata
+            .as_ref()
             .and_then(|m| m.trigger.as_deref())
             .unwrap_or("auto");
         serde_json::json!({
             "preTokens": pre_tokens,
             "trigger": trigger,
-        }).to_string()
+        })
+        .to_string()
     } else {
         match raw.content {
             Some(val) => {

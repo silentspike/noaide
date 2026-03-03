@@ -443,7 +443,12 @@ mod tests {
         let entry: CodexLine = serde_json::from_str(line).unwrap();
         let msg = codex_compacted(&entry, &None);
         assert_eq!(msg.message_type, "summary");
-        assert!(msg.content.as_text().unwrap_or("").contains("Current Progress"));
+        assert!(
+            msg.content
+                .as_text()
+                .unwrap_or("")
+                .contains("Current Progress")
+        );
     }
 
     #[test]
@@ -453,6 +458,11 @@ mod tests {
         let msg = codex_compacted(&entry, &None);
         assert_eq!(msg.message_type, "summary");
         // Empty message falls back to serialized payload
-        assert!(msg.content.as_text().unwrap_or("").contains("replacement_history"));
+        assert!(
+            msg.content
+                .as_text()
+                .unwrap_or("")
+                .contains("replacement_history")
+        );
     }
 }
