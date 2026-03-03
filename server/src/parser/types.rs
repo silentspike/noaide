@@ -323,7 +323,11 @@ fn user_to_message(raw: RawUserEntry) -> ClaudeMessage {
 
     ClaudeMessage {
         uuid: raw.envelope.uuid.unwrap_or_default(),
-        message_type: if is_compact { "summary".to_string() } else { "user".to_string() },
+        message_type: if is_compact {
+            "summary".to_string()
+        } else {
+            "user".to_string()
+        },
         role: role.or(Some("user".to_string())),
         content,
         timestamp: raw.envelope.timestamp,
