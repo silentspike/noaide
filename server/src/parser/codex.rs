@@ -74,6 +74,10 @@ pub async fn parse_codex_file(path: &Path) -> anyhow::Result<Vec<ClaudeMessage>>
                 }
                 messages.push(codex_turn_context(&entry));
             }
+            "compacted" => {
+                // Codex context compaction summary — maps to "summary"
+                messages.push(codex_compacted(&entry, &current_model));
+            }
             other => {
                 // Unknown type — preserve as meta
                 messages.push(ClaudeMessage {
@@ -194,7 +198,56 @@ fn codex_event_msg(entry: &CodexLine, model: &Option<String>) -> Option<ClaudeMe
                 ..Default::default()
             })
         }
-        "token_count" | "turn_aborted" | "context_compacted" => {
+        "context_compacted" => {
+            // Codex fires this AFTER compaction — maps to compact_boundary
+            Some(ClaudeMessage {
+                uuid: Uuid::new_v4().to_string(),
+                message_type: "compact_boundary".to_string(),
+                role: None,
+                content: MessageContent::Text(
+                    serde_json::json!({
+                        "preTokens": 0,
+                        "trigger": "auto",
+                    })
+                    .to_string(),
+                ),
+                timestamp: entry.timestamp.clone(),
+                model: model.clone(),
+                ..Default::default()
+            })
+        }
+        "token_count" => {
+            // Extract per-turn token usage for context tracking.
+            // last_token_usage = current turn's context window usage (like Claude's inputTokens).
+            // total_token_usage = cumulative across all turns (NOT what we want).
+            let info = entry.payload.get("info");
+            let input_tokens = info
+                .and_then(|i| i.get("last_token_usage"))
+                .and_then(|u| u.get("input_tokens"))
+                .and_then(|v| v.as_u64());
+            let output_tokens = info
+                .and_then(|i| i.get("last_token_usage"))
+                .and_then(|u| u.get("output_tokens"))
+                .and_then(|v| v.as_u64());
+            let _context_window = info
+                .and_then(|i| i.get("model_context_window"))
+                .and_then(|v| v.as_u64());
+
+            Some(ClaudeMessage {
+                uuid: Uuid::new_v4().to_string(),
+                message_type: "progress".to_string(),
+                role: None,
+                content: MessageContent::Text(
+                    serde_json::to_string(&entry.payload).unwrap_or_default(),
+                ),
+                timestamp: entry.timestamp.clone(),
+                model: model.clone(),
+                input_tokens,
+                output_tokens,
+                ..Default::default()
+            })
+        }
+        "turn_aborted" => {
             // Meta events
             Some(ClaudeMessage {
                 uuid: Uuid::new_v4().to_string(),
@@ -304,6 +357,37 @@ fn codex_turn_context(entry: &CodexLine) -> ClaudeMessage {
     }
 }
 
+/// Convert top-level "compacted" event to a summary message.
+///
+/// Codex emits `{ type: "compacted", payload: { message: "...", replacement_history: [...] } }`
+/// when context is compacted. `message` is the summary text (may be empty),
+/// `replacement_history` preserves the original messages.
+fn codex_compacted(entry: &CodexLine, model: &Option<String>) -> ClaudeMessage {
+    let summary = entry
+        .payload
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Use summary text if available, otherwise serialize the full payload
+    let content = if summary.is_empty() {
+        serde_json::to_string(&entry.payload).unwrap_or_default()
+    } else {
+        summary
+    };
+
+    ClaudeMessage {
+        uuid: Uuid::new_v4().to_string(),
+        message_type: "summary".to_string(),
+        role: None,
+        content: MessageContent::Text(content),
+        timestamp: entry.timestamp.clone(),
+        model: model.clone(),
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,5 +427,32 @@ mod tests {
         let entry: CodexLine = serde_json::from_str(line).unwrap();
         let msg = codex_turn_context(&entry);
         assert_eq!(msg.model, Some("gpt-5.2-codex".to_string()));
+    }
+
+    #[test]
+    fn parse_codex_context_compacted_event() {
+        let line = r#"{"timestamp":"2025-12-13T15:53:54.999Z","type":"event_msg","payload":{"type":"context_compacted"}}"#;
+        let entry: CodexLine = serde_json::from_str(line).unwrap();
+        let msg = codex_event_msg(&entry, &None).unwrap();
+        assert_eq!(msg.message_type, "compact_boundary");
+    }
+
+    #[test]
+    fn parse_codex_compacted_summary() {
+        let line = r#"{"timestamp":"2025-11-15T20:34:53.145Z","type":"compacted","payload":{"message":"**Current Progress**\n- Updated code."}}"#;
+        let entry: CodexLine = serde_json::from_str(line).unwrap();
+        let msg = codex_compacted(&entry, &None);
+        assert_eq!(msg.message_type, "summary");
+        assert!(msg.content.as_text().unwrap_or("").contains("Current Progress"));
+    }
+
+    #[test]
+    fn parse_codex_compacted_empty_message() {
+        let line = r#"{"timestamp":"2025-12-13T15:53:54.999Z","type":"compacted","payload":{"message":"","replacement_history":[]}}"#;
+        let entry: CodexLine = serde_json::from_str(line).unwrap();
+        let msg = codex_compacted(&entry, &None);
+        assert_eq!(msg.message_type, "summary");
+        // Empty message falls back to serialized payload
+        assert!(msg.content.as_text().unwrap_or("").contains("replacement_history"));
     }
 }
