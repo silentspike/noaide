@@ -40,6 +40,12 @@ pub struct SessionInfo {
     pub cli_type: CliType,
     /// Estimated message count (cheap: line-count for JSONL, JSON parse for Gemini).
     pub message_count_hint: usize,
+    /// Epoch seconds of the first message timestamp (session start).
+    /// Derived from reading the head of the file (first 8KB).
+    pub started_at: i64,
+    /// Epoch seconds of the last message timestamp in the session file.
+    /// Derived from reading the tail of the file (last 8KB), not from file mtime.
+    pub last_activity_at: i64,
 }
 
 /// Info about a discovered subagent JSONL file.
@@ -201,6 +207,8 @@ impl SessionScanner {
                     });
 
                     let line_count = estimate_line_count(&entry.path()).await;
+                    let first_ts = extract_first_timestamp(&entry.path()).await;
+                    let last_ts = extract_last_timestamp(&entry.path()).await;
 
                     sessions.push(SessionInfo {
                         id: session_id,
@@ -210,6 +218,8 @@ impl SessionScanner {
                         size_bytes: metadata.len(),
                         cli_type: CliType::Codex,
                         message_count_hint: line_count,
+                        started_at: first_ts,
+                        last_activity_at: last_ts,
                     });
                 }
             }
@@ -261,6 +271,8 @@ impl SessionScanner {
                 };
 
                 let msg_count = estimate_gemini_message_count(&chat_entry.path()).await;
+                let first_ts = extract_first_timestamp(&chat_entry.path()).await;
+                let last_ts = extract_last_timestamp(&chat_entry.path()).await;
 
                 sessions.push(SessionInfo {
                     id: session_id,
@@ -270,6 +282,8 @@ impl SessionScanner {
                     size_bytes: metadata.len(),
                     cli_type: CliType::Gemini,
                     message_count_hint: msg_count,
+                    started_at: first_ts,
+                    last_activity_at: last_ts,
                 });
             }
         }
@@ -310,6 +324,8 @@ impl SessionScanner {
 
             // Estimate message count by counting newlines (cheap)
             let line_count = estimate_line_count(&entry.path()).await;
+            let first_ts = extract_first_timestamp(&entry.path()).await;
+            let last_ts = extract_last_timestamp(&entry.path()).await;
 
             sessions.push(SessionInfo {
                 id: session_id,
@@ -319,6 +335,8 @@ impl SessionScanner {
                 size_bytes: metadata.len(),
                 cli_type: CliType::Claude,
                 message_count_hint: line_count,
+                started_at: first_ts,
+                last_activity_at: last_ts,
             });
         }
 
@@ -391,6 +409,146 @@ async fn estimate_line_count(path: &Path) -> usize {
         Ok(m) => (m.len() / 1500).max(1) as usize,
         Err(_) => 0,
     }
+}
+
+/// Extract the timestamp of the first message from a session file.
+///
+/// Reads the first 8KB of the file and finds the first `"timestamp":"..."` pattern.
+/// Returns 0 if extraction fails.
+pub async fn extract_first_timestamp(path: &Path) -> i64 {
+    use tokio::io::AsyncReadExt;
+    let mut file = match tokio::fs::File::open(path).await {
+        Ok(f) => f,
+        Err(_) => return 0,
+    };
+
+    let mut buf = vec![0u8; 8192];
+    let bytes_read = match file.read(&mut buf).await {
+        Ok(n) => n,
+        Err(_) => return 0,
+    };
+    if bytes_read == 0 {
+        return 0;
+    }
+
+    let text = String::from_utf8_lossy(&buf[..bytes_read]);
+    let needle = "\"timestamp\":\"";
+    if let Some(pos) = text.find(needle) {
+        let abs_pos = pos + needle.len();
+        if let Some(end) = text[abs_pos..].find('"') {
+            let ts_str = &text[abs_pos..abs_pos + end];
+            if let Some(epoch) = parse_iso_to_epoch_secs(ts_str) {
+                return epoch;
+            }
+        }
+    }
+    0
+}
+
+/// Extract the timestamp of the last message from a session file.
+///
+/// Reads only the last 8KB of the file (cheap even for 200MB+ files),
+/// finds the last `"timestamp":"..."` pattern, and parses it to epoch seconds.
+/// Returns 0 if extraction fails.
+pub async fn extract_last_timestamp(path: &Path) -> i64 {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    let mut file = match tokio::fs::File::open(path).await {
+        Ok(f) => f,
+        Err(_) => return 0,
+    };
+
+    let file_size = match file.metadata().await {
+        Ok(m) => m.len(),
+        Err(_) => return 0,
+    };
+
+    let tail_size = 8192u64.min(file_size);
+    if tail_size == 0 {
+        return 0;
+    }
+
+    // Seek to tail
+    let seek_pos = file_size.saturating_sub(tail_size);
+    if file.seek(std::io::SeekFrom::Start(seek_pos)).await.is_err() {
+        return 0;
+    }
+
+    let mut buf = vec![0u8; tail_size as usize];
+    let bytes_read = match file.read(&mut buf).await {
+        Ok(n) => n,
+        Err(_) => return 0,
+    };
+
+    let text = String::from_utf8_lossy(&buf[..bytes_read]);
+
+    // Find the LAST occurrence of "timestamp":" in the tail
+    // This works for both JSONL (one JSON per line) and JSON arrays (Gemini)
+    let mut last_ts: i64 = 0;
+    let needle = "\"timestamp\":\"";
+    let mut search_from = 0;
+    while let Some(pos) = text[search_from..].find(needle) {
+        let abs_pos = search_from + pos + needle.len();
+        if let Some(end) = text[abs_pos..].find('"') {
+            let ts_str = &text[abs_pos..abs_pos + end];
+            if let Some(epoch) = parse_iso_to_epoch_secs(ts_str) {
+                last_ts = epoch;
+            }
+        }
+        search_from = abs_pos;
+    }
+
+    last_ts
+}
+
+/// Parse a UTC ISO 8601 timestamp to epoch seconds.
+///
+/// Handles formats like:
+/// - `2026-02-21T10:00:00.000Z`
+/// - `2026-02-21T10:00:00Z`
+/// - `2026-02-21T10:00:00`
+pub fn parse_iso_to_epoch_secs(s: &str) -> Option<i64> {
+    if s.len() < 19 {
+        return None;
+    }
+
+    let year: i64 = s.get(0..4)?.parse().ok()?;
+    let month: i64 = s.get(5..7)?.parse().ok()?;
+    let day: i64 = s.get(8..10)?.parse().ok()?;
+    let hour: i64 = s.get(11..13)?.parse().ok()?;
+    let min: i64 = s.get(14..16)?.parse().ok()?;
+    let sec: i64 = s.get(17..19)?.parse().ok()?;
+
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+
+    let days_in_month: [i64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    let mut total_days: i64 = 0;
+
+    // Years since 1970
+    for y in 1970..year {
+        total_days += if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+            366
+        } else {
+            365
+        };
+    }
+
+    // Months
+    let is_leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    for m in 0..(month - 1) as usize {
+        total_days += days_in_month[m];
+        if m == 1 && is_leap {
+            total_days += 1;
+        }
+    }
+
+    // Days
+    total_days += day - 1;
+
+    Some(total_days * 86400 + hour * 3600 + min * 60 + sec)
 }
 
 /// Estimate message count for a Gemini JSON file from file size.
@@ -583,6 +741,8 @@ mod tests {
             size_bytes: 100,
             cli_type: CliType::Claude,
             message_count_hint: 0,
+            started_at: 0,
+            last_activity_at: 0,
         };
 
         scanner.notify_new_session(info.clone());

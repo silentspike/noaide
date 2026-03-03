@@ -8,6 +8,8 @@ interface ToolCardBaseProps {
   executionMs?: number;
   children: JSX.Element;
   defaultExpanded?: boolean;
+  /** Always-visible preview shown below header even when collapsed */
+  preview?: JSX.Element;
 }
 
 function toolColor(name: string): string {
@@ -110,6 +112,16 @@ export default function ToolCardBase(props: ToolCardBaseProps) {
           </span>
         </Show>
       </button>
+      <Show when={props.preview}>
+        <div
+          style={{
+            "border-top": "1px solid rgba(37,37,53,0.4)",
+            padding: "0",
+          }}
+        >
+          {props.preview}
+        </div>
+      </Show>
       <Show when={expanded()}>
         <div
           style={{

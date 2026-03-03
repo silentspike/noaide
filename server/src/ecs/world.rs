@@ -232,6 +232,16 @@ impl EcsWorld {
         Some(())
     }
 
+    /// Update the last activity timestamp for a session (e.g., when new messages arrive).
+    pub fn update_last_activity_at(&mut self, session_id: Uuid, ts: i64) -> Option<()> {
+        let entity = *self.session_index.get(&session_id)?;
+        let mut session = self.world.get::<&mut SessionComponent>(entity).ok()?;
+        if ts > session.last_activity_at {
+            session.last_activity_at = ts;
+        }
+        Some(())
+    }
+
     // === Stats ===
 
     pub fn session_count(&self) -> usize {
@@ -264,6 +274,7 @@ mod tests {
             status: SessionStatus::Active,
             model: Some("claude-opus-4-6".to_string()),
             started_at: 1708000000,
+            last_activity_at: 1708000000,
             cost: None,
         }
     }
