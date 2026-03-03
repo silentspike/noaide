@@ -66,8 +66,8 @@ export default function App() {
 
     // Fetch sessions immediately via HTTP (doesn't need WebTransport)
     store.fetchSessions();
-    // Poll for new sessions periodically (background parsing may still be running)
-    const pollInterval = setInterval(() => store.fetchSessions(), 30000);
+    // Poll for sessions periodically (keeps timestamps and sort order fresh)
+    const pollInterval = setInterval(() => store.fetchSessions(), 5000);
     onCleanup(() => clearInterval(pollInterval));
   });
 

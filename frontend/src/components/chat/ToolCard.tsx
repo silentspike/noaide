@@ -62,8 +62,8 @@ export default function ToolCard(props: ToolCardProps) {
       <Match when={toolName() === "Bash"}>
         <BashCard
           command={(input()?.command as string) ?? ""}
+          description={(input()?.description as string) ?? undefined}
           output={resultText()}
-          exitCode={undefined}
           isError={isError()}
         />
       </Match>

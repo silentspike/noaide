@@ -92,6 +92,7 @@ impl Db {
                 status: str_to_session_status(&text_value(&row.get_value(2)?)?),
                 model: optional_text(&row.get_value(3)?),
                 started_at: int_value(&row.get_value(4)?)?,
+                last_activity_at: int_value(&row.get_value(4)?)?,
                 cost: optional_f64(&row.get_value(5)?),
             });
         }
@@ -114,6 +115,7 @@ impl Db {
                 status: str_to_session_status(&text_value(&row.get_value(2)?)?),
                 model: optional_text(&row.get_value(3)?),
                 started_at: int_value(&row.get_value(4)?)?,
+                last_activity_at: int_value(&row.get_value(4)?)?,
                 cost: optional_f64(&row.get_value(5)?),
             })),
             None => Ok(None),
@@ -540,6 +542,7 @@ fn message_type_to_str(t: MessageType) -> &'static str {
         MessageType::Progress => "progress",
         MessageType::Summary => "summary",
         MessageType::FileSnapshot => "file_snapshot",
+        MessageType::CompactBoundary => "compact_boundary",
     }
 }
 
@@ -554,6 +557,7 @@ fn str_to_message_type(s: &str) -> MessageType {
         "progress" => MessageType::Progress,
         "summary" => MessageType::Summary,
         "file_snapshot" => MessageType::FileSnapshot,
+        "compact_boundary" => MessageType::CompactBoundary,
         _ => MessageType::Text,
     }
 }
@@ -611,6 +615,7 @@ mod tests {
             status: SessionStatus::Active,
             model: Some("claude-opus-4-6".to_string()),
             started_at: 1708000000,
+            last_activity_at: 1708000000,
             cost: Some(0.05),
         }
     }

@@ -3,11 +3,13 @@ import { createSessionStore, type Session } from "./session";
 import type { ChatMessage } from "../types/messages";
 
 function makeSession(overrides: Partial<Session> = {}): Session {
+  const now = Date.now();
   return {
     id: "session-1",
     path: "/work/project",
     status: "active",
-    startedAt: Date.now(),
+    startedAt: now,
+    lastActivityAt: now,
     messageCount: 0,
     ...overrides,
   };
@@ -131,12 +133,16 @@ describe("createSessionStore", () => {
     expect(store.state.activeModel).toBe("claude-opus-4-6");
   });
 
-  it("accumulates context tokens", () => {
+  it("tracks context tokens as last inputTokens value (not cumulative)", () => {
     const store = createSessionStore();
-    store.addMessage(makeMessage({ inputTokens: 100, outputTokens: 50 }));
-    expect(store.state.contextTokensUsed).toBe(150);
+    store.addMessage(makeMessage({ inputTokens: 100 }));
+    expect(store.state.contextTokensUsed).toBe(100);
+    // Next API call has larger context (conversation grew)
     store.addMessage(makeMessage({ inputTokens: 200 }));
-    expect(store.state.contextTokensUsed).toBe(350);
+    expect(store.state.contextTokensUsed).toBe(200);
+    // After compaction, context drops
+    store.addMessage(makeMessage({ inputTokens: 50 }));
+    expect(store.state.contextTokensUsed).toBe(50);
   });
 
   it("calculates total session cost", () => {

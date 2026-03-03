@@ -180,6 +180,15 @@ pub(crate) struct RawSystemEntry {
     pub level: Option<String>,
     pub duration_ms: Option<u64>,
     pub hook_count: Option<u32>,
+    pub compact_metadata: Option<CompactMetadata>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CompactMetadata {
+    pub trigger: Option<String>,
+    pub pre_tokens: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -306,6 +315,7 @@ pub fn parse_raw_to_message(value: serde_json::Value) -> Result<ClaudeMessage, s
 }
 
 fn user_to_message(raw: RawUserEntry) -> ClaudeMessage {
+    let is_compact = raw.is_compact_summary.unwrap_or(false);
     let (role, content) = match raw.message {
         Some(msg) => (msg.role, msg.content),
         None => (None, MessageContent::Text(String::new())),
@@ -313,7 +323,7 @@ fn user_to_message(raw: RawUserEntry) -> ClaudeMessage {
 
     ClaudeMessage {
         uuid: raw.envelope.uuid.unwrap_or_default(),
-        message_type: "user".to_string(),
+        message_type: if is_compact { "summary".to_string() } else { "user".to_string() },
         role: role.or(Some("user".to_string())),
         content,
         timestamp: raw.envelope.timestamp,
@@ -383,15 +393,31 @@ fn assistant_to_message(raw: RawAssistantEntry) -> ClaudeMessage {
 }
 
 fn system_to_message(raw: RawSystemEntry) -> ClaudeMessage {
-    let content_text = match raw.content {
-        Some(val) => {
-            if let Some(s) = val.as_str() {
-                s.to_string()
-            } else {
-                val.to_string()
+    let is_compact = raw.subtype.as_deref() == Some("compact_boundary");
+
+    // For compact_boundary, include preTokens as JSON so the frontend can display it
+    let content_text = if is_compact {
+        let pre_tokens = raw.compact_metadata.as_ref()
+            .and_then(|m| m.pre_tokens)
+            .unwrap_or(0);
+        let trigger = raw.compact_metadata.as_ref()
+            .and_then(|m| m.trigger.as_deref())
+            .unwrap_or("auto");
+        serde_json::json!({
+            "preTokens": pre_tokens,
+            "trigger": trigger,
+        }).to_string()
+    } else {
+        match raw.content {
+            Some(val) => {
+                if let Some(s) = val.as_str() {
+                    s.to_string()
+                } else {
+                    val.to_string()
+                }
             }
+            None => String::new(),
         }
-        None => String::new(),
     };
 
     let msg_type = match raw.subtype.as_deref() {
