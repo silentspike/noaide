@@ -2,6 +2,6 @@ pub mod discovery;
 pub mod topology;
 
 pub use discovery::{
-    load_tasks, AgentInfo, DiscoveredTeam, TaskFile, TeamConfig, TeamDiscovery, TeamEvent,
+    AgentInfo, DiscoveredTeam, TaskFile, TeamConfig, TeamDiscovery, TeamEvent, load_tasks,
 };
 pub use topology::{AgentNode, AgentStatus, MessageEdge, TeamTopology, TopologyBuilder};
