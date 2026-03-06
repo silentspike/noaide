@@ -22,7 +22,7 @@ use noaide_server::ecs::components::{ApiRequestComponent, SessionComponent, Sess
 use noaide_server::ecs::{EcsWorld, SharedEcsWorld};
 use noaide_server::parser;
 use noaide_server::session::SessionManager;
-use noaide_server::teams::{load_tasks, TeamDiscovery, TopologyBuilder};
+use noaide_server::teams::{TeamDiscovery, TopologyBuilder, load_tasks};
 use noaide_server::transport::TransportServer;
 use noaide_server::watcher::FileEventKind;
 
@@ -2496,9 +2496,7 @@ async fn api_get_team_tasks(Path(team_name): Path<String>) -> impl axum::respons
         },
         None => (
             axum::http::StatusCode::NOT_FOUND,
-            axum::Json(
-                serde_json::json!({"error": format!("team '{}' not found", team_name)}),
-            ),
+            axum::Json(serde_json::json!({"error": format!("team '{}' not found", team_name)})),
         ),
     }
 }
