@@ -121,6 +121,8 @@ const contentBlockStyle = {
   overflow: "auto",
 };
 
+export { parseRequestBody, parseResponseBody };
+
 export default function InterceptQueue(props: InterceptQueueProps) {
   const [pending, setPending] = createSignal<PendingIntercept[]>([]);
   const [pendingResponses, setPendingResponses] = createSignal<
