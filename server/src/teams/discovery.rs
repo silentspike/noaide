@@ -251,7 +251,8 @@ mod tests {
         std::fs::write(
             task_dir.join("3.json"),
             r#"{"id":"3","subject":"Third task","status":"pending","blocks":["2"],"blockedBy":[]}"#,
-        ).unwrap();
+        )
+        .unwrap();
         // Non-JSON files should be skipped
         std::fs::write(task_dir.join(".lock"), "").unwrap();
         std::fs::write(task_dir.join(".highwatermark"), "3").unwrap();
