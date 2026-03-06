@@ -281,7 +281,11 @@ mod tests {
 
         // Checkout the new branch
         let result = checkout(dir.path(), "test-branch");
-        assert!(result.is_ok(), "checkout should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "checkout should succeed: {:?}",
+            result.err()
+        );
 
         // Verify HEAD points to new branch
         let new_head = repo.head().unwrap();
@@ -292,7 +296,10 @@ mod tests {
     fn checkout_fails_for_nonexistent_branch() {
         let dir = create_test_repo();
         let result = checkout(dir.path(), "nonexistent");
-        assert!(result.is_err(), "checkout should fail for nonexistent branch");
+        assert!(
+            result.is_err(),
+            "checkout should fail for nonexistent branch"
+        );
     }
 
     #[test]

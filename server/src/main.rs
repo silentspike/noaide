@@ -22,8 +22,8 @@ use noaide_server::ecs::components::{ApiRequestComponent, SessionComponent, Sess
 use noaide_server::ecs::{EcsWorld, SharedEcsWorld};
 use noaide_server::parser;
 use noaide_server::session::SessionManager;
-use noaide_server::transport::TransportServer;
 use noaide_server::teams::{TeamDiscovery, TopologyBuilder};
+use noaide_server::transport::TransportServer;
 use noaide_server::watcher::FileEventKind;
 
 /// Shared application state for HTTP API handlers.
@@ -2447,9 +2447,7 @@ async fn api_get_teams() -> impl axum::response::IntoResponse {
 }
 
 /// GET /api/teams/:name/topology — Get topology graph for a specific team
-async fn api_get_team_topology(
-    Path(team_name): Path<String>,
-) -> impl axum::response::IntoResponse {
+async fn api_get_team_topology(Path(team_name): Path<String>) -> impl axum::response::IntoResponse {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
     let claude_dir = PathBuf::from(home).join(".claude");
     let (discovery, _rx) = TeamDiscovery::new(&claude_dir);
