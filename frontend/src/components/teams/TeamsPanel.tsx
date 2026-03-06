@@ -1,46 +1,123 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, createResource, For, Show } from "solid-js";
+import { useSession } from "../../App";
 import TopologyGraph from "./TopologyGraph";
 import SwimlaneTL, { type SwimlaneBlock } from "./SwimlaneTL";
 import type { AgentInfo } from "./AgentCard";
 
 type ViewMode = "topology" | "swimlane";
 
+interface TeamSummary {
+  team_name: string;
+  description?: string;
+  members: {
+    name: string;
+    agentId: string;
+    agentType?: string;
+  }[];
+  has_tasks: boolean;
+}
+
+interface TopologyData {
+  team_name: string;
+  nodes: {
+    name: string;
+    agent_id: string;
+    agent_type?: string;
+    is_leader: boolean;
+    children: string[];
+    message_count: number;
+    status: string;
+  }[];
+  edges: {
+    from: string;
+    to: string;
+    message_type: string;
+    timestamp: number;
+    summary?: string;
+  }[];
+}
+
 export default function TeamsPanel() {
+  const store = useSession();
   const [viewMode, setViewMode] = createSignal<ViewMode>("topology");
+  const [selectedTeam, setSelectedTeam] = createSignal<string | null>(null);
 
-  // Demo data — will be replaced by real data from WebTransport
-  const agents: AgentInfo[] = [
-    { name: "team-lead", agentId: "abc-001", agentType: "general-purpose", isLeader: true, status: "active", messageCount: 12 },
-    { name: "researcher", agentId: "abc-002", agentType: "Explore", isLeader: false, status: "active", messageCount: 5, currentTask: "Search for API patterns" },
-    { name: "implementer", agentId: "abc-003", agentType: "general-purpose", isLeader: false, status: "idle", messageCount: 8 },
-    { name: "tester", agentId: "abc-004", agentType: "Bash", isLeader: false, status: "idle", messageCount: 3 },
-  ];
+  const apiUrl = () => store.state.httpApiUrl;
 
-  const edges = [
-    { from: "team-lead", to: "researcher" },
-    { from: "team-lead", to: "implementer" },
-    { from: "team-lead", to: "tester" },
-  ];
+  const fetchTeams = async (): Promise<TeamSummary[]> => {
+    const base = apiUrl();
+    if (!base) return [];
+    const resp = await fetch(`${base}/api/teams`);
+    if (!resp.ok) return [];
+    return resp.json();
+  };
 
-  const messages = [
-    { id: "msg-1", from: "team-lead", to: "researcher", progress: 0.3 },
-    { id: "msg-2", from: "team-lead", to: "implementer", progress: 0.7 },
-  ];
+  const [teams] = createResource(() => apiUrl(), fetchTeams);
 
-  const swimlaneBlocks: SwimlaneBlock[] = [
-    { agentName: "team-lead", startMs: 0, endMs: 5000, state: "active", label: "Planning" },
-    { agentName: "team-lead", startMs: 5000, endMs: 8000, state: "thinking" },
-    { agentName: "team-lead", startMs: 8000, endMs: 15000, state: "idle" },
-    { agentName: "team-lead", startMs: 15000, endMs: 20000, state: "active", label: "Review" },
-    { agentName: "researcher", startMs: 5000, endMs: 7000, state: "idle" },
-    { agentName: "researcher", startMs: 7000, endMs: 14000, state: "active", label: "Search APIs" },
-    { agentName: "researcher", startMs: 14000, endMs: 16000, state: "tool_use", label: "WebFetch" },
-    { agentName: "implementer", startMs: 8000, endMs: 10000, state: "thinking" },
-    { agentName: "implementer", startMs: 10000, endMs: 18000, state: "active", label: "Write code" },
-    { agentName: "implementer", startMs: 18000, endMs: 20000, state: "tool_use", label: "Edit files" },
-    { agentName: "tester", startMs: 16000, endMs: 17000, state: "idle" },
-    { agentName: "tester", startMs: 17000, endMs: 20000, state: "active", label: "Run tests" },
-  ];
+  // Auto-select first team when teams load
+  const activeTeamName = () => {
+    const sel = selectedTeam();
+    if (sel) return sel;
+    const t = teams();
+    return t && t.length > 0 ? t[0].team_name : null;
+  };
+
+  const fetchTopology = async (teamName: string): Promise<TopologyData | null> => {
+    const base = apiUrl();
+    if (!base || !teamName) return null;
+    const resp = await fetch(`${base}/api/teams/${encodeURIComponent(teamName)}/topology`);
+    if (!resp.ok) return null;
+    return resp.json();
+  };
+
+  const [topology] = createResource(activeTeamName, fetchTopology);
+
+  // Transform topology nodes to AgentInfo for TopologyGraph
+  const agents = (): AgentInfo[] => {
+    const topo = topology();
+    if (!topo) return [];
+    return topo.nodes.map((n) => ({
+      name: n.name,
+      agentId: n.agent_id,
+      agentType: n.agent_type,
+      isLeader: n.is_leader,
+      status: (n.status === "active" || n.status === "idle" || n.status === "shutdown")
+        ? n.status as "active" | "idle" | "shutdown"
+        : "unknown",
+      messageCount: n.message_count,
+    }));
+  };
+
+  const edges = () => {
+    const topo = topology();
+    if (!topo) return [];
+    // Build edges from leader to children
+    const leader = topo.nodes.find((n) => n.is_leader);
+    if (!leader) return [];
+    return leader.children.map((child) => ({
+      from: leader.name,
+      to: child,
+    }));
+  };
+
+  // Build swimlane blocks from topology (each agent gets a placeholder block based on status)
+  const swimlaneBlocks = (): SwimlaneBlock[] => {
+    const a = agents();
+    if (a.length === 0) return [];
+    return a.map((agent) => ({
+      agentName: agent.name,
+      startMs: 0,
+      endMs: 10000,
+      state: agent.status === "active" ? "active" as const
+        : agent.status === "idle" ? "idle" as const
+        : "thinking" as const,
+      label: agent.currentTask,
+    }));
+  };
+
+  const agentNames = () => agents().map((a) => a.name);
+  const teamCount = () => (teams() ?? []).length;
+  const agentCount = () => agents().length;
 
   return (
     <div
@@ -77,8 +154,26 @@ export default function TeamsPanel() {
             color: "var(--ctp-overlay0)",
           }}
         >
-          {agents.length} agents
+          {agentCount()} agents
         </span>
+        <Show when={teamCount() > 1}>
+          <select
+            value={activeTeamName() ?? ""}
+            onChange={(e) => setSelectedTeam(e.currentTarget.value)}
+            style={{
+              background: "var(--ctp-surface0)",
+              border: "1px solid var(--ctp-surface1)",
+              "border-radius": "4px",
+              color: "var(--ctp-text)",
+              "font-size": "11px",
+              padding: "2px 6px",
+            }}
+          >
+            <For each={teams() ?? []}>
+              {(t) => <option value={t.team_name}>{t.team_name}</option>}
+            </For>
+          </select>
+        </Show>
         <div style={{ "margin-left": "auto", display: "flex", gap: "2px" }}>
           <button
             onClick={() => setViewMode("topology")}
@@ -113,17 +208,34 @@ export default function TeamsPanel() {
 
       {/* Content */}
       <div style={{ flex: "1", overflow: "hidden" }}>
-        <Show when={viewMode() === "topology"}>
-          <TopologyGraph agents={agents} edges={edges} messages={messages} />
-        </Show>
-        <Show when={viewMode() === "swimlane"}>
-          <div style={{ padding: "8px" }}>
-            <SwimlaneTL
-              agents={agents.map((a) => a.name)}
-              blocks={swimlaneBlocks}
-              totalDurationMs={22000}
-            />
-          </div>
+        <Show
+          when={agentCount() > 0}
+          fallback={
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                height: "100%",
+                color: "var(--ctp-overlay0)",
+                "font-size": "12px",
+              }}
+            >
+              {teams.loading ? "Loading teams..." : "No active teams found"}
+            </div>
+          }
+        >
+          <Show when={viewMode() === "topology"}>
+            <TopologyGraph agents={agents()} edges={edges()} />
+          </Show>
+          <Show when={viewMode() === "swimlane"}>
+            <div style={{ padding: "8px" }}>
+              <SwimlaneTL
+                agents={agentNames()}
+                blocks={swimlaneBlocks()}
+              />
+            </div>
+          </Show>
         </Show>
       </div>
     </div>

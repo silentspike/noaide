@@ -4,23 +4,34 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
-/// Information about a single team member/agent
+/// Information about a single team member/agent.
+///
+/// Uses `deny_unknown_fields = false` (serde default) to tolerate extra fields
+/// like `model`, `joinedAt`, `tmuxPaneId`, `cwd`, `prompt`, `color`, etc.
+/// that Claude Code team configs include.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInfo {
     pub name: String,
     #[serde(rename = "agentId")]
     pub agent_id: String,
-    #[serde(rename = "agentType")]
+    #[serde(rename = "agentType", default)]
     pub agent_type: Option<String>,
 }
 
-/// A team configuration as stored in ~/.claude/teams/
+/// A team configuration as stored in ~/.claude/teams/.
+///
+/// Claude Code uses `name` (not `team_name`) and `createdAt` (camelCase).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamConfig {
-    pub team_name: String,
+    /// Team name — Claude Code stores this as `name` in config.json.
+    #[serde(alias = "team_name")]
+    pub name: String,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
     pub members: Vec<AgentInfo>,
-    pub created_at: Option<String>,
+    #[serde(alias = "created_at", rename = "createdAt", default)]
+    pub created_at: Option<serde_json::Value>,
 }
 
 /// Discovered team with resolved paths
@@ -106,7 +117,7 @@ impl TeamDiscovery {
         let config: TeamConfig = serde_json::from_str(&content)?;
 
         // Check for corresponding task directory
-        let task_dir = self.claude_dir.join("tasks").join(&config.team_name);
+        let task_dir = self.claude_dir.join("tasks").join(&config.name);
         let task_dir = if task_dir.exists() {
             Some(task_dir)
         } else {
@@ -146,7 +157,7 @@ mod tests {
         std::fs::create_dir_all(&teams_dir).unwrap();
 
         let config = TeamConfig {
-            team_name: "my-project".to_string(),
+            name: "my-project".to_string(),
             description: Some("Test team".to_string()),
             members: vec![
                 AgentInfo {
@@ -169,7 +180,7 @@ mod tests {
         let teams = discovery.scan().await;
 
         assert_eq!(teams.len(), 1);
-        assert_eq!(teams[0].config.team_name, "my-project");
+        assert_eq!(teams[0].config.name, "my-project");
         assert_eq!(teams[0].config.members.len(), 2);
         assert_eq!(teams[0].config.members[0].name, "lead");
     }
