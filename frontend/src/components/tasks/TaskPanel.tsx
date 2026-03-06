@@ -1,4 +1,5 @@
-import { createSignal } from "solid-js";
+import { createSignal, createResource, Show, For } from "solid-js";
+import { useSession } from "../../App";
 import KanbanBoard from "./KanbanBoard";
 import GanttPanel from "../gantt/GanttPanel";
 import type { TaskItem } from "./KanbanCard";
@@ -7,43 +8,173 @@ import type { AgentTime } from "../gantt/TimeTracker";
 
 type ViewMode = "kanban" | "gantt";
 
+interface TeamSummary {
+  team_name: string;
+  description?: string;
+  has_tasks: boolean;
+}
+
+interface ApiTask {
+  id: string;
+  subject: string;
+  description?: string;
+  active_form?: string;
+  status: string;
+  owner?: string;
+  blocks: string[];
+  blocked_by: string[];
+  modified_at?: number;
+}
+
 export default function TaskPanel() {
+  const store = useSession();
   const [viewMode, setViewMode] = createSignal<ViewMode>("kanban");
+  const [selectedTeam, setSelectedTeam] = createSignal<string | null>(null);
 
-  // Demo data — will be replaced by real data from WebTransport
-  const [tasks, setTasks] = createSignal<TaskItem[]>([
-    { id: "1", subject: "Set up project scaffolding", status: "completed", owner: "team-lead", createdAt: "2026-02-21T10:00:00Z" },
-    { id: "2", subject: "Research API patterns", status: "completed", owner: "researcher", createdAt: "2026-02-21T10:05:00Z" },
-    { id: "3", subject: "Implement WebTransport client", status: "in_progress", owner: "implementer", activeForm: "Writing transport code", createdAt: "2026-02-21T10:10:00Z" },
-    { id: "4", subject: "Write unit tests for parser", status: "in_progress", owner: "tester", activeForm: "Running tests", createdAt: "2026-02-21T10:15:00Z" },
-    { id: "5", subject: "Add error handling", status: "pending", createdAt: "2026-02-21T10:20:00Z" },
-    { id: "6", subject: "Performance optimization", status: "pending", createdAt: "2026-02-21T10:25:00Z" },
-    { id: "7", subject: "Documentation update", status: "pending", owner: "researcher", createdAt: "2026-02-21T10:30:00Z" },
-  ]);
+  const apiUrl = () => store.state.httpApiUrl;
 
-  const handleStatusChange = (taskId: string, newStatus: TaskItem["status"]) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+  const fetchTeams = async (): Promise<TeamSummary[]> => {
+    const base = apiUrl();
+    if (!base) return [];
+    const resp = await fetch(`${base}/api/teams`);
+    if (!resp.ok) return [];
+    return resp.json();
+  };
+
+  const [teams] = createResource(() => apiUrl(), fetchTeams);
+
+  // Auto-select first team with tasks
+  const activeTeamName = () => {
+    const sel = selectedTeam();
+    if (sel) return sel;
+    const t = teams();
+    if (!t || t.length === 0) return null;
+    const withTasks = t.find((team) => team.has_tasks);
+    return withTasks ? withTasks.team_name : t[0].team_name;
+  };
+
+  const fetchTasks = async (teamName: string): Promise<ApiTask[]> => {
+    const base = apiUrl();
+    if (!base || !teamName) return [];
+    const resp = await fetch(
+      `${base}/api/teams/${encodeURIComponent(teamName)}/tasks`,
+    );
+    if (!resp.ok) return [];
+    return resp.json();
+  };
+
+  const [apiTasks] = createResource(activeTeamName, fetchTasks);
+
+  // Map API tasks to TaskItem[]
+  const tasks = (): TaskItem[] => {
+    const raw = apiTasks();
+    if (!raw) return [];
+    return raw.map((t) => ({
+      id: t.id,
+      subject: t.subject,
+      description: t.description,
+      status: (t.status === "in_progress" || t.status === "completed"
+        ? t.status
+        : "pending") as TaskItem["status"],
+      owner: t.owner,
+      activeForm: t.active_form,
+      blocks: t.blocks,
+      blockedBy: t.blocked_by,
+    }));
+  };
+
+  const [localTasks, setLocalTasks] = createSignal<TaskItem[]>([]);
+
+  // Sync API tasks to local state (for drag-and-drop mutations)
+  const effectiveTasks = () => {
+    const local = localTasks();
+    return local.length > 0 ? local : tasks();
+  };
+
+  // When API tasks change, reset local state
+  createResource(
+    () => tasks(),
+    (t) => {
+      setLocalTasks(t);
+      return t;
+    },
+  );
+
+  const handleStatusChange = (
+    taskId: string,
+    newStatus: TaskItem["status"],
+  ) => {
+    setLocalTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)),
     );
   };
 
-  const agents = ["team-lead", "researcher", "implementer", "tester"];
+  // Derive GanttTask data from real tasks
+  const ganttTasks = (): GanttTask[] => {
+    const raw = apiTasks();
+    if (!raw || raw.length === 0) return [];
 
-  const ganttTasks: GanttTask[] = [
-    { id: "1", subject: "Scaffolding", owner: "team-lead", startMs: 0, endMs: 5000, status: "completed" },
-    { id: "2", subject: "API Research", owner: "researcher", startMs: 3000, endMs: 12000, status: "completed" },
-    { id: "3", subject: "WebTransport", owner: "implementer", startMs: 8000, endMs: 25000, status: "in_progress" },
-    { id: "4", subject: "Unit Tests", owner: "tester", startMs: 15000, endMs: 22000, status: "in_progress" },
-    { id: "5", subject: "Error Handling", owner: "implementer", startMs: 25000, endMs: 35000, status: "pending" },
-    { id: "7", subject: "Docs", owner: "researcher", startMs: 20000, endMs: 30000, status: "pending" },
-  ];
+    const times = raw
+      .filter((t) => t.modified_at)
+      .map((t) => t.modified_at!);
+    const minTime = times.length > 0 ? Math.min(...times) : 0;
 
-  const agentTimes: AgentTime[] = [
-    { name: "team-lead", activeMs: 300000, idleMs: 120000 },
-    { name: "researcher", activeMs: 540000, idleMs: 60000 },
-    { name: "implementer", activeMs: 720000, idleMs: 30000 },
-    { name: "tester", activeMs: 420000, idleMs: 180000 },
-  ];
+    return raw.map((t) => {
+      const startSec = (t.modified_at ?? minTime) - minTime;
+      const durationSec =
+        t.status === "completed"
+          ? 5000
+          : t.status === "in_progress"
+            ? 10000
+            : 3000;
+      return {
+        id: t.id,
+        subject: t.subject,
+        owner: t.owner ?? "unassigned",
+        startMs: startSec * 1000,
+        endMs: (startSec + durationSec) * 1000,
+        status: (t.status === "in_progress" || t.status === "completed"
+          ? t.status
+          : "pending") as GanttTask["status"],
+      };
+    });
+  };
+
+  // Derive unique agent names
+  const agents = (): string[] => {
+    const raw = apiTasks();
+    if (!raw) return [];
+    const names = new Set(raw.map((t) => t.owner ?? "unassigned"));
+    return [...names];
+  };
+
+  // Derive AgentTime data
+  const agentTimes = (): AgentTime[] => {
+    const raw = apiTasks();
+    if (!raw) return [];
+
+    const byOwner = new Map<string, { active: number; idle: number }>();
+    for (const t of raw) {
+      const name = t.owner ?? "unassigned";
+      const entry = byOwner.get(name) ?? { active: 0, idle: 0 };
+      if (t.status === "in_progress") {
+        entry.active += 600000; // 10min per active task
+      } else {
+        entry.idle += 300000; // 5min per idle task
+      }
+      byOwner.set(name, entry);
+    }
+
+    return [...byOwner.entries()].map(([name, times]) => ({
+      name,
+      activeMs: times.active,
+      idleMs: times.idle,
+    }));
+  };
+
+  const teamsWithTasks = () =>
+    (teams() ?? []).filter((t) => t.has_tasks);
+  const taskCount = () => effectiveTasks().length;
 
   return (
     <div
@@ -80,17 +211,41 @@ export default function TaskPanel() {
             color: "var(--ctp-overlay0)",
           }}
         >
-          {tasks().length} total
+          {taskCount()} total
         </span>
+        <Show when={teamsWithTasks().length > 1}>
+          <select
+            value={activeTeamName() ?? ""}
+            onChange={(e) => setSelectedTeam(e.currentTarget.value)}
+            style={{
+              background: "var(--ctp-surface0)",
+              border: "1px solid var(--ctp-surface1)",
+              "border-radius": "4px",
+              color: "var(--ctp-text)",
+              "font-size": "11px",
+              padding: "2px 6px",
+            }}
+          >
+            <For each={teamsWithTasks()}>
+              {(t) => <option value={t.team_name}>{t.team_name}</option>}
+            </For>
+          </select>
+        </Show>
         <div style={{ "margin-left": "auto", display: "flex", gap: "2px" }}>
           <button
             onClick={() => setViewMode("kanban")}
             style={{
               padding: "3px 10px",
-              background: viewMode() === "kanban" ? "var(--ctp-surface1)" : "transparent",
+              background:
+                viewMode() === "kanban"
+                  ? "var(--ctp-surface1)"
+                  : "transparent",
               border: "none",
               "border-radius": "4px",
-              color: viewMode() === "kanban" ? "var(--ctp-text)" : "var(--ctp-overlay0)",
+              color:
+                viewMode() === "kanban"
+                  ? "var(--ctp-text)"
+                  : "var(--ctp-overlay0)",
               "font-size": "11px",
               cursor: "pointer",
             }}
@@ -101,10 +256,16 @@ export default function TaskPanel() {
             onClick={() => setViewMode("gantt")}
             style={{
               padding: "3px 10px",
-              background: viewMode() === "gantt" ? "var(--ctp-surface1)" : "transparent",
+              background:
+                viewMode() === "gantt"
+                  ? "var(--ctp-surface1)"
+                  : "transparent",
               border: "none",
               "border-radius": "4px",
-              color: viewMode() === "gantt" ? "var(--ctp-text)" : "var(--ctp-overlay0)",
+              color:
+                viewMode() === "gantt"
+                  ? "var(--ctp-text)"
+                  : "var(--ctp-overlay0)",
               "font-size": "11px",
               cursor: "pointer",
             }}
@@ -116,16 +277,38 @@ export default function TaskPanel() {
 
       {/* Content */}
       <div style={{ flex: "1", overflow: "hidden" }}>
-        {viewMode() === "kanban" ? (
-          <KanbanBoard tasks={tasks()} onTaskStatusChange={handleStatusChange} />
-        ) : (
-          <GanttPanel
-            tasks={ganttTasks}
-            agents={agents}
-            agentTimes={agentTimes}
-            totalDurationMs={40000}
-          />
-        )}
+        <Show
+          when={taskCount() > 0}
+          fallback={
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                height: "100%",
+                color: "var(--ctp-overlay0)",
+                "font-size": "12px",
+              }}
+            >
+              {apiTasks.loading
+                ? "Loading tasks..."
+                : "No tasks found for this team"}
+            </div>
+          }
+        >
+          {viewMode() === "kanban" ? (
+            <KanbanBoard
+              tasks={effectiveTasks()}
+              onTaskStatusChange={handleStatusChange}
+            />
+          ) : (
+            <GanttPanel
+              tasks={ganttTasks()}
+              agents={agents()}
+              agentTimes={agentTimes()}
+            />
+          )}
+        </Show>
       </div>
     </div>
   );

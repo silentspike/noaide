@@ -50,6 +50,89 @@ pub enum TeamEvent {
     TeamRemoved(String),
 }
 
+/// A task file as stored in ~/.claude/tasks/{team}/N.json
+///
+/// Tolerates extra fields (metadata, etc.) that may be present.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskFile {
+    pub id: String,
+    pub subject: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(rename = "activeForm", default)]
+    pub active_form: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub blocks: Vec<String>,
+    #[serde(rename = "blockedBy", default)]
+    pub blocked_by: Vec<String>,
+    /// File modification time (set by load_tasks, not from JSON)
+    #[serde(skip_deserializing, default)]
+    pub modified_at: Option<i64>,
+}
+
+/// Load all task JSON files from a task directory.
+/// Skips non-JSON files (.lock, .highwatermark, etc.)
+/// Returns tasks sorted by numeric ID.
+pub async fn load_tasks(task_dir: &Path) -> Vec<TaskFile> {
+    let mut tasks = Vec::new();
+
+    let mut entries = match tokio::fs::read_dir(task_dir).await {
+        Ok(e) => e,
+        Err(e) => {
+            warn!("failed to read task directory {:?}: {e}", task_dir);
+            return tasks;
+        }
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+
+        let content = match tokio::fs::read_to_string(&path).await {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("failed to read task file {:?}: {e}", path);
+                continue;
+            }
+        };
+
+        let mut task: TaskFile = match serde_json::from_str(&content) {
+            Ok(t) => t,
+            Err(e) => {
+                warn!("failed to parse task file {:?}: {e}", path);
+                continue;
+            }
+        };
+
+        // Set file mtime as modified_at timestamp
+        if let Ok(metadata) = tokio::fs::metadata(&path).await
+            && let Ok(modified) = metadata.modified()
+            && let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH)
+        {
+            task.modified_at = Some(duration.as_secs() as i64);
+        }
+
+        tasks.push(task);
+    }
+
+    // Sort by numeric ID (fall back to string sort)
+    tasks.sort_by(|a, b| {
+        let a_num: Result<u64, _> = a.id.parse();
+        let b_num: Result<u64, _> = b.id.parse();
+        match (a_num, b_num) {
+            (Ok(an), Ok(bn)) => an.cmp(&bn),
+            _ => a.id.cmp(&b.id),
+        }
+    });
+
+    tasks
+}
+
 /// Scans ~/.claude/teams/ for team configurations
 pub struct TeamDiscovery {
     claude_dir: PathBuf,
@@ -148,6 +231,52 @@ mod tests {
         let (discovery, _rx) = TeamDiscovery::new(tmp.path());
         let teams = discovery.scan().await;
         assert!(teams.is_empty());
+    }
+
+    #[tokio::test]
+    async fn load_tasks_reads_json_files() {
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("tasks");
+        std::fs::create_dir_all(&task_dir).unwrap();
+
+        // Create task files
+        std::fs::write(
+            task_dir.join("1.json"),
+            r#"{"id":"1","subject":"First task","status":"completed","owner":"lead","blocks":[],"blockedBy":[]}"#,
+        ).unwrap();
+        std::fs::write(
+            task_dir.join("2.json"),
+            r#"{"id":"2","subject":"Second task","status":"in_progress","owner":"dev","activeForm":"Working on it","blocks":[],"blockedBy":["1"]}"#,
+        ).unwrap();
+        std::fs::write(
+            task_dir.join("3.json"),
+            r#"{"id":"3","subject":"Third task","status":"pending","blocks":["2"],"blockedBy":[]}"#,
+        ).unwrap();
+        // Non-JSON files should be skipped
+        std::fs::write(task_dir.join(".lock"), "").unwrap();
+        std::fs::write(task_dir.join(".highwatermark"), "3").unwrap();
+
+        let tasks = super::load_tasks(&task_dir).await;
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].id, "1");
+        assert_eq!(tasks[0].subject, "First task");
+        assert_eq!(tasks[0].status, "completed");
+        assert_eq!(tasks[0].owner, Some("lead".to_string()));
+        assert_eq!(tasks[1].id, "2");
+        assert_eq!(tasks[1].active_form, Some("Working on it".to_string()));
+        assert_eq!(tasks[1].blocked_by, vec!["1"]);
+        assert_eq!(tasks[2].id, "3");
+        assert_eq!(tasks[2].owner, None);
+        assert_eq!(tasks[2].blocks, vec!["2"]);
+        // All tasks should have modified_at set
+        assert!(tasks.iter().all(|t| t.modified_at.is_some()));
+    }
+
+    #[tokio::test]
+    async fn load_tasks_empty_dir() {
+        let tmp = TempDir::new().unwrap();
+        let tasks = super::load_tasks(tmp.path()).await;
+        assert!(tasks.is_empty());
     }
 
     #[tokio::test]
