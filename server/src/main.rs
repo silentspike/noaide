@@ -2213,20 +2213,20 @@ struct GitCommitBody {
 /// Resolve the git repo path from a session ID (via JSONL path → project dir).
 /// Falls back to the noaide project root if no session is specified.
 async fn resolve_git_repo(state: &AppState, session_id: Option<&str>) -> Option<PathBuf> {
-    if let Some(sid) = session_id {
-        if let Ok(uuid) = Uuid::parse_str(sid) {
-            let paths = state.session_paths.read().await;
-            if let Some(jsonl_path) = paths.get(&uuid).cloned() {
-                drop(paths);
-                return resolve_session_cwd(&jsonl_path);
-            }
-            // Try reverse alias for managed sessions
-            let world = state.ecs.read().await;
-            if let Some(jsonl_id) = world.reverse_alias(uuid) {
-                if let Some(jsonl_path) = state.session_paths.read().await.get(&jsonl_id).cloned() {
-                    return resolve_session_cwd(&jsonl_path);
-                }
-            }
+    if let Some(sid) = session_id
+        && let Ok(uuid) = Uuid::parse_str(sid)
+    {
+        let paths = state.session_paths.read().await;
+        if let Some(jsonl_path) = paths.get(&uuid).cloned() {
+            drop(paths);
+            return resolve_session_cwd(&jsonl_path);
+        }
+        // Try reverse alias for managed sessions
+        let world = state.ecs.read().await;
+        if let Some(jsonl_id) = world.reverse_alias(uuid)
+            && let Some(jsonl_path) = state.session_paths.read().await.get(&jsonl_id).cloned()
+        {
+            return resolve_session_cwd(&jsonl_path);
         }
     }
     // Fallback: use noaide's own project directory
