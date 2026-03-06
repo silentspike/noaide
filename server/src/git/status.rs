@@ -269,4 +269,69 @@ mod tests {
         assert_eq!(commits[0].author, "Test Author");
         assert_eq!(commits[0].short_hash.len(), 7);
     }
+
+    #[test]
+    fn checkout_switches_branch() {
+        let dir = create_test_repo();
+        let repo = Repository::open(dir.path()).unwrap();
+
+        // Create a new branch from HEAD
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.branch("test-branch", &head, false).unwrap();
+
+        // Checkout the new branch
+        let result = checkout(dir.path(), "test-branch");
+        assert!(result.is_ok(), "checkout should succeed: {:?}", result.err());
+
+        // Verify HEAD points to new branch
+        let new_head = repo.head().unwrap();
+        assert_eq!(new_head.shorthand().unwrap(), "test-branch");
+    }
+
+    #[test]
+    fn checkout_fails_for_nonexistent_branch() {
+        let dir = create_test_repo();
+        let result = checkout(dir.path(), "nonexistent");
+        assert!(result.is_err(), "checkout should fail for nonexistent branch");
+    }
+
+    #[test]
+    fn stage_adds_files_to_index() {
+        let dir = create_test_repo();
+
+        // Create a new file
+        std::fs::write(dir.path().join("staged.txt"), "staged content\n").unwrap();
+
+        // Stage it
+        let result = stage(dir.path(), &["staged.txt"]);
+        assert!(result.is_ok(), "stage should succeed: {:?}", result.err());
+
+        // Verify it appears as staged in status
+        let files = status(dir.path()).unwrap();
+        let staged_file = files.iter().find(|f| f.path == "staged.txt");
+        assert!(staged_file.is_some(), "staged.txt should appear in status");
+        assert!(staged_file.unwrap().staged, "staged.txt should be staged");
+    }
+
+    #[test]
+    fn commit_creates_new_commit() {
+        let dir = create_test_repo();
+
+        // Create and stage a new file
+        std::fs::write(dir.path().join("new.txt"), "new content\n").unwrap();
+        stage(dir.path(), &["new.txt"]).unwrap();
+
+        // Commit
+        let result = commit(dir.path(), "Add new file");
+        assert!(result.is_ok(), "commit should succeed: {:?}", result.err());
+
+        let hash = result.unwrap();
+        assert!(!hash.is_empty(), "commit hash should not be empty");
+        assert_eq!(hash.len(), 40, "commit hash should be 40 hex chars");
+
+        // Verify commit appears in log
+        let commits = log(dir.path(), 5).unwrap();
+        assert_eq!(commits.len(), 2, "should have 2 commits now");
+        assert_eq!(commits[0].message, "Add new file");
+    }
 }

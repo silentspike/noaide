@@ -23,6 +23,7 @@ use noaide_server::ecs::{EcsWorld, SharedEcsWorld};
 use noaide_server::parser;
 use noaide_server::session::SessionManager;
 use noaide_server::transport::TransportServer;
+use noaide_server::teams::{TeamDiscovery, TopologyBuilder};
 use noaide_server::watcher::FileEventKind;
 
 /// Shared application state for HTTP API handlers.
@@ -211,6 +212,15 @@ async fn main() -> anyhow::Result<()> {
             "/api/proxy/intercept/{session_id}/pending-responses/{id}/forward",
             post(api_forward_response_intercept),
         )
+        .route("/api/git/status", get(api_git_status))
+        .route("/api/git/branches", get(api_git_branches))
+        .route("/api/git/log", get(api_git_log))
+        .route("/api/git/blame", get(api_git_blame))
+        .route("/api/git/checkout", post(api_git_checkout))
+        .route("/api/git/stage", post(api_git_stage))
+        .route("/api/git/commit", post(api_git_commit))
+        .route("/api/teams", get(api_get_teams))
+        .route("/api/teams/{name}/topology", get(api_get_team_topology))
         .route("/api/events", get(api_sse_events))
         .route("/health", get(|| async { "ok" }))
         .route(
@@ -2161,6 +2171,306 @@ async fn api_forward_response_intercept(
         axum::http::StatusCode::OK,
         axum::Json(serde_json::json!({"ok": true})),
     )
+}
+
+// ── Git API Endpoints ────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct GitSessionQuery {
+    session_id: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct GitLogQuery {
+    session_id: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct GitBlameQuery {
+    session_id: Option<String>,
+    file: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitCheckoutBody {
+    session_id: Option<String>,
+    branch: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitStageBody {
+    session_id: Option<String>,
+    paths: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct GitCommitBody {
+    session_id: Option<String>,
+    message: String,
+}
+
+/// Resolve the git repo path from a session ID (via JSONL path → project dir).
+/// Falls back to the noaide project root if no session is specified.
+async fn resolve_git_repo(state: &AppState, session_id: Option<&str>) -> Option<PathBuf> {
+    if let Some(sid) = session_id {
+        if let Ok(uuid) = Uuid::parse_str(sid) {
+            let paths = state.session_paths.read().await;
+            if let Some(jsonl_path) = paths.get(&uuid).cloned() {
+                drop(paths);
+                return resolve_session_cwd(&jsonl_path);
+            }
+            // Try reverse alias for managed sessions
+            let world = state.ecs.read().await;
+            if let Some(jsonl_id) = world.reverse_alias(uuid) {
+                if let Some(jsonl_path) = state.session_paths.read().await.get(&jsonl_id).cloned() {
+                    return resolve_session_cwd(&jsonl_path);
+                }
+            }
+        }
+    }
+    // Fallback: use noaide's own project directory
+    let cwd = std::env::current_dir().ok()?;
+    if cwd.join(".git").is_dir() {
+        Some(cwd)
+    } else {
+        None
+    }
+}
+
+async fn api_git_status(
+    State(state): State<AppState>,
+    Query(query): Query<GitSessionQuery>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, query.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repository found for session"})),
+            );
+        }
+    };
+    match noaide_server::git::status(&repo_path) {
+        Ok(files) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!(files)),
+        ),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+async fn api_git_branches(
+    State(state): State<AppState>,
+    Query(query): Query<GitSessionQuery>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, query.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repository found for session"})),
+            );
+        }
+    };
+    match noaide_server::git::branches(&repo_path) {
+        Ok(branches) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!(branches)),
+        ),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+async fn api_git_log(
+    State(state): State<AppState>,
+    Query(query): Query<GitLogQuery>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, query.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repository found for session"})),
+            );
+        }
+    };
+    let limit = query.limit.unwrap_or(50);
+    match noaide_server::git::log(&repo_path, limit) {
+        Ok(commits) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!(commits)),
+        ),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+async fn api_git_blame(
+    State(state): State<AppState>,
+    Query(query): Query<GitBlameQuery>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, query.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repository found for session"})),
+            );
+        }
+    };
+    match noaide_server::git::blame_file(&repo_path, &query.file) {
+        Ok(lines) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!(lines)),
+        ),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+async fn api_git_checkout(
+    State(state): State<AppState>,
+    axum::Json(body): axum::Json<GitCheckoutBody>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, body.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repository found for session"})),
+            );
+        }
+    };
+    match noaide_server::git::checkout(&repo_path, &body.branch) {
+        Ok(()) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!({"ok": true})),
+        ),
+        Err(e) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+async fn api_git_stage(
+    State(state): State<AppState>,
+    axum::Json(body): axum::Json<GitStageBody>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, body.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repository found for session"})),
+            );
+        }
+    };
+    let path_refs: Vec<&str> = body.paths.iter().map(|s| s.as_str()).collect();
+    match noaide_server::git::stage(&repo_path, &path_refs) {
+        Ok(()) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!({"ok": true})),
+        ),
+        Err(e) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+async fn api_git_commit(
+    State(state): State<AppState>,
+    axum::Json(body): axum::Json<GitCommitBody>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, body.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repository found for session"})),
+            );
+        }
+    };
+    if body.message.trim().is_empty() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({"error": "commit message cannot be empty"})),
+        );
+    }
+    match noaide_server::git::commit(&repo_path, &body.message) {
+        Ok(hash) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!({"ok": true, "hash": hash})),
+        ),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+// ── Teams API — Discover team configs and build topology graphs ────────────
+
+/// GET /api/teams — List all discovered teams from ~/.claude/teams/
+async fn api_get_teams() -> impl axum::response::IntoResponse {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    let claude_dir = PathBuf::from(home).join(".claude");
+    let (discovery, _rx) = TeamDiscovery::new(&claude_dir);
+    let teams = discovery.scan().await;
+
+    let result: Vec<serde_json::Value> = teams
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "team_name": t.config.name,
+                "description": t.config.description,
+                "members": t.config.members,
+                "created_at": t.config.created_at,
+                "has_tasks": t.task_dir.is_some(),
+            })
+        })
+        .collect();
+
+    axum::Json(result)
+}
+
+/// GET /api/teams/:name/topology — Get topology graph for a specific team
+async fn api_get_team_topology(
+    Path(team_name): Path<String>,
+) -> impl axum::response::IntoResponse {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    let claude_dir = PathBuf::from(home).join(".claude");
+    let (discovery, _rx) = TeamDiscovery::new(&claude_dir);
+    let teams = discovery.scan().await;
+
+    let team = teams.iter().find(|t| t.config.name == team_name);
+    match team {
+        Some(t) => {
+            let mut builder = TopologyBuilder::new(&t.config.name);
+            builder.add_members(&t.config.members);
+            let topology = builder.build();
+            (
+                axum::http::StatusCode::OK,
+                axum::Json(serde_json::to_value(&topology).unwrap_or_default()),
+            )
+        }
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            axum::Json(serde_json::json!({"error": format!("team '{}' not found", team_name)})),
+        ),
+    }
 }
 
 // ── SSE Endpoint — Realtime event stream (HTTP fallback for WebTransport) ────
