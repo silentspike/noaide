@@ -1,4 +1,5 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, createResource, For, Show } from "solid-js";
+import { useSession } from "../../App";
 
 interface FileEntry {
   path: string;
@@ -25,33 +26,55 @@ const statusIcons: Record<string, string> = {
 };
 
 export default function StagingArea() {
+  const store = useSession();
   const [commitMsg, setCommitMsg] = createSignal("");
 
-  // Demo data — replaced by WebTransport RPC in production
-  const [files, setFiles] = createSignal<FileEntry[]>([
-    { path: "server/src/git/blame.rs", status: "added", staged: true },
-    { path: "server/src/git/status.rs", status: "added", staged: true },
-    { path: "server/src/git/mod.rs", status: "modified", staged: true },
-    { path: "frontend/src/components/git/BranchSelector.tsx", status: "added", staged: false },
-    { path: "frontend/src/components/git/StagingArea.tsx", status: "added", staged: false },
-    { path: "README.md", status: "modified", staged: false },
-  ]);
+  const apiUrl = () => store.state.httpApiUrl;
+  const sessionId = () => store.state.activeSessionId;
 
-  const stagedFiles = () => files().filter((f) => f.staged);
-  const unstagedFiles = () => files().filter((f) => !f.staged);
-
-  const toggleStage = (path: string) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.path === path ? { ...f, staged: !f.staged } : f)),
-    );
+  const fetchStatus = async (): Promise<FileEntry[]> => {
+    const base = apiUrl();
+    if (!base) return [];
+    const sid = sessionId();
+    const url = sid
+      ? `${base}/api/git/status?session_id=${sid}`
+      : `${base}/api/git/status`;
+    const resp = await fetch(url);
+    if (!resp.ok) return [];
+    return resp.json();
   };
 
-  const stageAll = () => {
-    setFiles((prev) => prev.map((f) => ({ ...f, staged: true })));
+  const [files, { refetch }] = createResource(() => apiUrl(), fetchStatus);
+
+  const stagedFiles = () => (files() ?? []).filter((f) => f.staged);
+  const unstagedFiles = () => (files() ?? []).filter((f) => !f.staged);
+
+  const doStage = async (paths: string[]) => {
+    const base = apiUrl();
+    if (!base) return;
+    const sid = sessionId();
+    await fetch(`${base}/api/git/stage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sid ?? undefined, paths }),
+    });
+    refetch();
   };
 
-  const unstageAll = () => {
-    setFiles((prev) => prev.map((f) => ({ ...f, staged: false })));
+  const doCommit = async () => {
+    const base = apiUrl();
+    const msg = commitMsg().trim();
+    if (!base || !msg) return;
+    const sid = sessionId();
+    const resp = await fetch(`${base}/api/git/commit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sid ?? undefined, message: msg }),
+    });
+    if (resp.ok) {
+      setCommitMsg("");
+      refetch();
+    }
   };
 
   return (
@@ -79,31 +102,20 @@ export default function StagingArea() {
           }}
         >
           <span>Staged ({stagedFiles().length})</span>
-          <Show when={stagedFiles().length > 0}>
-            <button
-              onClick={unstageAll}
-              style={{
-                background: "none",
-                border: "none",
-                color: "var(--ctp-overlay0)",
-                "font-size": "10px",
-                cursor: "pointer",
-                padding: "0 4px",
-              }}
-            >
-              Unstage all
-            </button>
-          </Show>
         </div>
         <For each={stagedFiles()}>
-          {(file) => (
-            <FileRow file={file} onToggle={() => toggleStage(file.path)} />
-          )}
+          {(file) => <FileRow file={file} actionLabel="−" onAction={() => {}} />}
         </For>
       </div>
 
       {/* Unstaged section */}
-      <div style={{ "flex-shrink": "0", "border-top": "1px solid var(--ctp-surface0)", "margin-top": "4px" }}>
+      <div
+        style={{
+          "flex-shrink": "0",
+          "border-top": "1px solid var(--ctp-surface0)",
+          "margin-top": "4px",
+        }}
+      >
         <div
           style={{
             display: "flex",
@@ -119,7 +131,9 @@ export default function StagingArea() {
           <span>Changes ({unstagedFiles().length})</span>
           <Show when={unstagedFiles().length > 0}>
             <button
-              onClick={stageAll}
+              onClick={() =>
+                doStage(unstagedFiles().map((f) => f.path))
+              }
               style={{
                 background: "none",
                 border: "none",
@@ -135,13 +149,23 @@ export default function StagingArea() {
         </div>
         <For each={unstagedFiles()}>
           {(file) => (
-            <FileRow file={file} onToggle={() => toggleStage(file.path)} />
+            <FileRow
+              file={file}
+              actionLabel="+"
+              onAction={() => doStage([file.path])}
+            />
           )}
         </For>
       </div>
 
       {/* Commit box */}
-      <div style={{ "margin-top": "auto", padding: "8px", "border-top": "1px solid var(--ctp-surface0)" }}>
+      <div
+        style={{
+          "margin-top": "auto",
+          padding: "8px",
+          "border-top": "1px solid var(--ctp-surface0)",
+        }}
+      >
         <textarea
           value={commitMsg()}
           onInput={(e) => setCommitMsg(e.currentTarget.value)}
@@ -163,27 +187,40 @@ export default function StagingArea() {
         />
         <button
           disabled={stagedFiles().length === 0 || !commitMsg()}
+          onClick={doCommit}
           style={{
             "margin-top": "6px",
             width: "100%",
             padding: "6px",
-            background: stagedFiles().length > 0 && commitMsg() ? "var(--ctp-blue)" : "var(--ctp-surface1)",
+            background:
+              stagedFiles().length > 0 && commitMsg()
+                ? "var(--ctp-blue)"
+                : "var(--ctp-surface1)",
             border: "none",
             "border-radius": "4px",
-            color: stagedFiles().length > 0 && commitMsg() ? "var(--ctp-base)" : "var(--ctp-overlay0)",
+            color:
+              stagedFiles().length > 0 && commitMsg()
+                ? "var(--ctp-base)"
+                : "var(--ctp-overlay0)",
             "font-size": "12px",
             "font-weight": "600",
-            cursor: stagedFiles().length > 0 && commitMsg() ? "pointer" : "default",
+            cursor:
+              stagedFiles().length > 0 && commitMsg() ? "pointer" : "default",
           }}
         >
-          Commit ({stagedFiles().length} file{stagedFiles().length !== 1 ? "s" : ""})
+          Commit ({stagedFiles().length} file
+          {stagedFiles().length !== 1 ? "s" : ""})
         </button>
       </div>
     </div>
   );
 }
 
-function FileRow(props: { file: FileEntry; onToggle: () => void }) {
+function FileRow(props: {
+  file: FileEntry;
+  actionLabel: string;
+  onAction: () => void;
+}) {
   const fileName = () => props.file.path.split("/").pop() ?? props.file.path;
   const dirPath = () => {
     const parts = props.file.path.split("/");
@@ -191,20 +228,15 @@ function FileRow(props: { file: FileEntry; onToggle: () => void }) {
   };
 
   return (
-    <button
-      onClick={() => props.onToggle()}
+    <div
       style={{
         display: "flex",
         "align-items": "center",
         gap: "6px",
         width: "100%",
         padding: "3px 8px",
-        background: "transparent",
-        border: "none",
-        color: "var(--ctp-text)",
         "font-size": "12px",
-        cursor: "pointer",
-        "text-align": "left",
+        color: "var(--ctp-text)",
       }}
     >
       <span
@@ -230,23 +262,27 @@ function FileRow(props: { file: FileEntry; onToggle: () => void }) {
         <span style={{ color: "var(--ctp-overlay0)" }}>{dirPath()}</span>
         <span>{fileName()}</span>
       </span>
-      <span
+      <button
+        onClick={() => props.onAction()}
         style={{
-          width: "16px",
-          height: "16px",
+          width: "18px",
+          height: "18px",
           "border-radius": "3px",
-          border: `1px solid ${props.file.staged ? "var(--ctp-blue)" : "var(--ctp-surface2)"}`,
-          background: props.file.staged ? "var(--ctp-blue)" : "transparent",
+          border: "1px solid var(--ctp-surface2)",
+          background: "transparent",
+          color: "var(--ctp-overlay0)",
+          "font-size": "12px",
+          "line-height": "1",
+          cursor: "pointer",
           display: "flex",
           "align-items": "center",
           "justify-content": "center",
           "flex-shrink": "0",
-          "font-size": "10px",
-          color: "var(--ctp-base)",
+          padding: "0",
         }}
       >
-        {props.file.staged ? "\u2713" : ""}
-      </span>
-    </button>
+        {props.actionLabel}
+      </button>
+    </div>
   );
 }
