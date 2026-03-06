@@ -15,6 +15,7 @@ interface RequestDetailProps {
 type Tab = "response" | "request" | "headers";
 
 export type { RequestDetailFull };
+export { tryParseJson, parseSseEvents, extractResponseContent };
 
 /** Try to parse JSON and pretty-print it. */
 function tryParseJson(text: string): unknown | null {

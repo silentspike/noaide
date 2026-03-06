@@ -65,6 +65,7 @@ function shortUrl(url: string): string {
 }
 
 export type { ApiRequest };
+export { statusColor, statusColorDark, formatSize, formatTime, shortUrl };
 
 export default function RequestRow(props: RequestRowProps) {
   const [hovered, setHovered] = createSignal(false);
