@@ -8,6 +8,8 @@ export interface TaskItem {
   owner?: string;
   createdAt?: string;
   activeForm?: string;
+  blocks?: string[];
+  blockedBy?: string[];
 }
 
 interface KanbanCardProps {
@@ -88,6 +90,19 @@ export default function KanbanCard(props: KanbanCardProps) {
             }}
           >
             {props.task.owner}
+          </span>
+        </Show>
+        <Show when={props.task.blockedBy && props.task.blockedBy.length > 0}>
+          <span
+            style={{
+              padding: "1px 5px",
+              "border-radius": "3px",
+              background: "color-mix(in srgb, var(--ctp-red) 15%, transparent)",
+              color: "var(--ctp-red)",
+              "font-weight": "500",
+            }}
+          >
+            blocked
           </span>
         </Show>
         <Show when={props.task.activeForm && props.task.status === "in_progress"}>

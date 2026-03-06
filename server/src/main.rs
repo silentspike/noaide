@@ -22,7 +22,7 @@ use noaide_server::ecs::components::{ApiRequestComponent, SessionComponent, Sess
 use noaide_server::ecs::{EcsWorld, SharedEcsWorld};
 use noaide_server::parser;
 use noaide_server::session::SessionManager;
-use noaide_server::teams::{TeamDiscovery, TopologyBuilder};
+use noaide_server::teams::{TeamDiscovery, TopologyBuilder, load_tasks};
 use noaide_server::transport::TransportServer;
 use noaide_server::watcher::FileEventKind;
 
@@ -221,6 +221,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/git/commit", post(api_git_commit))
         .route("/api/teams", get(api_get_teams))
         .route("/api/teams/{name}/topology", get(api_get_team_topology))
+        .route("/api/teams/{name}/tasks", get(api_get_team_tasks))
         .route("/api/events", get(api_sse_events))
         .route("/health", get(|| async { "ok" }))
         .route(
@@ -2464,6 +2465,35 @@ async fn api_get_team_topology(Path(team_name): Path<String>) -> impl axum::resp
                 axum::Json(serde_json::to_value(&topology).unwrap_or_default()),
             )
         }
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            axum::Json(serde_json::json!({"error": format!("team '{}' not found", team_name)})),
+        ),
+    }
+}
+
+/// GET /api/teams/:name/tasks — Get all tasks for a specific team
+async fn api_get_team_tasks(Path(team_name): Path<String>) -> impl axum::response::IntoResponse {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    let claude_dir = PathBuf::from(home).join(".claude");
+    let (discovery, _rx) = TeamDiscovery::new(&claude_dir);
+    let teams = discovery.scan().await;
+
+    let team = teams.iter().find(|t| t.config.name == team_name);
+    match team {
+        Some(t) => match &t.task_dir {
+            Some(task_dir) => {
+                let tasks = load_tasks(task_dir).await;
+                (
+                    axum::http::StatusCode::OK,
+                    axum::Json(serde_json::to_value(&tasks).unwrap_or_default()),
+                )
+            }
+            None => (
+                axum::http::StatusCode::OK,
+                axum::Json(serde_json::json!([])),
+            ),
+        },
         None => (
             axum::http::StatusCode::NOT_FOUND,
             axum::Json(serde_json::json!({"error": format!("team '{}' not found", team_name)})),
