@@ -1,8 +1,9 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, createResource, For, Show } from "solid-js";
+import { useSession } from "../../App";
 
 interface Commit {
   hash: string;
-  shortHash: string;
+  short_hash: string;
   message: string;
   author: string;
   email: string;
@@ -19,51 +20,25 @@ function timeAgo(timestamp: number): string {
 }
 
 export default function CommitHistory() {
+  const store = useSession();
   const [selected, setSelected] = createSignal<string | null>(null);
 
-  // Demo data — replaced by WebTransport RPC in production
-  const [commits] = createSignal<Commit[]>([
-    {
-      hash: "5d2fcde1a2b3c4d5e6f7890abcdef1234567890a",
-      shortHash: "5d2fcde",
-      message: "feat: add multi-agent team visualization (topology + swimlane)",
-      author: "obtFusi",
-      email: "jan.neubauer@live.com",
-      timestamp: Math.floor(Date.now() / 1000) - 3600,
-    },
-    {
-      hash: "599b23c1234567890abcdef1234567890abcdef12",
-      shortHash: "599b23c",
-      message: "Merge pull request #42 from silentspike/feat/wp10-file-editor",
-      author: "obtFusi",
-      email: "jan.neubauer@live.com",
-      timestamp: Math.floor(Date.now() / 1000) - 7200,
-    },
-    {
-      hash: "bcb2b421234567890abcdef1234567890abcdef12",
-      shortHash: "bcb2b42",
-      message: "Merge pull request #41 from silentspike/feat/wp13-tool-cards",
-      author: "obtFusi",
-      email: "jan.neubauer@live.com",
-      timestamp: Math.floor(Date.now() / 1000) - 10800,
-    },
-    {
-      hash: "ccdd6cf1234567890abcdef1234567890abcdef12",
-      shortHash: "ccdd6cf",
-      message: "feat: add file browser, CodeMirror 6 editor, and conflict resolution",
-      author: "obtFusi",
-      email: "jan.neubauer@live.com",
-      timestamp: Math.floor(Date.now() / 1000) - 14400,
-    },
-    {
-      hash: "1034ddc1234567890abcdef1234567890abcdef12",
-      shortHash: "1034ddc",
-      message: "feat: add specialized tool visualization cards",
-      author: "obtFusi",
-      email: "jan.neubauer@live.com",
-      timestamp: Math.floor(Date.now() / 1000) - 18000,
-    },
-  ]);
+  const apiUrl = () => store.state.httpApiUrl;
+  const sessionId = () => store.state.activeSessionId;
+
+  const fetchCommits = async (): Promise<Commit[]> => {
+    const base = apiUrl();
+    if (!base) return [];
+    const sid = sessionId();
+    const params = new URLSearchParams();
+    if (sid) params.set("session_id", sid);
+    params.set("limit", "50");
+    const resp = await fetch(`${base}/api/git/log?${params}`);
+    if (!resp.ok) return [];
+    return resp.json();
+  };
+
+  const [commits] = createResource(() => apiUrl(), fetchCommits);
 
   return (
     <div
@@ -86,20 +61,27 @@ export default function CommitHistory() {
           "border-bottom": "1px solid var(--ctp-surface0)",
         }}
       >
-        Commits ({commits().length})
+        Commits ({(commits() ?? []).length})
       </div>
 
-      <For each={commits()}>
+      <For each={commits() ?? []}>
         {(commit) => (
           <button
-            onClick={() => setSelected(selected() === commit.hash ? null : commit.hash)}
+            onClick={() =>
+              setSelected(
+                selected() === commit.hash ? null : commit.hash,
+              )
+            }
             style={{
               display: "flex",
               "flex-direction": "column",
               gap: "2px",
               width: "100%",
               padding: "6px 8px",
-              background: selected() === commit.hash ? "var(--ctp-surface0)" : "transparent",
+              background:
+                selected() === commit.hash
+                  ? "var(--ctp-surface0)"
+                  : "transparent",
               border: "none",
               "border-bottom": "1px solid var(--ctp-surface0)",
               color: "var(--ctp-text)",
@@ -108,8 +90,13 @@ export default function CommitHistory() {
               "text-align": "left",
             }}
           >
-            <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
-              {/* Commit graph dot */}
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                gap: "6px",
+              }}
+            >
               <div
                 style={{
                   width: "8px",
@@ -148,10 +135,12 @@ export default function CommitHistory() {
                   "font-size": "10px",
                 }}
               >
-                {commit.shortHash}
+                {commit.short_hash}
               </code>
               <span>{commit.author}</span>
-              <span style={{ "margin-left": "auto" }}>{timeAgo(commit.timestamp)}</span>
+              <span style={{ "margin-left": "auto" }}>
+                {timeAgo(commit.timestamp)}
+              </span>
             </div>
 
             <Show when={selected() === commit.hash}>
@@ -165,12 +154,19 @@ export default function CommitHistory() {
               >
                 <div style={{ "margin-bottom": "2px" }}>
                   <span style={{ color: "var(--ctp-overlay0)" }}>Hash: </span>
-                  <code style={{ "font-family": "var(--font-mono)", "font-size": "10px" }}>
+                  <code
+                    style={{
+                      "font-family": "var(--font-mono)",
+                      "font-size": "10px",
+                    }}
+                  >
                     {commit.hash}
                   </code>
                 </div>
                 <div>
-                  <span style={{ color: "var(--ctp-overlay0)" }}>Author: </span>
+                  <span style={{ color: "var(--ctp-overlay0)" }}>
+                    Author:{" "}
+                  </span>
                   {commit.author} &lt;{commit.email}&gt;
                 </div>
                 <div>
