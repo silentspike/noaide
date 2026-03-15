@@ -1,4 +1,4 @@
-import { createSignal, createResource, onCleanup, For, Show } from "solid-js";
+import { createSignal, createResource, createEffect, onCleanup, For, Show } from "solid-js";
 import { StandalonePlanProvider } from "./stores/planProvider";
 import TOGAFDashboard from "./TOGAFDashboard";
 
@@ -14,12 +14,26 @@ async function fetchPlans(): Promise<PlanEntry[]> {
   return res.json();
 }
 
+async function fetchPlanForSession(sessionId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/plans/for-session/${sessionId}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.plan ?? null;
+  } catch { return null; }
+}
+
+interface PlanSelectorProps {
+  /** Currently selected session ID — auto-selects the bound plan */
+  sessionId?: string;
+}
+
 /**
  * PlanSelector — scans /work/plan/ for available plans,
  * shows a dropdown, and wraps TOGAFDashboard in a PlanProvider
  * pointing at the selected plan's plan.json via nginx.
  */
-export function PlanSelector() {
+export function PlanSelector(props: PlanSelectorProps) {
   const [plans, { refetch }] = createResource(fetchPlans);
   const [selected, setSelected] = createSignal<string | null>(null);
 
@@ -32,6 +46,16 @@ export function PlanSelector() {
     const withJson = list.find((p) => p.has_plan_json);
     if (withJson) setSelected(withJson.name);
   };
+
+  // Auto-select plan bound to current session
+  createEffect(() => {
+    const sid = props.sessionId;
+    if (sid) {
+      fetchPlanForSession(sid).then((plan) => {
+        if (plan) setSelected(plan);
+      });
+    }
+  });
 
   // Re-check plans periodically (every 10s) for new plans
   const intervalId = setInterval(() => { refetch(); }, 10000);

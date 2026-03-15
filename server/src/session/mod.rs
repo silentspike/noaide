@@ -32,8 +32,9 @@ impl SessionManager {
         working_dir: &Path,
         anthropic_base_url: Option<&str>,
         cli_type: &str,
+        auto_approve: bool,
     ) -> Result<SessionId, SessionError> {
-        let session = ManagedSession::spawn(working_dir, anthropic_base_url, cli_type)?;
+        let session = ManagedSession::spawn(working_dir, anthropic_base_url, cli_type, auto_approve)?;
         let id = session.id().clone();
         self.sessions.insert(id.clone(), session);
         info!(session = %id, mode = "managed", "session registered");
@@ -123,7 +124,7 @@ mod tests {
         // exist, execvp fails in the child (exit 127) and the session transitions
         // to Closed via PTY EOF. This tests the graceful cleanup path.
         let mut mgr = SessionManager::new();
-        let result = mgr.spawn_managed(Path::new("/tmp"), None, "noaide-nonexistent-cli-99");
+        let result = mgr.spawn_managed(Path::new("/tmp"), None, "noaide-nonexistent-cli-99", false);
         // fork+exec always succeeds from parent's perspective
         let id = result.expect("spawn should succeed (fork succeeds, exec fails in child)");
         assert_eq!(mgr.count(), 1);

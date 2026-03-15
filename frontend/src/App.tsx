@@ -315,6 +315,7 @@ function Shell() {
 // --- Center Panel with Tabs ---
 
 function CenterPanel(props: { activeTab: CenterTabId; onTabChange: (tab: CenterTabId) => void }) {
+  const sessionStore = useSession();
   return (
     <div style={{ display: "flex", "flex-direction": "column", height: "100%" }}>
       {/* Tab Bar */}
@@ -379,7 +380,7 @@ function CenterPanel(props: { activeTab: CenterTabId; onTabChange: (tab: CenterT
           <TaskPanel />
         </Show>
         <Show when={props.activeTab === "plan"}>
-          <PlanSelector />
+          <PlanSelector sessionId={sessionStore.state.activeSessionId ?? undefined} />
         </Show>
         <Show when={props.activeTab === "git"}>
           <div style={{ display: "flex", "flex-direction": "column", height: "100%", overflow: "auto" }}>
