@@ -381,6 +381,24 @@ export function createSessionStore() {
         if (m.model) lastModel = m.model;
       }
 
+      // Derive orbState from the last message (detects streaming/thinking/tool_use)
+      let derivedOrb: OrbState = "idle";
+      if (converted.length > 0) {
+        const last = converted[converted.length - 1];
+        if (last.content.some((b) => b.is_error)) {
+          derivedOrb = "error";
+        } else if (last.role === "assistant" && !last.stopReason) {
+          // No stop_reason = still streaming
+          if (last.content.some((b) => b.type === "thinking")) {
+            derivedOrb = "thinking";
+          } else if (last.content.some((b) => b.type === "tool_use")) {
+            derivedOrb = "tool_use";
+          } else {
+            derivedOrb = "streaming";
+          }
+        }
+      }
+
       // Single batch update — replaces array once for initial load.
       // After this, all updates come through addMessage (fine-grained).
       batch(() => {
@@ -388,6 +406,7 @@ export function createSessionStore() {
         setMessagesVersion((v) => v + 1);
         setState("contextTokensUsed", totalTokenCount);
         setTotalSessionCost(totalCost);
+        setState("orbState", derivedOrb);
         if (lastModel) {
           setState("activeModel", lastModel);
           setState("contextTokensMax", modelContextWindow(lastModel));
