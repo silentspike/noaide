@@ -117,7 +117,7 @@ const RiskCard: Component<{ risk: Risk }> = (props) => {
   const sevClass = () => SEVERITY_CLASS[props.risk.severity] ?? "risk-info";
 
   return (
-    <div class="wp-card" style={{
+    <div class="wp-card" data-testid={`risk-card-${props.risk.id}`} style={{
       "border-left": `4px solid`,
       "border-left-color": props.risk.severity === "critical" ? "var(--red)"
         : props.risk.severity === "high" ? "var(--peach)"

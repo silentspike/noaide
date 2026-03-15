@@ -111,7 +111,16 @@ export const MasterChecklist: Component<Props> = (props) => {
                   </For>
                 </ul>
                 <Show when={phase.gate !== undefined}>
-                  <li class="check-gate" data-testid={`gate-indicator-${phase.gate}`} style={{ "list-style": "none", "margin-top": "0.3rem" }}>
+                  <li
+                    class="check-gate"
+                    data-testid={`gate-indicator-${phase.gate}`}
+                    style={{ "list-style": "none", "margin-top": "0.3rem", cursor: "pointer" }}
+                    onClick={() => {
+                      const current = store.plan.gates[phase.gate!];
+                      const next = current === "pass" ? "pending" : "pass";
+                      store.setGateStatus(phase.gate!, next);
+                    }}
+                  >
                     <span class={`check-icon ${store.plan.gates[phase.gate!] === "pass" ? "check-pass" : "check-open"}`}>
                       {store.plan.gates[phase.gate!] === "pass" ? "\u2713" : "\u25CB"}
                     </span>

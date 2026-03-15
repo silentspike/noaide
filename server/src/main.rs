@@ -59,6 +59,8 @@ struct AppState {
     project_watches: Arc<RwLock<HashMap<Uuid, PathBuf>>>,
     /// Base directory for TOGAF plans (/work/plan/).
     plan_base_dir: Arc<PathBuf>,
+    /// Maps session UUID → plan name (for auto-selecting plan in Plan tab).
+    session_plan_mapping: Arc<RwLock<HashMap<Uuid, String>>>,
 }
 
 #[tokio::main]
@@ -160,6 +162,27 @@ async fn main() -> anyhow::Result<()> {
     ));
     info!(dir = %plan_base_dir.display(), "TOGAF plan base directory");
 
+    // Restore managed session→plan mappings from previous run (if available)
+    let session_plan_mapping: Arc<RwLock<HashMap<Uuid, String>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+    if let Ok(data) = tokio::fs::read_to_string("/tmp/noaide-managed-sessions.json").await {
+        if let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&data) {
+            let mut mapping = session_plan_mapping.write().await;
+            for entry in &entries {
+                if let (Some(sid), Some(plan)) = (
+                    entry["session_id"].as_str().and_then(|s| Uuid::parse_str(s).ok()),
+                    entry["plan"].as_str(),
+                ) {
+                    if !plan.is_empty() {
+                        mapping.insert(sid, plan.to_string());
+                    }
+                }
+            }
+            info!(restored = mapping.len(), "restored session→plan mappings from previous run");
+            drop(mapping);
+        }
+    }
+
     let app_state = AppState {
         ecs: ecs.clone(),
         session_paths: session_paths.clone(),
@@ -180,6 +203,7 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or(8082),
         project_watches: project_watches.clone(),
         plan_base_dir: plan_base_dir.clone(),
+        session_plan_mapping: session_plan_mapping.clone(),
     };
     let app = Router::new()
         .route(
@@ -241,6 +265,7 @@ async fn main() -> anyhow::Result<()> {
             post(api_forward_response_intercept),
         )
         .route("/api/plans", get(api_list_plans))
+        .route("/api/plans/for-session/{session_id}", get(api_plan_for_session))
         .route("/api/plans/{name}/plan.json", get(api_get_plan_json))
         .route("/api/plans/{name}/edits", post(api_post_plan_edits))
         .route("/api/git/status", get(api_git_status))
@@ -1817,6 +1842,22 @@ async fn api_list_plans(
     axum::Json(serde_json::json!(plans))
 }
 
+/// GET /api/plans/for-session/{session_id} — Return the plan name bound to a session.
+async fn api_plan_for_session(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> axum::Json<serde_json::Value> {
+    let uuid = match Uuid::parse_str(&session_id) {
+        Ok(u) => u,
+        Err(_) => return axum::Json(serde_json::json!({"plan": null})),
+    };
+    let mapping = state.session_plan_mapping.read().await;
+    match mapping.get(&uuid) {
+        Some(name) => axum::Json(serde_json::json!({"plan": name})),
+        None => axum::Json(serde_json::json!({"plan": null})),
+    }
+}
+
 /// GET /api/plans/{name}/plan.json — Serve plan.json from /work/plan/{name}/.
 async fn api_get_plan_json(
     State(state): State<AppState>,
@@ -2050,6 +2091,8 @@ struct CreateManagedSessionRequest {
     working_dir: String,
     /// CLI type to spawn: "claude" (default), "codex", or "gemini".
     cli_type: Option<String>,
+    /// Skip all tool permission prompts (--dangerously-skip-permissions).
+    auto_approve: Option<bool>,
 }
 
 /// Spawn a new managed CLI session (claude, codex, or gemini) via PTY.
@@ -2074,7 +2117,8 @@ async fn api_create_managed_session(
     let cli_type = body.cli_type.as_deref().unwrap_or("claude");
     let base_url = state.proxy_base_url.as_str();
     let mut mgr = state.session_manager.write().await;
-    match mgr.spawn_managed(&working_dir, Some(base_url), cli_type) {
+    let auto_approve = body.auto_approve.unwrap_or(false);
+    match mgr.spawn_managed(&working_dir, Some(base_url), cli_type, auto_approve) {
         Ok(session_id) => {
             let sid = session_id.0;
             // Register in ECS world so it shows up in session list
@@ -2123,6 +2167,41 @@ async fn api_create_managed_session(
                 }
                 watches.insert(sid, project_root);
             }
+            // Auto-detect plan: scan /work/plan/ for a plan whose IMPL-PLAN.md
+            // symlinks or matches the session working directory
+            {
+                let base = &*state.plan_base_dir;
+                if let Ok(mut entries) = tokio::fs::read_dir(base).await {
+                    while let Ok(Some(entry)) = entries.next_entry().await {
+                        if let Ok(ft) = entry.file_type().await {
+                            if ft.is_dir() {
+                                let name = entry.file_name().to_string_lossy().to_string();
+                                let impl_plan = entry.path().join("IMPL-PLAN.md");
+                                let plan_json = entry.path().join("plan.json");
+                                // Check if this plan dir has an IMPL-PLAN.md and the session
+                                // working dir contains an IMPL-PLAN.md too
+                                if plan_json.exists() {
+                                    let session_impl = PathBuf::from(&body.working_dir).join("IMPL-PLAN.md");
+                                    // Match by: plan dir has symlink to session dir, or
+                                    // session dir name matches plan name
+                                    let working_dir_name = PathBuf::from(&body.working_dir)
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().to_string())
+                                        .unwrap_or_default();
+                                    if impl_plan.exists() || name == working_dir_name
+                                        || name.contains(&working_dir_name)
+                                    {
+                                        let mut mapping = state.session_plan_mapping.write().await;
+                                        mapping.insert(sid, name.clone());
+                                        info!(session = %sid, plan = %name, "auto-bound session to plan");
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // For Codex/Gemini: also register by CLI type as fallback
             // (their JSONL paths don't encode the project directory)
             if cli_type != "claude" {
@@ -2130,6 +2209,18 @@ async fn api_create_managed_session(
                 pending.insert(cli_type.to_string(), sid);
             }
             info!(session = %sid, working_dir = %body.working_dir, "managed session created via API");
+            // Persist session→plan mapping for server restart recovery
+            {
+                let mapping = state.session_plan_mapping.read().await;
+                let msp = state.managed_session_paths.read().await;
+                let persist: Vec<serde_json::Value> = msp.iter().map(|(path, id)| {
+                    let plan = mapping.get(id).cloned().unwrap_or_default();
+                    serde_json::json!({"session_id": id.to_string(), "path": path, "plan": plan})
+                }).collect();
+                if let Ok(json) = serde_json::to_string_pretty(&persist) {
+                    let _ = tokio::fs::write("/tmp/noaide-managed-sessions.json", json).await;
+                }
+            }
             (
                 axum::http::StatusCode::OK,
                 axum::Json(serde_json::json!({
