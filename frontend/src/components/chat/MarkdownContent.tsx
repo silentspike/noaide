@@ -1,6 +1,22 @@
-import { createMemo, onMount, onCleanup } from "solid-js";
+import { createMemo } from "solid-js";
 import { Marked } from "marked";
 import DOMPurify from "dompurify";
+
+// Global click delegation for code copy buttons (registered once, not per component)
+if (typeof document !== "undefined") {
+  document.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest(".code-copy-btn") as HTMLButtonElement | null;
+    if (!btn) return;
+    const wrapper = btn.closest(".code-block-wrapper");
+    const code = wrapper?.querySelector("code");
+    if (code) {
+      navigator.clipboard.writeText(code.textContent || "").then(() => {
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+      });
+    }
+  });
+}
 
 /** Custom renderer: intercept code blocks for diff highlighting + language badge */
 const renderer = {
@@ -44,27 +60,8 @@ export default function MarkdownContent(props: { text: string }) {
     }
   });
 
-  let ref: HTMLDivElement | undefined;
-
-  // Delegate click for copy buttons inside rendered markdown
-  const handleClick = (e: MouseEvent) => {
-    const btn = (e.target as HTMLElement).closest(".code-copy-btn") as HTMLButtonElement | null;
-    if (!btn) return;
-    const wrapper = btn.closest(".code-block-wrapper");
-    const code = wrapper?.querySelector("code");
-    if (code) {
-      navigator.clipboard.writeText(code.textContent || "").then(() => {
-        btn.textContent = "Copied!";
-        setTimeout(() => { btn.textContent = "Copy"; }, 1500);
-      });
-    }
-  };
-
-  onMount(() => ref?.addEventListener("click", handleClick));
-  onCleanup(() => ref?.removeEventListener("click", handleClick));
-
   return (
-    <div ref={ref} class="md-content" innerHTML={html()} />
+    <div class="md-content" innerHTML={html()} />
   );
 }
 
