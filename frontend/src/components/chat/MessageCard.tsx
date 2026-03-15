@@ -4,6 +4,7 @@ import type { GalleryImage } from "../gallery/GalleryPanel";
 import ThinkingBlock from "./ThinkingBlock";
 import TokenHeatmap from "./TokenHeatmap";
 import MarkdownContent from "./MarkdownContent";
+import { useSession } from "../../App";
 
 interface MessageCardProps {
   message: ChatMessage;
@@ -136,6 +137,7 @@ export default function MessageCard(props: MessageCardProps) {
 
   return (
     <div
+      data-testid={`message-card-${props.message.uuid}`}
       style={{
         display: "flex",
         "flex-direction": "column",
@@ -171,6 +173,27 @@ export default function MessageCard(props: MessageCardProps) {
         <Show when={timestamp()}>
           <span>{timestamp()}</span>
         </Show>
+        {(() => {
+          try {
+            const store = useSession();
+            const uuid = props.message.uuid;
+            return (
+              <span
+                data-testid={`bookmark-toggle-${uuid}`}
+                onClick={(e) => { e.stopPropagation(); store.toggleBookmark(uuid); }}
+                style={{
+                  cursor: "pointer",
+                  color: store.isBookmarked(uuid) ? "var(--ctp-yellow)" : "var(--ctp-overlay0)",
+                  "font-size": "12px",
+                  "margin-left": "4px",
+                  transition: "color 150ms",
+                }}
+              >
+                {store.isBookmarked(uuid) ? "\u2605" : "\u2606"}
+              </span>
+            );
+          } catch { return null; }
+        })()}
       </div>
 
       <div
