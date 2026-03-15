@@ -1,4 +1,4 @@
-import { Show, createMemo, createSignal, createEffect } from "solid-js";
+import { Show, createMemo, createSignal, createEffect, onMount, onCleanup } from "solid-js";
 import { useSession } from "../../App";
 import type { ChatMessage, ContentBlock, ImageSource } from "../../types/messages";
 import { totalTokens } from "../../types/messages";
@@ -16,6 +16,8 @@ import MetaMessage from "./MetaMessage";
 import LoadingProgress from "./LoadingProgress";
 import Lightbox from "../gallery/Lightbox";
 import WorkingIndicator from "./WorkingIndicator";
+import ExportDialog from "../shared/ExportDialog";
+import SearchBar from "./SearchBar";
 import { ExpandedProvider, type ExpandedState } from "./expandedContext";
 import { ItemKeyProvider } from "./itemKeyContext";
 
@@ -141,6 +143,32 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
 
 export default function ChatPanel() {
   const store = useSession();
+  const [whisperUrl, setWhisperUrl] = createSignal<string | undefined>();
+
+  // Fetch whisper availability from server-info
+  onMount(async () => {
+    try {
+      // Fetch via same origin (Vite proxies /api/server-info to backend port 8080)
+      // This avoids mixed content (http fetch from https page)
+      const infoUrl = `${window.location.origin}/api/server-info`;
+      console.log("[chat] fetching server-info from", infoUrl);
+      const res = await fetch(infoUrl);
+      const info = await res.json();
+      console.log("[chat] server-info:", JSON.stringify(info));
+      if (info.whisperEnabled) {
+        // Use same origin (port 9999) — Vite proxies WS to backend port 8080
+        // This avoids mixed content (wss from https page) since port 8080 has no TLS
+        const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const url = `${wsProto}//${window.location.host}/api/ws/transcribe`;
+        console.log("[chat] whisper enabled — wsUrl:", url);
+        setWhisperUrl(url);
+      } else {
+        console.log("[chat] whisper not enabled in server-info");
+      }
+    } catch (e) {
+      console.warn("[chat] server-info fetch failed (whisper unavailable):", e);
+    }
+  });
 
   // Persistent expanded state that survives virtual scroll recycling
   const expandedMap = new Map<string, boolean>();
@@ -171,18 +199,230 @@ export default function ChatPanel() {
     setExpandedVersion(0);
   });
 
-  const renderItems = createMemo(() =>
-    buildRenderItems(store.activeMessages()),
-  );
+  // ── Incremental render-item builder ──────────────────────────────
+  // Caches processed render items and only handles new messages
+  // incrementally (O(k) where k = new messages, usually 1-5),
+  // instead of rebuilding the entire list (O(n) for 55k+ messages).
+  let riCache: RenderItem[] = [];
+  let riProcessed = 0;
+  let riToolUseMap = new Map<string, ContentBlock>();
+  let riSessionId: string | null = null;
+  let riMaxTokens = 0;
+
+  const renderItems = createMemo(() => {
+    // Explicit dependency: messagesVersion changes on every addMessage call.
+    // activeMessages() returns the same store proxy reference (SolidJS memo
+    // compares with ===), so without this signal renderItems never re-runs.
+    store.messagesVersion();
+    const messages = store.activeMessages();
+    const sid = store.state.activeSessionId;
+
+    // Reset on session change or shrink
+    if (sid !== riSessionId || messages.length < riProcessed) {
+      riCache = [];
+      riProcessed = 0;
+      riToolUseMap.clear();
+      riSessionId = sid;
+      riMaxTokens = 0;
+    }
+
+    // No new messages — same ref = no downstream re-render
+    if (messages.length === 0 || messages.length === riProcessed) return riCache;
+
+    // Full rebuild on initial load (session switch)
+    if (riProcessed === 0) {
+      riCache = buildRenderItems(messages);
+      for (const msg of messages) {
+        const t = totalTokens(msg);
+        if (t > riMaxTokens) riMaxTokens = t;
+        for (const block of msg.content) {
+          if (block.type === "tool_use" && block.id) {
+            riToolUseMap.set(block.id, block);
+          }
+        }
+      }
+      riProcessed = messages.length;
+      return riCache;
+    }
+
+    // ── Incremental: only process new messages ──
+    const newMsgs = messages.slice(riProcessed);
+
+    // Track max tokens
+    for (const msg of newMsgs) {
+      const t = totalTokens(msg);
+      if (t > riMaxTokens) riMaxTokens = t;
+    }
+
+    // Index new tool_use blocks
+    for (const msg of newMsgs) {
+      for (const block of msg.content) {
+        if (block.type === "tool_use" && block.id) {
+          riToolUseMap.set(block.id, block);
+        }
+      }
+    }
+
+    // Find cross-message tool_results in new messages
+    const consumed = new Set<string>();
+    for (const msg of newMsgs) {
+      const hasResult = msg.content.some((b) => b.type === "tool_result");
+      const hasUse = msg.content.some((b) => b.type === "tool_use");
+      if (hasResult && !hasUse) {
+        for (const block of msg.content) {
+          if (block.type === "tool_result" && block.tool_use_id) {
+            consumed.add(block.tool_use_id);
+          }
+        }
+      }
+    }
+
+    // Remove cached items whose tool_use is now consumed
+    if (consumed.size > 0) {
+      riCache = riCache.filter((item) => {
+        if (item.type !== "tool") return true;
+        return !item.toolBlocks?.some(
+          (b) => b.type === "tool_use" && b.id && consumed.has(b.id),
+        );
+      });
+    }
+
+    // Append render items for new messages
+    for (const msg of newMsgs) {
+      if (msg.isGhost) {
+        riCache.push({ type: "ghost", message: msg, key: msg.uuid });
+        continue;
+      }
+      if (msg.role === "meta") {
+        const metaText = msg.content
+          .filter((b) => b.type === "text")
+          .map((b) => b.text ?? "")
+          .join("");
+        if (!metaText.trim()) continue;
+        const prev = riCache[riCache.length - 1];
+        if (prev?.type === "meta" && prev.message?.messageType === msg.messageType) {
+          riCache[riCache.length - 1] = { type: "meta", message: msg, key: msg.uuid };
+        } else {
+          riCache.push({ type: "meta", message: msg, key: msg.uuid });
+        }
+        continue;
+      }
+      if (msg.role === "system" || msg.messageType === "system") {
+        riCache.push({ type: "system", message: msg, key: msg.uuid });
+        continue;
+      }
+
+      const textBlocks: ContentBlock[] = [];
+      const toolGroups: ContentBlock[][] = [];
+      let currentToolGroup: ContentBlock[] = [];
+      for (const block of msg.content) {
+        if (block.type === "tool_use") {
+          if (block.id && consumed.has(block.id)) continue;
+          currentToolGroup.push(block);
+        } else if (block.type === "tool_result") {
+          const matchingUse = block.tool_use_id
+            ? riToolUseMap.get(block.tool_use_id)
+            : undefined;
+          if (matchingUse) {
+            currentToolGroup = [matchingUse, block];
+          } else {
+            currentToolGroup.push(block);
+          }
+          toolGroups.push(currentToolGroup);
+          currentToolGroup = [];
+        } else {
+          if (currentToolGroup.length > 0) {
+            toolGroups.push(currentToolGroup);
+            currentToolGroup = [];
+          }
+          textBlocks.push(block);
+        }
+      }
+      if (currentToolGroup.length > 0) {
+        toolGroups.push(currentToolGroup);
+      }
+      if (textBlocks.length > 0) {
+        riCache.push({
+          type: "message",
+          message: { ...msg, content: textBlocks },
+          key: msg.uuid,
+        });
+      }
+      for (let i = 0; i < toolGroups.length; i++) {
+        riCache.push({
+          type: "tool",
+          toolBlocks: toolGroups[i],
+          key: `${msg.uuid}-tool-${i}`,
+        });
+      }
+    }
+
+    riProcessed = messages.length;
+    riCache = riCache.slice(); // new ref for SolidJS reactivity
+    return riCache;
+  });
 
   const maxTokensInSession = createMemo(() => {
-    let max = 0;
-    for (const msg of store.activeMessages()) {
-      const t = totalTokens(msg);
-      if (t > max) max = t;
-    }
-    return max || 1;
+    renderItems(); // reactive dependency
+    return riMaxTokens || 1;
   });
+
+  // Export dialog state
+  const [exportOpen, setExportOpen] = createSignal(false);
+
+  // Search state
+  const [searchOpen, setSearchOpen] = createSignal(false);
+  const [searchQuery, setSearchQuery] = createSignal("");
+  const [searchMatches, setSearchMatches] = createSignal<number[]>([]);
+  const [currentMatchIdx, setCurrentMatchIdx] = createSignal(0);
+
+  // Cmd+F handler
+  onMount(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
+  });
+
+  function handleSearch(query: string) {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchMatches([]);
+      setCurrentMatchIdx(0);
+      return;
+    }
+    const q = query.toLowerCase();
+    const items = renderItems();
+    const matches: number[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.message) {
+        const text = item.message.content
+          .map((b) => b.text ?? b.thinking ?? "")
+          .join(" ")
+          .toLowerCase();
+        if (text.includes(q)) matches.push(i);
+      }
+    }
+    setSearchMatches(matches);
+    setCurrentMatchIdx(0);
+  }
+
+  function searchNext() {
+    const matches = searchMatches();
+    if (matches.length === 0) return;
+    setCurrentMatchIdx((i) => (i + 1) % matches.length);
+  }
+
+  function searchPrev() {
+    const matches = searchMatches();
+    if (matches.length === 0) return;
+    setCurrentMatchIdx((i) => (i - 1 + matches.length) % matches.length);
+  }
 
   // Lightbox state for chat images
   const [lightboxImages, setLightboxImages] = createSignal<GalleryImage[]>([]);
@@ -227,8 +467,54 @@ export default function ChatPanel() {
       content: contentBlocks,
       timestamp: now,
     };
-    store.addMessage(optimisticMsg);
+    store.addOptimisticUserMessage(optimisticMsg);
     store.updateOrbState("streaming");
+
+    // Queue images for proxy injection (if any)
+    // The proxy will inject these into the next /v1/messages API call
+    if (payload.images.length > 0) {
+      const imageBlocks = payload.images.map((img) => ({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: img.media_type,
+          data: img.data,
+        },
+      }));
+      try {
+        await fetch(`${base}/api/sessions/${sessionId}/images`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ images: imageBlocks }),
+        });
+      } catch (e) {
+        console.warn("[chat] image queue failed:", e);
+      }
+
+      // Append to JSONL for display in conversation history.
+      // Only for Claude sessions (JSONL format). Gemini/Codex session files
+      // are single JSON objects — appending would corrupt them.
+      const activeCliType = store.activeSession()?.cliType;
+      if (activeCliType === "claude" || !activeCliType) {
+        appendToJsonl(sessionId, {
+          parentUuid: null,
+          isSidechain: false,
+          userType: "external",
+          sessionId,
+          version: "noaide",
+          type: "user",
+          message: {
+            role: "user",
+            content: [
+              ...(payload.text ? [{ type: "text" as const, text: payload.text }] : []),
+              ...imageBlocks,
+            ],
+          },
+          uuid: userUuid,
+          timestamp: now,
+        });
+      }
+    }
 
     // Send text via PTY input to Claude CLI
     if (payload.text) {
@@ -249,31 +535,6 @@ export default function ChatPanel() {
         store.updateOrbState("error");
         return;
       }
-    }
-
-    // For image-only messages: append directly to JSONL
-    if (payload.images.length > 0 && !payload.text) {
-      appendToJsonl(sessionId, {
-        parentUuid: null,
-        isSidechain: false,
-        userType: "external",
-        sessionId,
-        version: "noaide",
-        type: "user",
-        message: {
-          role: "user",
-          content: payload.images.map((img) => ({
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: img.media_type,
-              data: img.data,
-            },
-          })),
-        },
-        uuid: userUuid,
-        timestamp: now,
-      });
     }
 
     // SSE push will deliver the assistant's response — no polling needed
@@ -309,6 +570,19 @@ export default function ChatPanel() {
             max={store.state.contextTokensMax}
           />
         </div>
+        <Show when={store.state.orbState === "streaming" || store.state.orbState === "thinking" || store.state.orbState === "tool_use"}>
+          <span
+            data-testid="streaming-progress"
+            style={{
+              "font-size": "11px",
+              color: "var(--ctp-blue)",
+              "font-family": "var(--font-mono)",
+              "white-space": "nowrap",
+            }}
+          >
+            {Math.round((store.state.contextTokensUsed / store.state.contextTokensMax) * 100)}%
+          </span>
+        </Show>
         <Show when={store.totalSessionCost() > 0}>
           <span
             style={{
@@ -320,7 +594,49 @@ export default function ChatPanel() {
             ${store.totalSessionCost().toFixed(4)}
           </span>
         </Show>
+        <Show when={store.state.activeSessionId}>
+          <button
+            title="Export session"
+            onClick={() => setExportOpen(true)}
+            style={{
+              background: "none",
+              border: "1px solid var(--ctp-surface1)",
+              "border-radius": "4px",
+              padding: "3px 8px",
+              cursor: "pointer",
+              color: "var(--ctp-overlay1)",
+              "font-size": "10px",
+              "font-weight": "600",
+              "font-family": "var(--font-mono)",
+              "text-transform": "uppercase",
+              "letter-spacing": "0.06em",
+              transition: "all 150ms ease",
+              "flex-shrink": "0",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--neon-blue, #00b8ff)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--neon-blue, #00b8ff)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--ctp-surface1)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--ctp-overlay1)";
+            }}
+          >
+            Export
+          </button>
+        </Show>
       </div>
+
+      {/* Search bar */}
+      <SearchBar
+        open={searchOpen()}
+        onClose={() => setSearchOpen(false)}
+        onSearch={handleSearch}
+        onNext={searchNext}
+        onPrev={searchPrev}
+        matchCount={searchMatches().length}
+        currentMatch={currentMatchIdx()}
+      />
 
       {/* Messages area */}
       <div style={{ flex: "1", "min-height": "0" }}>
@@ -370,11 +686,24 @@ export default function ChatPanel() {
             }
           >
             <ExpandedProvider value={expandedState}>
+              {/* Loading older indicator */}
+              <Show when={store.loadingOlder()}>
+                <div style={{
+                  "text-align": "center",
+                  padding: "8px",
+                  "font-size": "11px",
+                  "font-family": "var(--font-mono)",
+                  color: "var(--ctp-overlay1)",
+                }}>
+                  Loading older messages...
+                </div>
+              </Show>
               <VirtualScroller
                 items={renderItems()}
                 estimateHeight={80}
                 overscan={5}
                 getKey={(item) => item.key}
+                onScrollNearTop={() => store.fetchOlderMessages()}
                 renderItem={(item) => (
                   <ItemKeyProvider value={item.key}>
                     {(() => {
@@ -384,7 +713,7 @@ export default function ChatPanel() {
                         case "ghost":
                           return <GhostMessage message={item.message!} />;
                         case "tool":
-                          return <ToolCard blocks={item.toolBlocks!} />;
+                          return <ToolCard blocks={item.toolBlocks!} onImageClick={openLightbox} />;
                         case "meta":
                           return <MetaMessage message={item.message!} />;
                         case "message":
@@ -416,6 +745,7 @@ export default function ChatPanel() {
       <InputField
         disabled={!store.state.activeSessionId}
         onSubmit={handleSend}
+        whisperUrl={whisperUrl()}
       />
 
       {/* Lightbox for chat images */}
@@ -426,6 +756,14 @@ export default function ChatPanel() {
           onClose={() => setLightboxIndex(null)}
         />
       </Show>
+
+      {/* Export dialog */}
+      <ExportDialog
+        open={exportOpen()}
+        onClose={() => setExportOpen(false)}
+        messages={store.activeMessages()}
+        sessionName={store.activeSession()?.path ?? "session"}
+      />
     </div>
   );
 }
