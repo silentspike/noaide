@@ -198,8 +198,16 @@ export function createSessionStore() {
         cliType?: string;
       }> = await resp.json();
 
+      // Dedup: API may return duplicate session IDs (managed + observed pairs)
+      const seen = new Set<string>();
+      const deduped = data.filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      });
+
       // Batch-update all sessions in one reactive flush
-      const sessions: Session[] = data.map((s) => ({
+      const sessions: Session[] = deduped.map((s) => ({
         id: s.id,
         path: s.path,
         status: mapStatus(s.status),
