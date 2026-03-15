@@ -6,6 +6,7 @@ import SessionCard from "./SessionCard";
 import SessionStatus from "./SessionStatus";
 import ThemeSlider from "./ThemeSlider";
 import FontSlider from "./FontSlider";
+import VirtualScroller from "../chat/VirtualScroller";
 
 function orbStateForSession(session: Session): OrbState {
   switch (session.status) {
@@ -80,6 +81,10 @@ export default function SessionList() {
   const [showCliPicker, setShowCliPicker] = createSignal(false);
   const [spawning, setSpawning] = createSignal(false);
   const [memUsage, setMemUsage] = createSignal("");
+  const [workingDir, setWorkingDir] = createSignal("/work");
+  const [browseDirs, setBrowseDirs] = createSignal<{ name: string; path: string }[]>([]);
+  const [showBrowser, setShowBrowser] = createSignal(false);
+  const [browseLoading, setBrowseLoading] = createSignal(false);
 
   // Poll browser memory usage (Chrome performance.memory API)
   onMount(() => {
@@ -100,6 +105,25 @@ export default function SessionList() {
     onCleanup(() => clearInterval(interval));
   });
 
+  async function browseDirectory(path: string) {
+    const base = store.state.httpApiUrl;
+    if (!base) return;
+    setBrowseLoading(true);
+    try {
+      const res = await fetch(`${base}/api/browse?path=${encodeURIComponent(path)}`);
+      if (res.ok) {
+        const data: { name: string; path: string }[] = await res.json();
+        setBrowseDirs(data);
+        setWorkingDir(path);
+        setShowBrowser(true);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setBrowseLoading(false);
+    }
+  }
+
   async function spawnSession(cliType: CliType) {
     const base = store.state.httpApiUrl;
     if (!base || spawning()) return;
@@ -108,7 +132,7 @@ export default function SessionList() {
       const res = await fetch(`${base}/api/sessions/managed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ working_dir: "/work/noaide", cli_type: cliType }),
+        body: JSON.stringify({ working_dir: workingDir(), cli_type: cliType }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -130,6 +154,7 @@ export default function SessionList() {
     // SolidJS reconcile updates properties in-place, which may not trigger
     // array-level memo dependencies without this explicit dependency.
     store.sessionsVersion();
+    const pinned = store.pinnedIds();
     const query = filter().toLowerCase();
     return [...store.state.sessions]
       .filter(
@@ -141,7 +166,11 @@ export default function SessionList() {
           (s.cliType ?? "").toLowerCase().includes(query),
       )
       .sort((a, b) => {
-        // Primary: sort by last activity (most recent first)
+        // Primary: pinned sessions first
+        const aPinned = pinned.has(a.id) ? 1 : 0;
+        const bPinned = pinned.has(b.id) ? 1 : 0;
+        if (aPinned !== bPinned) return bPinned - aPinned;
+        // Secondary: sort by last activity (most recent first)
         return b.lastActivityAt - a.lastActivityAt;
       });
   });
@@ -229,12 +258,12 @@ export default function SessionList() {
         sessionCount={store.sessionCount()}
       />
 
-      {/* Session list */}
+      {/* Session list (virtualized — only ~15 DOM nodes for 700+ sessions) */}
       <div
         style={{
           flex: "1",
-          overflow: "auto",
-          padding: "4px 8px",
+          overflow: "hidden",
+          padding: "0 8px",
         }}
       >
         <Show
@@ -252,20 +281,29 @@ export default function SessionList() {
             </div>
           }
         >
-          <For each={sortedSessions()}>
-            {(session) => (
+          <VirtualScroller
+            items={sortedSessions()}
+            estimateHeight={56}
+            overscan={5}
+            getKey={(s: Session) => s.id}
+            renderItem={(session: Session) => (
               <SessionCard
                 session={session}
                 isActive={store.state.activeSessionId === session.id}
+                isPinned={store.isPinned(session.id)}
                 orbState={
                   store.state.activeSessionId === session.id
                     ? store.state.orbState
                     : orbStateForSession(session)
                 }
-                onClick={() => store.setActiveSession(session.id)}
+                onClick={() => {
+                  store.setActiveSession(session.id);
+                  window.dispatchEvent(new CustomEvent("noaide:navigate-tab", { detail: "chat" }));
+                }}
+                onTogglePin={(id) => store.togglePin(id)}
               />
             )}
-          </For>
+          />
         </Show>
       </div>
 
@@ -292,6 +330,107 @@ export default function SessionList() {
               "z-index": "20",
             }}
           >
+            {/* Directory picker */}
+            <div style={{ padding: "4px 6px 6px", "border-bottom": "1px solid var(--ctp-surface0)", "margin-bottom": "2px" }}>
+              <div style={{
+                "font-size": "9px",
+                "font-family": "var(--font-mono)",
+                color: "var(--ctp-overlay0)",
+                "text-transform": "uppercase",
+                "letter-spacing": "0.08em",
+                "margin-bottom": "4px",
+              }}>
+                Working Directory
+              </div>
+              <div style={{ display: "flex", gap: "4px" }}>
+                <input
+                  type="text"
+                  value={workingDir()}
+                  onInput={(e) => setWorkingDir(e.currentTarget.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") browseDirectory(workingDir()); }}
+                  style={{
+                    flex: "1",
+                    padding: "5px 8px",
+                    background: "var(--ctp-base)",
+                    border: "1px solid var(--ctp-surface1)",
+                    "border-radius": "4px",
+                    color: "var(--ctp-text)",
+                    "font-size": "11px",
+                    "font-family": "var(--font-mono)",
+                    outline: "none",
+                    "min-width": "0",
+                  }}
+                />
+                <button
+                  onClick={() => browseDirectory(workingDir())}
+                  disabled={browseLoading()}
+                  style={{
+                    padding: "4px 8px",
+                    background: "var(--ctp-surface0)",
+                    border: "1px solid var(--ctp-surface1)",
+                    "border-radius": "4px",
+                    color: "var(--ctp-subtext0)",
+                    "font-size": "10px",
+                    "font-family": "var(--font-mono)",
+                    cursor: "pointer",
+                    "white-space": "nowrap",
+                    "flex-shrink": "0",
+                  }}
+                >
+                  {browseLoading() ? "..." : "Browse"}
+                </button>
+              </div>
+              <Show when={showBrowser()}>
+                <div style={{
+                  "max-height": "160px",
+                  overflow: "auto",
+                  "margin-top": "4px",
+                  background: "var(--ctp-base)",
+                  border: "1px solid var(--ctp-surface1)",
+                  "border-radius": "4px",
+                }}>
+                  <For each={browseDirs()}>
+                    {(dir) => (
+                      <button
+                        onClick={() => {
+                          if (dir.name === "..") {
+                            browseDirectory(dir.path);
+                          } else {
+                            setWorkingDir(dir.path);
+                            setShowBrowser(false);
+                          }
+                        }}
+                        onDblClick={() => browseDirectory(dir.path)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "4px 8px",
+                          background: "transparent",
+                          border: "none",
+                          "border-bottom": "1px solid var(--ctp-surface0)",
+                          color: dir.name === ".." ? "var(--ctp-overlay1)" : "var(--ctp-text)",
+                          "font-size": "11px",
+                          "font-family": "var(--font-mono)",
+                          "text-align": "left",
+                          cursor: "pointer",
+                          transition: "background 100ms",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--ctp-surface0)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        {dir.name === ".." ? "\u2190 .." : "\u{1F4C1} " + dir.name}
+                      </button>
+                    )}
+                  </For>
+                  <Show when={browseDirs().length === 0}>
+                    <div style={{ padding: "8px", "text-align": "center", color: "var(--ctp-overlay0)", "font-size": "10px" }}>
+                      No subdirectories
+                    </div>
+                  </Show>
+                </div>
+              </Show>
+            </div>
+
             <For each={CLI_OPTIONS}>
               {(opt) => (
                 <button
