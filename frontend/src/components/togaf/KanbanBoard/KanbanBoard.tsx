@@ -139,7 +139,7 @@ const WPCard: Component<WPCardProps> = (props) => {
         props.onDragStart();
       }}
       onDragEnd={() => props.onDragEnd()}
-      class={`${sizeClass()} ${props.isDragging ? "dragging" : ""}`}
+      class={`${sizeClass()} ${props.isDragging ? "dragging" : ""} ${props.wp.status === "in_progress" ? "wp-working" : ""}`}
     >
       <div style={{ display: "flex", "justify-content": "space-between", "margin-bottom": "2px" }}>
         <span style={{ "font-weight": "700", color: "var(--blue)", "font-size": "0.85em" }}>

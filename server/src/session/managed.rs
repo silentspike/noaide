@@ -84,6 +84,7 @@ impl ManagedSession {
         working_dir: &Path,
         anthropic_base_url: Option<&str>,
         cli_type: &str,
+        auto_approve: bool,
     ) -> Result<Arc<Self>, SessionError> {
         // Generate session ID FIRST — needed for per-session proxy URL prefix
         let session_id = SessionId(Uuid::new_v4());
@@ -130,8 +131,16 @@ impl ManagedSession {
                 format!("{base}/s/{sid}/backend-api/codex"),
             ));
             // Gemini CLI: per-session proxy URL for Code Assist backend
+            // CODE_ASSIST_ENDPOINT covers control-plane calls (v1internal:*)
+            // GOOGLE_GEMINI_BASE_URL covers the actual LLM/generative calls
+            // (generativelanguage.googleapis.com) — without this, chat API
+            // calls bypass the proxy entirely.
             env_vars.push((
                 "CODE_ASSIST_ENDPOINT".to_string(),
+                format!("{base}/s/{sid}"),
+            ));
+            env_vars.push((
+                "GOOGLE_GEMINI_BASE_URL".to_string(),
                 format!("{base}/s/{sid}"),
             ));
             // DO NOT set HTTPS_PROXY/HTTP_PROXY for managed sessions!
@@ -145,7 +154,12 @@ impl ManagedSession {
 
         // Prepare CStrings for exec (must be done before fork — no allocations after fork)
         let c_binary = CString::new(binary).map_err(|e| SessionError::PtySpawn(e.to_string()))?;
-        let c_args = [c_binary.clone()];
+        let c_args: Vec<CString> = if auto_approve && binary == "claude" {
+            let flag = CString::new("--dangerously-skip-permissions").unwrap();
+            vec![c_binary.clone(), flag]
+        } else {
+            vec![c_binary.clone()]
+        };
 
         let working_dir_owned = working_dir.to_path_buf();
 

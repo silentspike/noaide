@@ -56,7 +56,7 @@ const WPDetailCard: Component<WPDetailProps> = (props) => {
   const verifyPct = () => verifyTotal() > 0 ? Math.round((verifyDone() / verifyTotal()) * 100) : 0;
 
   return (
-    <div class="wp-card">
+    <div class="wp-card" data-testid={`wp-card-${props.wp.id}`}>
       <div class="wp-card-header" onClick={() => props.onToggle()} style={{ cursor: "pointer" }}>
         <span style={{ "font-weight": "700", color: "var(--blue)", "font-size": "0.85rem" }}>
           {props.wp.id}

@@ -129,6 +129,7 @@ export const DependencyGraph: Component = () => {
       <div class="section-body">
         <div style={{ overflow: "auto", background: "var(--bg-primary)", "border-radius": "var(--radius)" }}>
           <svg
+            data-testid="dependency-graph-svg"
             viewBox={`0 0 ${layout().svgWidth} ${layout().svgHeight}`}
             width={layout().svgWidth}
             height={layout().svgHeight}
@@ -179,7 +180,7 @@ export const DependencyGraph: Component = () => {
               {(node) => {
                 const color = STATUS_COLORS[node.status] ?? "var(--overlay0)";
                 return (
-                  <g style={{ cursor: "pointer" }}>
+                  <g data-testid={`dependency-node-${node.id}`} style={{ cursor: "pointer" }}>
                     {/* Critical path highlight */}
                     {node.isCritical && (
                       <rect

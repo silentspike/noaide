@@ -44,6 +44,7 @@ export const RequirementsTable: Component = () => {
         <h2>Requirements ({filtered().length})</h2>
         <div style={{ "margin-left": "auto", display: "flex", gap: "0.5rem" }}>
           <select
+            data-testid="requirement-filter-type"
             value={typeFilter()}
             onChange={(e) => setTypeFilter(e.currentTarget.value as ReqType | "all")}
             style={{
@@ -57,6 +58,7 @@ export const RequirementsTable: Component = () => {
             <option value="Non-Func">Non-Functional</option>
           </select>
           <select
+            data-testid="requirement-filter-status"
             value={statusFilter()}
             onChange={(e) => setStatusFilter(e.currentTarget.value)}
             style={{
@@ -89,7 +91,7 @@ export const RequirementsTable: Component = () => {
           <tbody>
             <For each={filtered()}>
               {(req) => (
-                <tr>
+                <tr data-testid={`requirement-row-${req.id}`}>
                   <td style={{ "font-weight": "700", color: "var(--blue)" }}>{req.id}</td>
                   <td style={{ "max-width": "400px" }}>{req.description}</td>
                   <td>
