@@ -292,6 +292,7 @@ function Shell() {
             chat={<ChatPanel />}
             files={<FilesPanel />}
             sessions={<SessionList />}
+            plan={<PlanSelector />}
             network={<NetworkPanel />}
             settings={<SettingsPanel />}
           />
