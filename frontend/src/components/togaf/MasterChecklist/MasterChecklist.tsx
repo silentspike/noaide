@@ -90,7 +90,9 @@ export const MasterChecklist: Component<Props> = (props) => {
                       const isSkipped = () => data()?.status === "skipped";
 
                       return (
-                        <li style={{
+                        <li
+                          data-testid={`checklist-item-${section.id}`}
+                          style={{
                           opacity: isSkipped() ? "0.5" : "1",
                         }}>
                           <span class={`check-icon ${isDone() ? "check-pass" : "check-open"}`}>
@@ -109,7 +111,7 @@ export const MasterChecklist: Component<Props> = (props) => {
                   </For>
                 </ul>
                 <Show when={phase.gate !== undefined}>
-                  <li class="check-gate" style={{ "list-style": "none", "margin-top": "0.3rem" }}>
+                  <li class="check-gate" data-testid={`gate-indicator-${phase.gate}`} style={{ "list-style": "none", "margin-top": "0.3rem" }}>
                     <span class={`check-icon ${store.plan.gates[phase.gate!] === "pass" ? "check-pass" : "check-open"}`}>
                       {store.plan.gates[phase.gate!] === "pass" ? "\u2713" : "\u25CB"}
                     </span>

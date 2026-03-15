@@ -11,6 +11,7 @@
 import {
   createContext,
   useContext,
+  createEffect,
   onMount,
   onCleanup,
   type ParentProps,
@@ -36,6 +37,8 @@ export function usePlan(): PlanStore {
 interface StandaloneProps extends ParentProps {
   /** URL to plan.json (relative or absolute) */
   planUrl: string;
+  /** Plan name (directory name in /work/plan/) — used for write-back */
+  planName?: string;
   /** Polling interval in ms (default: 2000) */
   pollIntervalMs?: number;
 }
@@ -70,6 +73,42 @@ export function StandalonePlanProvider(props: StandaloneProps) {
       store.setStatus("offline");
     }
   }
+
+  // Set up write-back API reactively — re-binds when planName changes
+  createEffect(() => {
+    const planName = props.planName;
+    if (planName) {
+      store.setPatchApi(async (path: string, body: Record<string, unknown>) => {
+        try {
+          let editType = "unknown";
+          let editId = "";
+          if (path.includes("/work-packages/")) {
+            editType = "wp_status";
+            editId = path.split("/work-packages/")[1] ?? "";
+          } else if (path.includes("/sections/")) {
+            editType = "section_status";
+            editId = path.split("/sections/")[1] ?? "";
+          } else if (path.includes("/gates/")) {
+            editType = "gate_status";
+            editId = path.split("/gates/")[1] ?? "";
+          }
+
+          const edit = { type: editType, id: editId, ...body, timestamp: new Date().toISOString() };
+
+          const resp = await fetch(`/api/plans/${planName}/edits`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ edits: [edit] }),
+          });
+          if (!resp.ok) {
+            console.warn(`[plan] write-back failed: ${resp.status}`);
+          }
+        } catch (err) {
+          console.warn("[plan] write-back failed:", err);
+        }
+      });
+    }
+  });
 
   onMount(() => {
     // Initial fetch

@@ -65,6 +65,7 @@ export const KanbanBoard: Component = () => {
               return (
                 <div
                   class="kanban-col"
+                  data-testid={`kanban-column-${col.id}`}
                   onDragOver={(e) => { e.preventDefault(); setDropTarget(col.id); }}
                   onDragLeave={() => { if (dropTarget() === col.id) setDropTarget(null); }}
                   onDrop={(e) => { e.preventDefault(); handleDrop(col.id); }}
@@ -131,6 +132,7 @@ const WPCard: Component<WPCardProps> = (props) => {
   return (
     <div
       draggable={true}
+      data-testid={`kanban-card-${props.wp.id}`}
       onDragStart={(e) => {
         e.dataTransfer!.effectAllowed = "move";
         e.dataTransfer!.setData("text/plain", props.wp.id);
