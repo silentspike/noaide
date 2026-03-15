@@ -1,17 +1,17 @@
-import { createSignal, type JSX } from "solid-js";
+import { createSignal, onMount, onCleanup, type JSX } from "solid-js";
 import BottomTabBar, { type TabId } from "../components/mobile/BottomTabBar";
 import SwipeView from "../components/mobile/SwipeView";
-import VoiceInput from "../components/mobile/VoiceInput";
 
 interface MobileLayoutProps {
   chat: JSX.Element;
   files: JSX.Element;
   sessions: JSX.Element;
+  plan: JSX.Element;
   network: JSX.Element;
   settings: JSX.Element;
 }
 
-const tabOrder: TabId[] = ["chat", "files", "sessions", "network", "settings"];
+const tabOrder: TabId[] = ["chat", "sessions", "plan", "network", "settings"];
 
 export default function MobileLayout(props: MobileLayoutProps) {
   const [activeTab, setActiveTab] = createSignal<TabId>("chat");
@@ -22,14 +22,15 @@ export default function MobileLayout(props: MobileLayoutProps) {
     setActiveTab(tabOrder[index]);
   };
 
-  const handleVoiceTranscript = (text: string) => {
-    // Switch to chat tab and insert transcript
-    setActiveTab("chat");
-    // Dispatch custom event for ChatPanel to pick up
-    window.dispatchEvent(
-      new CustomEvent("noaide:voice-transcript", { detail: text }),
-    );
-  };
+  // Listen for tab navigation events (e.g. session tap → switch to chat)
+  onMount(() => {
+    const handler = (e: Event) => {
+      const tab = (e as CustomEvent).detail as TabId;
+      if (tabOrder.includes(tab)) setActiveTab(tab);
+    };
+    window.addEventListener("noaide:navigate-tab", handler);
+    onCleanup(() => window.removeEventListener("noaide:navigate-tab", handler));
+  });
 
   return (
     <div
@@ -46,14 +47,12 @@ export default function MobileLayout(props: MobileLayoutProps) {
       >
         {[
           props.chat,
-          props.files,
           props.sessions,
+          props.plan,
           props.network,
           props.settings,
         ]}
       </SwipeView>
-
-      <VoiceInput onTranscript={handleVoiceTranscript} />
 
       <BottomTabBar
         activeTab={activeTab()}
