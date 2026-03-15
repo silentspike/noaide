@@ -3,8 +3,9 @@ import { createMemo, createSignal, batch } from "solid-js";
 import type { ConnectionStatus } from "../transport/client";
 import type { QualityTier, EventEnvelope } from "../transport/codec";
 import type { ChatMessage, OrbState, ContentBlock } from "../types/messages";
+import { incrementEventCounter } from "../lib/profiler-metrics";
 
-/** Shape returned by the API and pushed via SSE bus events. */
+/** Shape returned by the API and pushed via WebTransport bus events. */
 type MessageRow = {
   uuid: string;
   sessionId: string;
@@ -29,7 +30,7 @@ export interface Session {
   status: "active" | "idle" | "archived" | "error";
   model?: string;
   startedAt: number;
-  /** Most recent activity timestamp (updated on SSE events), used for sort. */
+  /** Most recent activity timestamp (updated on bus events), used for sort. */
   lastActivityAt: number;
   messageCount: number;
   cost?: number;
@@ -56,6 +57,8 @@ export interface SessionState {
   contextTokensMax: number;
   httpApiUrl: string | null;
   loadingProgress: LoadingProgress;
+  /** Bookmarked message UUIDs (persisted in localStorage). */
+  bookmarks: Set<string>;
 }
 
 /** Map model name to context window size (tokens). */
@@ -81,6 +84,42 @@ function modelContextWindow(model: string | null | undefined): number {
 }
 
 export function createSessionStore() {
+  // AbortController for in-flight fetchMessages — abort on session switch
+  let fetchAbortController: AbortController | null = null;
+
+  // Pinned sessions — persisted in localStorage
+  const PINNED_KEY = "noaide-pinned-sessions";
+  const loadPinned = (): Set<string> => {
+    try {
+      const raw = localStorage.getItem(PINNED_KEY);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  };
+  const [pinnedIds, setPinnedIds] = createSignal<Set<string>>(loadPinned());
+  const savePinned = (ids: Set<string>) => {
+    localStorage.setItem(PINNED_KEY, JSON.stringify([...ids]));
+  };
+  const pinSession = (id: string) => {
+    setPinnedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      savePinned(next);
+      return next;
+    });
+    setSessionsVersion((v) => v + 1);
+  };
+  const unpinSession = (id: string) => {
+    setPinnedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      savePinned(next);
+      return next;
+    });
+    setSessionsVersion((v) => v + 1);
+  };
+  const isPinned = (id: string) => pinnedIds().has(id);
+  const togglePin = (id: string) => isPinned(id) ? unpinSession(id) : pinSession(id);
+
   const [state, setState] = createStore<SessionState>({
     sessions: [],
     activeSessionId: null,
@@ -99,11 +138,18 @@ export function createSessionStore() {
       startTime: 0,
       messagesExpected: 0,
     },
+    bookmarks: new Set<string>(),
   });
 
   // Bumped on every fetchSessions / bus event that changes session data.
   // Dependents (e.g., sorted session list) read this to guarantee re-evaluation.
   const [sessionsVersion, setSessionsVersion] = createSignal(0);
+
+  // Bumped on every addMessage / fetchMessages call.
+  // SolidJS fine-grained store updates (setState("messages", N, msg)) do NOT
+  // trigger property-level subscribers of state.messages — only index-level.
+  // Memos like activeMessages/renderItems need this explicit signal to re-evaluate.
+  const [messagesVersion, setMessagesVersion] = createSignal(0);
 
   const activeSession = createMemo(
     () => state.sessions.find((s) => s.id === state.activeSessionId) ?? null,
@@ -120,12 +166,14 @@ export function createSessionStore() {
   const activeMessages = createMemo(() => {
     const sid = state.activeSessionId;
     if (!sid) return [];
+    messagesVersion(); // explicit dependency — re-evaluate when messages change
     return state.messages;
   });
 
-  const totalSessionCost = createMemo(() =>
-    state.messages.reduce((sum, m) => sum + (m.costUsd ?? 0), 0),
-  );
+  const [totalSessionCost, setTotalSessionCost] = createSignal(0);
+  const [hasMoreMessages, setHasMoreMessages] = createSignal(false);
+  const [totalMessageCount, setTotalMessageCount] = createSignal(0);
+  const [loadingOlder, setLoadingOlder] = createSignal(false);
 
   function setHttpApiUrl(url: string) {
     setState("httpApiUrl", url);
@@ -182,7 +230,7 @@ export function createSessionStore() {
     const session = state.sessions.find((s) => s.id === sessionId);
     const expectedMsgs = session?.messageCount ?? 0;
 
-    // Only show loading indicator for initial loads (not SSE-triggered refreshes)
+    // Only show loading indicator for initial loads (not event-triggered refreshes)
     if (!silent) {
       batch(() => {
         setState("loadingProgress", {
@@ -195,8 +243,15 @@ export function createSessionStore() {
       });
     }
 
+    // Abort any previous in-flight fetchMessages request
+    if (fetchAbortController) {
+      fetchAbortController.abort();
+    }
+    fetchAbortController = new AbortController();
+    const signal = fetchAbortController.signal;
+
     try {
-      const resp = await fetch(`${base}/api/sessions/${sessionId}/messages`);
+      const resp = await fetch(`${base}/api/sessions/${sessionId}/messages?limit=200`, { signal });
       if (!resp.ok) {
         console.warn(`[session] fetchMessages: HTTP ${resp.status} ${resp.statusText}`);
         if (!silent) setState("loadingProgress", "loading", false);
@@ -248,6 +303,12 @@ export function createSessionStore() {
         }
       }
 
+      // Early staleness check after network I/O
+      if (state.activeSessionId !== sessionId) {
+        if (!silent) setState("loadingProgress", "loading", false);
+        return;
+      }
+
       // Parse JSON (can be slow for large responses — yield to UI first)
       await new Promise((r) => setTimeout(r, 0));
 
@@ -255,11 +316,15 @@ export function createSessionStore() {
 
       try {
         const parsed = JSON.parse(bodyText);
-        // Support paginated response { messages: [...], total: N } and legacy array
+        // Support paginated response { messages: [...], total: N, hasMore } and legacy array
         if (Array.isArray(parsed)) {
           data = parsed;
+          setHasMoreMessages(false);
+          setTotalMessageCount(parsed.length);
         } else if (parsed && Array.isArray(parsed.messages)) {
           data = parsed.messages;
+          setHasMoreMessages(parsed.hasMore === true);
+          setTotalMessageCount(parsed.total ?? parsed.messages.length);
         } else {
           console.error("[session] fetchMessages: unexpected response format");
           if (!silent) setState("loadingProgress", "loading", false);
@@ -274,20 +339,35 @@ export function createSessionStore() {
       // Release the large string early to free memory
       bodyText = "";
 
+      // Staleness guard: if the user switched sessions while we were fetching,
+      // discard the response — otherwise we'd overwrite the new session's messages
+      // with the old session's data (race condition on rapid session switching).
+      if (state.activeSessionId !== sessionId) {
+        console.warn(`[session] fetchMessages: stale response for ${sessionId}, active is ${state.activeSessionId}`);
+        if (!silent) setState("loadingProgress", "loading", false);
+        return;
+      }
+
       // Convert all messages and populate seenUuids for dedup
       const converted: ChatMessage[] = new Array(data.length);
       let totalTokenCount = 0;
       let lastModel: string | undefined;
+      let totalCost = 0;
 
       for (let i = 0; i < data.length; i++) {
         const m = data[i];
         converted[i] = convertMessageRow(m);
+        totalCost += converted[i].costUsd ?? 0;
         seenUuids.add(m.uuid);
 
-        // inputTokens on an assistant response = current context window usage
-        // (includes entire conversation up to that point). Use the LAST value.
-        if (m.inputTokens && m.inputTokens > 0) {
-          totalTokenCount = m.inputTokens;
+        // Context window usage = input_tokens + cache_creation + cache_read
+        // (Claude's prompt caching splits the total across these three fields).
+        // Use the LAST assistant response's values.
+        const ctxUsed = (m.inputTokens ?? 0)
+          + (m.cacheCreationInputTokens ?? 0)
+          + (m.cacheReadInputTokens ?? 0);
+        if (ctxUsed > 0) {
+          totalTokenCount = ctxUsed;
         }
 
         if (m.model) lastModel = m.model;
@@ -297,7 +377,9 @@ export function createSessionStore() {
       // After this, all updates come through addMessage (fine-grained).
       batch(() => {
         setState("messages", converted);
+        setMessagesVersion((v) => v + 1);
         setState("contextTokensUsed", totalTokenCount);
+        setTotalSessionCost(totalCost);
         if (lastModel) {
           setState("activeModel", lastModel);
           setState("contextTokensMax", modelContextWindow(lastModel));
@@ -305,72 +387,81 @@ export function createSessionStore() {
         if (!silent) setState("loadingProgress", "loading", false);
       });
     } catch (e) {
+      // AbortError is expected when user switches sessions — don't log as error
+      if (e instanceof DOMException && e.name === "AbortError") {
+        if (!silent) setState("loadingProgress", "loading", false);
+        return;
+      }
       console.error("[session] fetchMessages failed:", e);
       if (!silent) setState("loadingProgress", "loading", false);
     }
   }
 
-  // SSE connection for realtime event streaming
-  let sseConnection: EventSource | null = null;
-
-  function connectSSE(sessionId: string) {
-    disconnectSSE();
+  async function fetchOlderMessages() {
+    const sessionId = state.activeSessionId;
     const base = state.httpApiUrl;
-    if (!base) return;
+    if (!sessionId || !base || loadingOlder() || !hasMoreMessages()) return;
 
-    const url = `${base}/api/events?session_id=${sessionId}&topics=session/messages`;
-    const es = new EventSource(url);
+    setLoadingOlder(true);
+    try {
+      const currentCount = state.messages.length;
+      const offset = totalMessageCount() - currentCount + state.messages.length;
+      const resp = await fetch(
+        `${base}/api/sessions/${sessionId}/messages?limit=200&offset=${offset}`,
+      );
+      if (!resp.ok) return;
+      const parsed = await resp.json();
+      const rows: MessageRow[] = parsed.messages ?? parsed;
 
-    es.addEventListener("session/messages", (ev: MessageEvent) => {
-      try {
-        const data = JSON.parse(ev.data);
-        // Defense-in-depth: verify session_id matches active session
-        if (data.session_id && data.session_id !== sessionId) return;
-
-        // payload is a JSON string (from Rust's String::from_utf8_lossy)
-        const payload = typeof data.payload === "string"
-          ? JSON.parse(data.payload)
-          : data.payload;
-
-        if (payload?.type === "new_messages" && Array.isArray(payload.messages)) {
-          batch(() => {
-            // Update last activity timestamp for sort order
-            setState("sessions", (s) => s.id === sessionId, "lastActivityAt", Date.now());
-            for (const m of payload.messages) {
-              addMessage(convertMessageRow(m));
-            }
-          });
-        }
-      } catch (e) {
-        console.warn("[sse] failed to parse event payload:", e);
+      if (rows.length === 0) {
+        setHasMoreMessages(false);
+        return;
       }
-    });
 
-    es.onerror = () => {};
-    es.onopen = () => {
-      console.warn("[sse] connected for session", sessionId);
-    };
+      const olderMsgs: ChatMessage[] = [];
+      for (const m of rows) {
+        if (!seenUuids.has(m.uuid)) {
+          seenUuids.add(m.uuid);
+          olderMsgs.push(convertMessageRow(m));
+        }
+      }
 
-    sseConnection = es;
-  }
+      if (olderMsgs.length > 0) {
+        batch(() => {
+          // Prepend older messages
+          setState("messages", (prev) => [...olderMsgs, ...prev]);
+          setMessagesVersion((v) => v + 1);
+        });
+      }
 
-  function disconnectSSE() {
-    if (sseConnection) {
-      sseConnection.close();
-      sseConnection = null;
+      setHasMoreMessages(parsed.hasMore === true);
+    } catch (e) {
+      console.warn("[session] fetchOlderMessages failed:", e);
+    } finally {
+      setLoadingOlder(false);
     }
   }
 
   function setActiveSession(id: string | null) {
     if (id === state.activeSessionId) return;
-    disconnectSSE();
+
+    // Abort any in-flight fetchMessages for the previous session
+    if (fetchAbortController) {
+      fetchAbortController.abort();
+      fetchAbortController = null;
+    }
+
     seenUuids.clear();
-    setState("activeSessionId", id);
-    setState("messages", []);
-    setState("contextTokensUsed", 0);
+    batch(() => {
+      setState("activeSessionId", id);
+      setState("messages", []);
+      setState("contextTokensUsed", 0);
+      setState("loadingProgress", "loading", false);
+    });
+    setTotalSessionCost(0);
     if (id) {
       fetchMessages(id, false); // initial load with loading indicator
-      connectSSE(id);           // realtime push via SSE (no polling, no fetching)
+      // Realtime push arrives via WebTransport (ADR-8) through handleEvent()
     }
   }
 
@@ -408,25 +499,54 @@ export function createSessionStore() {
   // UUID set for O(1) dedup — survives across addMessage calls
   const seenUuids = new Set<string>();
 
+  // Track optimistic user messages so parser-delivered duplicates are skipped.
+  // When the user sends via PTY, ChatPanel adds an optimistic message immediately
+  // (with crypto.randomUUID()). The parser later delivers the same message with a
+  // different UUID (from the LLM's session file). Without this, both appear in chat.
+  const pendingOptimisticUserUuids = new Set<string>();
+
+  function addOptimisticUserMessage(msg: ChatMessage) {
+    pendingOptimisticUserUuids.add(msg.uuid);
+    addMessage(msg);
+  }
+
   function addMessage(msg: ChatMessage) {
     // O(1) dedup via Set instead of O(n) array scan
     if (seenUuids.has(msg.uuid)) return;
+
+    // Skip parser-delivered user messages when we already have an optimistic copy.
+    // The optimistic version stays (preserves original text including punctuation
+    // that LLMs like Gemini strip). We add the new UUID to seenUuids so re-parses
+    // are also deduped.
+    if (msg.role === "user" && pendingOptimisticUserUuids.size > 0
+        && !pendingOptimisticUserUuids.has(msg.uuid)) {
+      // Pop the oldest pending optimistic UUID
+      const oldest = pendingOptimisticUserUuids.values().next().value!;
+      pendingOptimisticUserUuids.delete(oldest);
+      seenUuids.add(msg.uuid); // prevent future re-adds of the parsed version
+      return;
+    }
+
     seenUuids.add(msg.uuid);
 
     // Fine-grained append: set at specific index, SolidJS only
     // re-renders the NEW item, not the entire list. No array copy.
     setState("messages", state.messages.length, msg);
+    setMessagesVersion((v) => v + 1);
+    setTotalSessionCost((prev) => prev + (msg.costUsd ?? 0));
 
     if (msg.model) {
       setState("activeModel", msg.model);
       setState("contextTokensMax", modelContextWindow(msg.model));
     }
 
-    // inputTokens on an assistant response = current context window usage.
-    // Replace (not accumulate) — each API call's inputTokens already includes
-    // the full conversation context up to that point.
-    if (msg.inputTokens && msg.inputTokens > 0) {
-      setState("contextTokensUsed", msg.inputTokens);
+    // Context window usage = input_tokens + cache_creation + cache_read
+    // (Claude's prompt caching splits the total across these three fields).
+    const ctxUsed = (msg.inputTokens ?? 0)
+      + (msg.cacheCreationInputTokens ?? 0)
+      + (msg.cacheReadInputTokens ?? 0);
+    if (ctxUsed > 0) {
+      setState("contextTokensUsed", ctxUsed);
     }
 
     if (msg.stopReason === "end_turn") {
@@ -445,6 +565,7 @@ export function createSessionStore() {
   }
 
   function handleEvent(topic: string, envelope: EventEnvelope) {
+    incrementEventCounter();
     switch (topic) {
       case "session/messages": {
         if (envelope.sessionId) {
@@ -500,9 +621,19 @@ export function createSessionStore() {
     activeMessages,
     totalSessionCost,
     sessionsVersion,
+    messagesVersion,
+    pinnedIds,
+    isPinned,
+    pinSession,
+    unpinSession,
+    togglePin,
     setHttpApiUrl,
     fetchSessions,
     fetchMessages,
+    fetchOlderMessages,
+    hasMoreMessages,
+    loadingOlder,
+    totalMessageCount,
     setActiveSession,
     updateConnectionStatus,
     updateQualityTier,
@@ -510,7 +641,25 @@ export function createSessionStore() {
     upsertSession,
     removeSession,
     addMessage,
+    addOptimisticUserMessage,
     handleEvent,
+    // Bookmarks
+    isBookmarked: (uuid: string) => state.bookmarks.has(uuid),
+    toggleBookmark: (uuid: string) => {
+      const next = new Set(state.bookmarks);
+      if (next.has(uuid)) next.delete(uuid); else next.add(uuid);
+      setState("bookmarks", next);
+      // Persist
+      const sid = state.activeSessionId;
+      if (sid) localStorage.setItem(`noaide-bookmarks-${sid}`, JSON.stringify([...next]));
+    },
+    loadBookmarks: (sessionId: string) => {
+      try {
+        const raw = localStorage.getItem(`noaide-bookmarks-${sessionId}`);
+        if (raw) setState("bookmarks", new Set(JSON.parse(raw)));
+        else setState("bookmarks", new Set());
+      } catch { setState("bookmarks", new Set()); }
+    },
   };
 }
 
@@ -557,7 +706,7 @@ function parseContentToBlocks(content: string, messageType: string): ContentBloc
   }
 }
 
-/** Convert a MessageRow (from API or SSE payload) to a ChatMessage for the store. */
+/** Convert a MessageRow (from API or WebTransport payload) to a ChatMessage for the store. */
 function convertMessageRow(m: MessageRow): ChatMessage {
   const contentBlocks = m.contentBlocks && m.contentBlocks.length > 0
     ? m.contentBlocks
