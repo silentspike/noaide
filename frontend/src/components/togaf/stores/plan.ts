@@ -19,6 +19,9 @@ import { ALL_SECTION_IDS as _ALL_SECTION_IDS } from "../types/togafPhases";
 /** Connection status for the data provider */
 export type ConnectionStatus = "live" | "stale" | "offline";
 
+/** Callback for sending PATCH mutations to the backend */
+export type PatchFn = (path: string, body: Record<string, unknown>) => Promise<void>;
+
 /** Create the reactive plan store with derived computations */
 export function createPlanStore(initialData?: PlanDocument) {
   const emptyPlan: PlanDocument = {
@@ -51,6 +54,10 @@ export function createPlanStore(initialData?: PlanDocument) {
   const [status, setStatus] = createSignal<ConnectionStatus>("offline");
   const [lastFetch, setLastFetch] = createSignal<Date | null>(null);
   const [error, setError] = createSignal<string | null>(null);
+
+  // PATCH callback — set by the provider to send mutations to backend
+  let patchApi: PatchFn | null = null;
+  function setPatchApi(fn: PatchFn) { patchApi = fn; }
 
   // Local user edits overlay — survives polling cycles
   const localWPEdits = new Map<string, WPStatus>();
@@ -157,6 +164,8 @@ export function createPlanStore(initialData?: PlanDocument) {
         }
       })
     );
+    // Send PATCH to backend
+    patchApi?.(`/api/plan/sections/${sectionId}`, { status: newStatus });
   }
 
   /** Update a work package's Kanban status */
@@ -170,6 +179,18 @@ export function createPlanStore(initialData?: PlanDocument) {
         }
       })
     );
+    // Send PATCH to backend → triggers write-back to IMPL-PLAN.md
+    patchApi?.(`/api/plan/work-packages/${wpId}`, { status: newStatus });
+  }
+
+  /** Update a gate's status */
+  function setGateStatus(gate: number, newStatus: string) {
+    setStore(
+      produce((plan) => {
+        plan.gates[gate] = newStatus as any;
+      })
+    );
+    patchApi?.(`/api/plan/gates/${gate}`, { status: newStatus });
   }
 
   /** Clear all local edits (e.g. after server accepts changes) */
@@ -202,7 +223,9 @@ export function createPlanStore(initialData?: PlanDocument) {
     updatePlan,
     setSectionStatus,
     setWPStatus,
+    setGateStatus,
     clearLocalEdits,
+    setPatchApi,
   };
 }
 

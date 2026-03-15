@@ -106,6 +106,7 @@ const TOGAFDashboard: Component = () => {
             {(view) => (
               <button
                 class={`sidebar-link ${activeView() === view.id ? "active" : ""}`}
+                data-testid={`sidebar-view-${view.id}`}
                 onClick={() => setActiveView(view.id)}
               >
                 <span class="nav-icon">{view.icon}</span>
