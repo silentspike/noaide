@@ -221,6 +221,19 @@ export function createSessionStore() {
       batch(() => {
         setState("sessions", reconcile(sessions, { key: "id" }));
         setSessionsVersion((v) => v + 1);
+
+        // Derive orbState from active session's server-reported status.
+        // Without WebTransport live-push, this is the only way to detect
+        // that a session is currently streaming/active.
+        const activeId = state.activeSessionId;
+        if (activeId) {
+          const activeSess = sessions.find((s) => s.id === activeId);
+          if (activeSess?.status === "active" && state.orbState === "idle") {
+            setState("orbState", "streaming");
+          } else if (activeSess?.status === "idle" && state.orbState === "streaming") {
+            setState("orbState", "idle");
+          }
+        }
       });
     } catch (e) {
       console.warn("[session] fetchSessions failed:", e);
