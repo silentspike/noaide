@@ -3,7 +3,7 @@
 // Design: matches plan-noaide.html Kanban styling
 // ============================================================
 
-import { type Component, For, createMemo, createSignal } from "solid-js";
+import { type Component, For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 import { usePlan } from "../stores/planProvider";
 import type { WPStatus, WorkPackage } from "../types/plan";
 
@@ -26,6 +26,8 @@ export const KanbanBoard: Component = () => {
   const store = usePlan();
   const [draggedWP, setDraggedWP] = createSignal<string | null>(null);
   const [dropTarget, setDropTarget] = createSignal<WPStatus | null>(null);
+  // Pointer drag state (unified mouse + touch)
+  const [pointerDrag, setPointerDrag] = createSignal<{ wpId: string; startX: number; startY: number; x: number; y: number } | null>(null);
 
   const wpByColumn = createMemo(() => {
     const groups: Record<WPStatus, WorkPackage[]> = {
@@ -48,6 +50,38 @@ export const KanbanBoard: Component = () => {
     setDropTarget(null);
   };
 
+  // Pointer-based drag handlers (works on touch + mouse)
+  const onPointerMove = (e: PointerEvent) => {
+    const drag = pointerDrag();
+    if (!drag) return;
+    e.preventDefault();
+    setPointerDrag({ ...drag, x: e.clientX, y: e.clientY });
+    // Hit-detect which column we're over
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const col = el?.closest("[data-column-id]") as HTMLElement | null;
+    setDropTarget(col?.dataset.columnId as WPStatus ?? null);
+  };
+
+  const onPointerUp = () => {
+    const drag = pointerDrag();
+    if (!drag) return;
+    const target = dropTarget();
+    if (target) {
+      store.setWPStatus(drag.wpId, target);
+    }
+    setPointerDrag(null);
+    setDraggedWP(null);
+    setDropTarget(null);
+  };
+
+  // Global listeners for pointer drag
+  document.addEventListener("pointermove", onPointerMove);
+  document.addEventListener("pointerup", onPointerUp);
+  onCleanup(() => {
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+  });
+
   return (
     <div class="section">
       <div class="section-header">
@@ -66,6 +100,7 @@ export const KanbanBoard: Component = () => {
                 <div
                   class="kanban-col"
                   data-testid={`kanban-column-${col.id}`}
+                  data-column-id={col.id}
                   onDragOver={(e) => { e.preventDefault(); setDropTarget(col.id); }}
                   onDragLeave={() => { if (dropTarget() === col.id) setDropTarget(null); }}
                   onDrop={(e) => { e.preventDefault(); handleDrop(col.id); }}
@@ -103,6 +138,12 @@ export const KanbanBoard: Component = () => {
                           isDragging={draggedWP() === wp.id}
                           onDragStart={() => setDraggedWP(wp.id)}
                           onDragEnd={() => { setDraggedWP(null); setDropTarget(null); }}
+                          onPointerDragStart={(e) => {
+                            setDraggedWP(wp.id);
+                            setPointerDrag({ wpId: wp.id, startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY });
+                          }}
+                          pointerDragPos={pointerDrag()?.wpId === wp.id ? pointerDrag() : null}
+                          sessionLabel={wp.assignee || undefined}
                         />
                       )}
                     </For>
@@ -122,12 +163,24 @@ interface WPCardProps {
   isDragging: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
+  onPointerDragStart: (e: PointerEvent) => void;
+  pointerDragPos: { x: number; y: number; startX: number; startY: number } | null;
+  sessionLabel?: string;
 }
 
 const WPCard: Component<WPCardProps> = (props) => {
   const verifyDone = () => props.wp.verify_checks.filter((c) => c.passed).length;
   const verifyTotal = () => props.wp.verify_checks.length;
   const sizeClass = () => `kanban-card size-${props.wp.size.toLowerCase()}`;
+
+  // Pointer drag offset for CSS transform
+  const dragTransform = () => {
+    const pos = props.pointerDragPos;
+    if (!pos) return undefined;
+    const dx = pos.x - pos.startX;
+    const dy = pos.y - pos.startY;
+    return `translate(${dx}px, ${dy}px)`;
+  };
 
   return (
     <div
@@ -139,7 +192,19 @@ const WPCard: Component<WPCardProps> = (props) => {
         props.onDragStart();
       }}
       onDragEnd={() => props.onDragEnd()}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return; // only primary button
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        props.onPointerDragStart(e);
+      }}
       class={`${sizeClass()} ${props.isDragging ? "dragging" : ""} ${props.wp.status === "in_progress" ? "wp-working" : ""}`}
+      style={{
+        "touch-action": "none",
+        transform: dragTransform(),
+        "z-index": props.pointerDragPos ? "100" : undefined,
+        opacity: props.pointerDragPos ? "0.85" : undefined,
+        transition: props.pointerDragPos ? "none" : "transform 200ms ease",
+      }}
     >
       <div style={{ display: "flex", "justify-content": "space-between", "margin-bottom": "2px" }}>
         <span style={{ "font-weight": "700", color: "var(--blue)", "font-size": "0.85em" }}>
@@ -151,6 +216,29 @@ const WPCard: Component<WPCardProps> = (props) => {
         </span>
       </div>
       <div style={{ color: "var(--text-primary)", "margin-bottom": "3px" }}>{props.wp.title}</div>
+      {/* Session badge — shows which session is working on this WP */}
+      <Show when={props.wp.status === "in_progress" && props.sessionLabel}>
+        <div
+          data-testid={`wp-session-badge-${props.wp.id}`}
+          style={{
+            display: "inline-flex",
+            "align-items": "center",
+            gap: "3px",
+            "font-size": "0.65rem",
+            padding: "1px 6px",
+            "border-radius": "3px",
+            background: "var(--surface1, var(--ctp-surface1))",
+            color: "var(--text-muted, var(--ctp-subtext0))",
+            "margin-bottom": "3px",
+            "max-width": "100%",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
+          }}
+        >
+          {props.sessionLabel}
+        </div>
+      </Show>
       <div style={{ display: "flex", "justify-content": "space-between", "font-size": "0.9em", color: "var(--text-muted)" }}>
         {verifyTotal() > 0 && (
           <span style={{ color: verifyDone() === verifyTotal() ? "var(--green)" : undefined }}>

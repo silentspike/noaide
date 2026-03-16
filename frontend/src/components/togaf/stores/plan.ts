@@ -118,6 +118,75 @@ export function createPlanStore(initialData?: PlanDocument) {
     return counts;
   });
 
+  // --- Undo/Redo History ---
+
+  interface EditEntry {
+    type: "wp_status" | "section_status" | "gate_status";
+    id: string;
+    oldValue: string;
+    newValue: string;
+    timestamp: number;
+  }
+
+  const MAX_HISTORY = 50;
+  const [editHistory, setEditHistory] = createSignal<EditEntry[]>([]);
+  const [redoStack, setRedoStack] = createSignal<EditEntry[]>([]);
+
+  const canUndo = createMemo(() => editHistory().length > 0);
+  const canRedo = createMemo(() => redoStack().length > 0);
+
+  function pushEdit(entry: EditEntry) {
+    setEditHistory((h) => {
+      const next = [...h, entry];
+      return next.length > MAX_HISTORY ? next.slice(-MAX_HISTORY) : next;
+    });
+    setRedoStack([]); // clear redo on new edit
+  }
+
+  function undo() {
+    const history = editHistory();
+    if (history.length === 0) return;
+    const last = history[history.length - 1];
+    setEditHistory((h) => h.slice(0, -1));
+    setRedoStack((r) => [...r, last]);
+    // Apply the old value (skip pushing to history by calling internal apply)
+    applyEdit(last.type, last.id, last.oldValue);
+  }
+
+  function redo() {
+    const stack = redoStack();
+    if (stack.length === 0) return;
+    const entry = stack[stack.length - 1];
+    setRedoStack((r) => r.slice(0, -1));
+    setEditHistory((h) => [...h, entry]);
+    applyEdit(entry.type, entry.id, entry.newValue);
+  }
+
+  /** Apply an edit without recording it in history (used by undo/redo) */
+  function applyEdit(type: string, id: string, value: string) {
+    if (type === "wp_status") {
+      localWPEdits.set(id, value as WPStatus);
+      setStore(produce((plan) => {
+        const wp = plan.work_packages.find((w) => w.id === id);
+        if (wp) wp.status = value as WPStatus;
+      }));
+      patchApi?.(`/api/plan/work-packages/${id}`, { status: value });
+    } else if (type === "section_status") {
+      localSectionEdits.set(id as SectionId, value as SectionStatus);
+      setStore(produce((plan) => {
+        if (plan.sections[id as SectionId]) {
+          plan.sections[id as SectionId]!.status = value as SectionStatus;
+        }
+      }));
+      patchApi?.(`/api/plan/sections/${id}`, { status: value });
+    } else if (type === "gate_status") {
+      setStore(produce((plan) => {
+        plan.gates[Number(id)] = value as any;
+      }));
+      patchApi?.(`/api/plan/gates/${id}`, { status: value });
+    }
+  }
+
   // --- Mutations ---
 
   /** Update the entire plan (uses reconcile for minimal DOM updates).
@@ -156,6 +225,10 @@ export function createPlanStore(initialData?: PlanDocument) {
 
   /** Update a single section's status */
   function setSectionStatus(sectionId: SectionId, newStatus: SectionStatus) {
+    const oldStatus = store.sections[sectionId]?.status ?? "pending";
+    if (oldStatus !== newStatus) {
+      pushEdit({ type: "section_status", id: sectionId, oldValue: oldStatus, newValue: newStatus, timestamp: Date.now() });
+    }
     localSectionEdits.set(sectionId, newStatus);
     setStore(
       produce((plan) => {
@@ -164,12 +237,15 @@ export function createPlanStore(initialData?: PlanDocument) {
         }
       })
     );
-    // Send PATCH to backend
     patchApi?.(`/api/plan/sections/${sectionId}`, { status: newStatus });
   }
 
   /** Update a work package's Kanban status */
   function setWPStatus(wpId: string, newStatus: WPStatus) {
+    const oldStatus = store.work_packages.find((w) => w.id === wpId)?.status ?? "backlog";
+    if (oldStatus !== newStatus) {
+      pushEdit({ type: "wp_status", id: wpId, oldValue: oldStatus, newValue: newStatus, timestamp: Date.now() });
+    }
     localWPEdits.set(wpId, newStatus);
     setStore(
       produce((plan) => {
@@ -179,12 +255,15 @@ export function createPlanStore(initialData?: PlanDocument) {
         }
       })
     );
-    // Send PATCH to backend → triggers write-back to IMPL-PLAN.md
     patchApi?.(`/api/plan/work-packages/${wpId}`, { status: newStatus });
   }
 
   /** Update a gate's status */
   function setGateStatus(gate: number, newStatus: string) {
+    const oldStatus = String(store.gates[gate] ?? "pending");
+    if (oldStatus !== newStatus) {
+      pushEdit({ type: "gate_status", id: String(gate), oldValue: oldStatus, newValue: newStatus, timestamp: Date.now() });
+    }
     setStore(
       produce((plan) => {
         plan.gates[gate] = newStatus as any;
@@ -226,6 +305,13 @@ export function createPlanStore(initialData?: PlanDocument) {
     setGateStatus,
     clearLocalEdits,
     setPatchApi,
+
+    // Undo/Redo
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    editHistory,
   };
 }
 

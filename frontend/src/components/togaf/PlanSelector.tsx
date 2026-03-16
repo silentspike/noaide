@@ -84,32 +84,95 @@ export function PlanSelector(props: PlanSelectorProps) {
           }
         >
           {(() => { autoSelect(); return null; })()}
-          <select
-            data-testid="plan-selector-dropdown"
-            ref={(el) => {
-              // Sync initial value after options render
-              queueMicrotask(() => { if (selected() && el.value !== selected()) el.value = selected()!; });
-              // Listen for programmatic changes via custom event
-              el.addEventListener("plan-select", (e: Event) => {
-                setSelected((e as CustomEvent).detail ?? null);
-              });
-            }}
-            onInput={(e) => setSelected(e.currentTarget.value || null)}
-            onChange={(e) => setSelected(e.currentTarget.value || null)}
-            style={{
-              background: "var(--ctp-surface0)",
-              color: "var(--ctp-text)",
-              border: "1px solid var(--ctp-surface1)",
-              "border-radius": "4px",
-              padding: "4px 8px",
-              "font-size": "12px",
-              cursor: "pointer",
-            }}
-          >
-            <For each={plans()!.filter((p) => p.has_plan_json)}>
-              {(plan) => <option value={plan.name}>{plan.name}</option>}
-            </For>
-          </select>
+          {/* Custom dropdown — SolidJS native <select> doesn't sync on programmatic changes */}
+          {(() => {
+            const [open, setOpen] = createSignal(false);
+            const available = () => plans()!.filter((p: PlanEntry) => p.has_plan_json);
+            let dropRef: HTMLDivElement | undefined;
+
+            // Close on click outside
+            const handleClickOutside = (e: MouseEvent) => {
+              if (dropRef && !dropRef.contains(e.target as Node)) setOpen(false);
+            };
+            document.addEventListener("mousedown", handleClickOutside);
+            onCleanup(() => document.removeEventListener("mousedown", handleClickOutside));
+
+            return (
+              <div
+                ref={dropRef}
+                data-testid="plan-selector"
+                style={{ position: "relative", "min-width": "120px" }}
+              >
+                <button
+                  data-testid="plan-selector-toggle"
+                  onClick={() => setOpen((v) => !v)}
+                  style={{
+                    display: "flex",
+                    "align-items": "center",
+                    "justify-content": "space-between",
+                    gap: "6px",
+                    width: "100%",
+                    background: "var(--ctp-surface0)",
+                    color: "var(--ctp-text)",
+                    border: "1px solid var(--ctp-surface1)",
+                    "border-radius": "4px",
+                    padding: "4px 8px",
+                    "font-size": "12px",
+                    "font-family": "var(--font-mono)",
+                    cursor: "pointer",
+                    "text-align": "left",
+                  }}
+                >
+                  <span style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
+                    {selected() ?? "Select plan..."}
+                  </span>
+                  <span style={{ "font-size": "8px", opacity: "0.6" }}>{open() ? "\u25B2" : "\u25BC"}</span>
+                </button>
+                <Show when={open()}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: "0",
+                      right: "0",
+                      "z-index": "100",
+                      background: "var(--ctp-surface0)",
+                      border: "1px solid var(--ctp-surface1)",
+                      "border-radius": "0 0 4px 4px",
+                      "box-shadow": "0 4px 12px rgba(0,0,0,0.4)",
+                      "max-height": "200px",
+                      overflow: "auto",
+                    }}
+                  >
+                    <For each={available()}>
+                      {(plan: PlanEntry) => (
+                        <button
+                          data-testid={`plan-option-${plan.name}`}
+                          onClick={() => { setSelected(plan.name); setOpen(false); }}
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            padding: "6px 8px",
+                            background: plan.name === selected() ? "var(--ctp-surface1)" : "transparent",
+                            border: "none",
+                            color: plan.name === selected() ? "var(--ctp-text)" : "var(--ctp-subtext0)",
+                            "font-size": "12px",
+                            "font-family": "var(--font-mono)",
+                            cursor: "pointer",
+                            "text-align": "left",
+                          }}
+                          onMouseEnter={(e) => { if (plan.name !== selected()) (e.currentTarget as HTMLElement).style.background = "var(--ctp-surface1)"; }}
+                          onMouseLeave={(e) => { if (plan.name !== selected()) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        >
+                          {plan.name}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </div>
+            );
+          })()}
           <Show when={plans()!.find((p) => p.name === selected())?.has_edits}>
             <span
               style={{
