@@ -41,6 +41,7 @@ function SessionContextMenu(props: {
   onPin: (id: string) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string, name: string) => void;
+  onAddTag: (id: string, tag: string) => void;
   isPinned: boolean;
 }) {
   let menuRef: HTMLDivElement | undefined;
@@ -124,6 +125,35 @@ function SessionContextMenu(props: {
       >
         Archive
       </button>
+      <div style={{ padding: "4px 14px", display: "flex", gap: "4px" }}>
+        <input
+          data-testid="context-menu-tag-input"
+          type="text"
+          placeholder="Add tag..."
+          style={{
+            flex: "1",
+            padding: "3px 6px",
+            background: "var(--ctp-base)",
+            border: "1px solid var(--ctp-surface2)",
+            "border-radius": "3px",
+            color: "var(--ctp-text)",
+            "font-size": "11px",
+            "font-family": "var(--font-mono)",
+            outline: "none",
+            "min-width": "0",
+          }}
+          onKeyDown={(e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              const val = (e.currentTarget as HTMLInputElement).value.trim();
+              if (val) {
+                props.onAddTag(props.state.sessionId, val);
+                (e.currentTarget as HTMLInputElement).value = "";
+              }
+            }
+            e.stopPropagation();
+          }}
+        />
+      </div>
       <div style={{ height: "1px", background: "var(--ctp-surface2)", margin: "4px 0" }} />
       <button
         data-testid="context-menu-delete"
@@ -1009,6 +1039,7 @@ export default function SessionList() {
             onPin={(id) => store.togglePin(id)}
             onArchive={() => { /* TODO: archive endpoint */ }}
             onDelete={(id, name) => setDeleteTarget({ id, name })}
+            onAddTag={(id, tag) => addTag(id, tag)}
             isPinned={store.isPinned(menu().sessionId)}
           />
         )}

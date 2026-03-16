@@ -580,7 +580,7 @@ export default function ChatPanel() {
               "white-space": "nowrap",
             }}
           >
-            {Math.round((store.state.contextTokensUsed / store.state.contextTokensMax) * 100)}%
+            {Math.min(Math.round((store.state.contextTokensUsed / Math.max(store.state.contextTokensMax, 1)) * 100), 100)}%
           </span>
         </Show>
         <Show when={store.totalSessionCost() > 0}>
