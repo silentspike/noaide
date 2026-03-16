@@ -103,6 +103,65 @@ pub async fn parse_incremental(
     Ok((messages, current_offset))
 }
 
+/// Parse only the tail of a large JSONL file (last `tail_bytes` bytes).
+///
+/// For files >10MB, parsing the entire thing into memory is wasteful when
+/// the API only needs the last N messages. This reads from file_size - tail_bytes,
+/// skips the first partial line (we likely seeked into the middle of one),
+/// and returns all complete messages in the tail.
+///
+/// Returns (messages, total_estimated_count) where total is estimated from file size.
+#[instrument(skip_all, fields(path = %path.display(), tail_bytes))]
+pub async fn parse_tail(
+    path: &Path,
+    tail_bytes: u64,
+) -> anyhow::Result<(Vec<ClaudeMessage>, usize)> {
+    let file = tokio::fs::File::open(path).await?;
+    let file_len = file.metadata().await?.len();
+
+    let seek_to = file_len.saturating_sub(tail_bytes);
+    let estimated_total = (file_len / 1500).max(1) as usize;
+
+    let mut reader = BufReader::with_capacity(64 * 1024, file);
+    if seek_to > 0 {
+        reader
+            .seek(std::io::SeekFrom::Start(seek_to))
+            .await?;
+        // Skip partial first line (we seeked into the middle of it)
+        let mut discard = String::new();
+        reader.read_line(&mut discard).await?;
+    }
+
+    let mut messages = Vec::new();
+    let mut line_buf = String::new();
+
+    loop {
+        line_buf.clear();
+        let bytes_read = reader.read_line(&mut line_buf).await?;
+        if bytes_read == 0 {
+            break;
+        }
+
+        let trimmed = line_buf.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if let Ok(msg) = parse_line(trimmed) {
+            messages.push(msg);
+        }
+    }
+
+    debug!(
+        tail_messages = messages.len(),
+        estimated_total,
+        seek_offset = seek_to,
+        "tail parse complete"
+    );
+
+    Ok((messages, estimated_total))
+}
+
 /// Parse a single JSONL line into a ClaudeMessage.
 ///
 /// Two-pass approach:
