@@ -23,6 +23,7 @@ pub struct EcsWorld {
     task_index: HashMap<Uuid, Vec<Entity>>,
     agent_index: HashMap<Uuid, Vec<Entity>>,
     api_request_index: HashMap<Uuid, Vec<Entity>>,
+    cache_meta_index: HashMap<Uuid, Entity>,
     /// Maps JSONL session UUID → managed session UUID.
     /// When a managed session spawns a CLI process, the CLI creates its own
     /// session ID in its JSONL file. This alias redirects all data (messages,
@@ -41,6 +42,7 @@ impl EcsWorld {
             task_index: HashMap::new(),
             agent_index: HashMap::new(),
             api_request_index: HashMap::new(),
+            cache_meta_index: HashMap::new(),
             session_aliases: HashMap::new(),
         }
     }
@@ -80,6 +82,12 @@ impl EcsWorld {
         let entity = self.world.spawn((session,));
         self.session_index.insert(id, entity);
         entity
+    }
+
+    pub fn despawn_session(&mut self, session_id: Uuid) {
+        if let Some(entity) = self.session_index.remove(&session_id) {
+            let _ = self.world.despawn(entity);
+        }
     }
 
     pub fn spawn_message(&mut self, mut msg: MessageComponent) -> Entity {
@@ -242,6 +250,196 @@ impl EcsWorld {
         Some(())
     }
 
+    // === File Upsert / Despawn (WP-10: File Browser) ===
+
+    /// Insert or update a file entity for a session.
+    ///
+    /// If a FileComponent with the same session_id + path already exists,
+    /// update its modified timestamp and size. Otherwise spawn a new entity.
+    pub fn upsert_file(&mut self, session_id: Uuid, path: &str, size: u64, timestamp: i64) {
+        let session_id = self.resolve_alias(session_id);
+
+        // Check if entity already exists for this path
+        if let Some(entities) = self.file_index.get(&session_id) {
+            for &entity in entities {
+                if let Ok(mut file) = self.world.get::<&mut FileComponent>(entity) {
+                    if file.path == path {
+                        file.modified = timestamp;
+                        file.size = size;
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Not found — spawn new entity
+        self.spawn_file(FileComponent {
+            id: Uuid::new_v4(),
+            session_id,
+            path: path.to_string(),
+            modified: timestamp,
+            size,
+        });
+    }
+
+    /// Remove a file entity by session ID and path (e.g., when a file is deleted).
+    pub fn despawn_file_by_path(&mut self, session_id: Uuid, path: &str) {
+        let session_id = self.resolve_alias(session_id);
+
+        if let Some(entities) = self.file_index.get_mut(&session_id) {
+            let mut to_remove = None;
+            for (idx, &entity) in entities.iter().enumerate() {
+                if let Ok(file) = self.world.get::<&FileComponent>(entity) {
+                    if file.path == path {
+                        to_remove = Some((idx, entity));
+                        break;
+                    }
+                }
+            }
+            if let Some((idx, entity)) = to_remove {
+                entities.remove(idx);
+                let _ = self.world.despawn(entity);
+            }
+        }
+
+        // Also remove any ClaudeEditing marker for this file
+        self.clear_claude_editing(session_id, path);
+    }
+
+    /// Mark a file as being edited by Claude (eBPF PID attribution).
+    pub fn set_claude_editing(&mut self, session_id: Uuid, path: &str, pid: u32) {
+        let session_id = self.resolve_alias(session_id);
+
+        // Check if already marked (immutable query is fine for existence check)
+        {
+            let mut query = self.world.query::<&ClaudeEditingComponent>();
+            for editing in query.iter() {
+                if editing.session_id == session_id && editing.file_path == path {
+                    return; // Already marked
+                }
+            }
+        }
+
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+
+        self.world.spawn((ClaudeEditingComponent {
+            file_path: path.to_string(),
+            session_id,
+            pid,
+            started_at: ts,
+        },));
+    }
+
+    /// Clear the Claude editing marker for a file.
+    pub fn clear_claude_editing(&mut self, session_id: Uuid, path: &str) {
+        let session_id = self.resolve_alias(session_id);
+
+        // Collect entities to despawn
+        let mut to_despawn = Vec::new();
+        for entity_ref in self.world.iter() {
+            if let Some(editing) = entity_ref.get::<&ClaudeEditingComponent>() {
+                if editing.session_id == session_id && editing.file_path == path {
+                    to_despawn.push(entity_ref.entity());
+                }
+            }
+        }
+        for entity in to_despawn {
+            let _ = self.world.despawn(entity);
+        }
+    }
+
+    /// Check if Claude is currently editing a file. Returns the PID if active.
+    pub fn is_claude_editing(&self, session_id: Uuid, path: &str) -> Option<u32> {
+        let session_id = self.resolve_alias(session_id);
+
+        let mut query = self.world.query::<&ClaudeEditingComponent>();
+        for editing in query.iter() {
+            if editing.session_id == session_id && editing.file_path == path {
+                return Some(editing.pid);
+            }
+        }
+        None
+    }
+
+    // === Cache Meta ===
+
+    /// Spawn or update a CacheMetaComponent for a session.
+    pub fn upsert_cache_meta(&mut self, meta: CacheMetaComponent) {
+        let session_id = meta.session_id;
+        if let Some(&entity) = self.cache_meta_index.get(&session_id) {
+            if let Ok(mut existing) = self.world.get::<&mut CacheMetaComponent>(entity) {
+                existing.file_offset = meta.file_offset;
+                existing.file_size = meta.file_size;
+                existing.last_refreshed = meta.last_refreshed;
+                existing.message_count = meta.message_count;
+                existing.is_warm = meta.is_warm;
+                return;
+            }
+        }
+        let entity = self.world.spawn((meta,));
+        self.cache_meta_index.insert(session_id, entity);
+    }
+
+    /// Get cache meta for a session.
+    pub fn query_cache_meta(&self, session_id: Uuid) -> Option<CacheMetaComponent> {
+        let entity = self.cache_meta_index.get(&session_id)?;
+        self.world
+            .get::<&CacheMetaComponent>(*entity)
+            .ok()
+            .map(|r| (*r).clone())
+    }
+
+    /// Check if a session's cache is warm.
+    pub fn is_cache_warm(&self, session_id: Uuid) -> bool {
+        self.query_cache_meta(session_id)
+            .map_or(false, |m| m.is_warm)
+    }
+
+    /// Invalidate cache for a session (clear all messages and meta).
+    pub fn invalidate_cache(&mut self, session_id: Uuid) {
+        // Remove all message entities for this session
+        if let Some(entities) = self.message_index.remove(&session_id) {
+            for entity in entities {
+                let _ = self.world.despawn(entity);
+            }
+        }
+        // Remove cache meta
+        if let Some(entity) = self.cache_meta_index.remove(&session_id) {
+            let _ = self.world.despawn(entity);
+        }
+    }
+
+    /// Query messages for a session with pagination (from the end).
+    /// Returns (messages, total_count, has_more).
+    pub fn query_messages_range(
+        &self,
+        session_id: Uuid,
+        offset: usize,
+        limit: usize,
+    ) -> (Vec<MessageComponent>, usize, bool) {
+        let Some(entities) = self.message_index.get(&session_id) else {
+            return (Vec::new(), 0, false);
+        };
+        let total = entities.len();
+        // Paginate from the end (newest first by default)
+        let start = total.saturating_sub(offset);
+        let range_start = start.saturating_sub(limit);
+        let messages: Vec<MessageComponent> = entities[range_start..start]
+            .iter()
+            .filter_map(|e| {
+                self.world
+                    .get::<&MessageComponent>(*e)
+                    .ok()
+                    .map(|r| (*r).clone())
+            })
+            .collect();
+        let has_more = range_start > 0;
+        (messages, total, has_more)
+    }
+
     // === Stats ===
 
     pub fn session_count(&self) -> usize {
@@ -378,6 +576,83 @@ mod tests {
         assert_eq!(world.query_messages_by_session(s1).len(), 2);
         assert_eq!(world.query_messages_by_session(s2).len(), 1);
         assert_eq!(world.query_messages_by_session(s3).len(), 0);
+    }
+
+    #[test]
+    fn upsert_file_creates_new() {
+        let mut world = EcsWorld::new();
+        let sid = Uuid::new_v4();
+        world.spawn_session(make_session(sid));
+
+        world.upsert_file(sid, "src/main.rs", 1024, 1708000001);
+        let files = world.query_files_by_session(sid);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "src/main.rs");
+        assert_eq!(files[0].size, 1024);
+    }
+
+    #[test]
+    fn upsert_file_updates_existing() {
+        let mut world = EcsWorld::new();
+        let sid = Uuid::new_v4();
+        world.spawn_session(make_session(sid));
+
+        world.upsert_file(sid, "src/main.rs", 1024, 1708000001);
+        world.upsert_file(sid, "src/main.rs", 2048, 1708000002);
+
+        let files = world.query_files_by_session(sid);
+        assert_eq!(files.len(), 1); // Still only one entity
+        assert_eq!(files[0].size, 2048);
+        assert_eq!(files[0].modified, 1708000002);
+    }
+
+    #[test]
+    fn despawn_file_by_path_removes() {
+        let mut world = EcsWorld::new();
+        let sid = Uuid::new_v4();
+        world.spawn_session(make_session(sid));
+
+        world.upsert_file(sid, "src/main.rs", 1024, 1708000001);
+        world.upsert_file(sid, "src/lib.rs", 512, 1708000001);
+
+        world.despawn_file_by_path(sid, "src/main.rs");
+
+        let files = world.query_files_by_session(sid);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "src/lib.rs");
+    }
+
+    #[test]
+    fn claude_editing_lifecycle() {
+        let mut world = EcsWorld::new();
+        let sid = Uuid::new_v4();
+        world.spawn_session(make_session(sid));
+
+        // Initially not editing
+        assert!(world.is_claude_editing(sid, "src/main.rs").is_none());
+
+        // Set editing
+        world.set_claude_editing(sid, "src/main.rs", 12345);
+        assert_eq!(world.is_claude_editing(sid, "src/main.rs"), Some(12345));
+
+        // Clear editing
+        world.clear_claude_editing(sid, "src/main.rs");
+        assert!(world.is_claude_editing(sid, "src/main.rs").is_none());
+    }
+
+    #[test]
+    fn despawn_file_clears_claude_editing() {
+        let mut world = EcsWorld::new();
+        let sid = Uuid::new_v4();
+        world.spawn_session(make_session(sid));
+
+        world.upsert_file(sid, "src/main.rs", 1024, 1708000001);
+        world.set_claude_editing(sid, "src/main.rs", 12345);
+        assert!(world.is_claude_editing(sid, "src/main.rs").is_some());
+
+        // Despawn file should also clear editing marker
+        world.despawn_file_by_path(sid, "src/main.rs");
+        assert!(world.is_claude_editing(sid, "src/main.rs").is_none());
     }
 
     #[test]
