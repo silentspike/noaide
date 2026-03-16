@@ -19,6 +19,9 @@ import StagingArea from "./components/git/StagingArea";
 import CommitHistory from "./components/git/CommitHistory";
 import CommandPalette from "./components/shared/CommandPalette";
 import ToastContainer from "./components/shared/ToastContainer";
+import KeyboardShortcutsHelp from "./components/shared/KeyboardShortcutsHelp";
+import WelcomeScreen from "./components/shared/WelcomeScreen";
+import PanelErrorBoundary from "./components/shared/ErrorBoundary";
 import { useIsMobile } from "./hooks/useMediaQuery";
 import { useKeymap, type KeyBinding } from "./shortcuts/keymap";
 import { createSessionStore, type SessionStore } from "./stores/session";
@@ -168,6 +171,17 @@ export default function App() {
           <Route path="/session/:id" component={Shell} />
         </Router>
         <ToastContainer />
+        <KeyboardShortcutsHelp />
+        {(() => {
+          const [showWelcome, setShowWelcome] = createSignal(
+            !localStorage.getItem("noaide-welcomed")
+          );
+          return (
+            <Show when={showWelcome()}>
+              <WelcomeScreen onDismiss={() => setShowWelcome(false)} />
+            </Show>
+          );
+        })()}
       </FileContext.Provider>
     </SessionContext.Provider>
   );
