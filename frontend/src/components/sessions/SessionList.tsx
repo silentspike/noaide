@@ -427,7 +427,10 @@ export default function SessionList() {
     }
   }
 
-  const sortedSessions = createMemo(() => {
+  // Flat list item: either a session card or a group header
+  type ListItem = { kind: "session"; session: Session } | { kind: "header"; label: string };
+
+  const flatItems = createMemo((): ListItem[] => {
     store.sessionsVersion();
     const pinned = store.pinnedIds();
     const query = filter().toLowerCase();
@@ -435,7 +438,7 @@ export default function SessionList() {
     const archived = showArchived();
     const group = groupBy();
 
-    return [...store.state.sessions]
+    const filtered = [...store.state.sessions]
       .filter((s) => {
         // Archive filter
         if (!archived && s.status === "archived") return false;
@@ -473,6 +476,23 @@ export default function SessionList() {
           default: return b.lastActivityAt - a.lastActivityAt;
         }
       });
+
+    // Build flat list: interleave group headers when grouping is active
+    if (group === "none") {
+      return filtered.map((s) => ({ kind: "session" as const, session: s }));
+    }
+
+    const items: ListItem[] = [];
+    let lastGroupKey = "";
+    for (const s of filtered) {
+      const key = getGroupKey(s, group);
+      if (key !== lastGroupKey) {
+        items.push({ kind: "header" as const, label: key });
+        lastGroupKey = key;
+      }
+      items.push({ kind: "session" as const, session: s });
+    }
+    return items;
   });
 
   return (
@@ -614,7 +634,7 @@ export default function SessionList() {
         }}
       >
         <Show
-          when={sortedSessions().length > 0}
+          when={flatItems().length > 0}
           fallback={
             <div
               style={{
@@ -628,81 +648,135 @@ export default function SessionList() {
             </div>
           }
         >
-          <VirtualScroller
-            items={sortedSessions()}
-            estimateHeight={56}
-            overscan={5}
-            getKey={(s: Session) => s.id}
-            renderItem={(session: Session, index: number) => {
-              // Group header: show when group changes between consecutive items
-              const group = groupBy();
-              const items = sortedSessions();
-              const showGroupHeader = group !== "none" && (
-                index === 0 || getGroupKey(items[index], group) !== getGroupKey(items[index - 1], group)
-              );
-              const groupLabel = group !== "none" ? getGroupKey(session, group) : "";
-              const tags = sessionTags().get(session.id) || [];
-
-              return (
-                <div onContextMenu={(e) => handleContextMenu(e, session)}>
-                  {showGroupHeader && (
-                    <div
-                      data-testid={`group-header-${groupLabel}`}
-                      style={{
-                        padding: "4px 8px",
-                        "font-size": "9px",
-                        "font-weight": "700",
-                        "text-transform": "uppercase",
-                        "letter-spacing": "0.1em",
-                        color: "var(--ctp-overlay1)",
-                        "border-top": index > 0 ? "1px solid var(--ctp-surface0)" : "none",
-                        "margin-top": index > 0 ? "4px" : "0",
+          <Show when={groupBy() === "none"} fallback={
+            /* Grouped mode: simple For loop (no virtualization needed for grouped view) */
+            <div style={{ overflow: "auto", height: "100%" }}>
+              <For each={flatItems()}>
+                {(item) => {
+                  if (item.kind === "header") {
+                    return (
+                      <div
+                        data-testid={`group-header-${item.label}`}
+                        style={{
+                          padding: "6px 8px 2px",
+                          "font-size": "9px",
+                          "font-weight": "700",
+                          "text-transform": "uppercase",
+                          "letter-spacing": "0.1em",
+                          color: "var(--ctp-overlay1)",
+                          "border-top": "1px solid var(--ctp-surface0)",
+                          "margin-top": "4px",
+                          position: "sticky",
+                          top: "0",
+                          background: "var(--ctp-mantle)",
+                          "z-index": "1",
+                        }}
+                      >
+                        {item.label}
+                      </div>
+                    );
+                  }
+                  const session = item.session;
+                  const tags = sessionTags().get(session.id) || [];
+                  return (
+                    <div onContextMenu={(e: MouseEvent) => handleContextMenu(e, session)}>
+                      <SessionCard
+                        session={session}
+                        isActive={store.state.activeSessionId === session.id}
+                        isPinned={store.isPinned(session.id)}
+                        orbState={
+                          store.state.activeSessionId === session.id
+                            ? store.state.orbState
+                            : orbStateForSession(session)
+                        }
+                        onClick={() => {
+                          store.setActiveSession(session.id);
+                          window.dispatchEvent(new CustomEvent("noaide:navigate-tab", { detail: "chat" }));
+                        }}
+                        onTogglePin={(id: string) => store.togglePin(id)}
+                      />
+                      {tags.length > 0 && (
+                        <div data-testid={`session-tag-${session.id}`} style={{ display: "flex", gap: "3px", padding: "0 8px 4px", "flex-wrap": "wrap" }}>
+                          <For each={tags}>
+                            {(tag: string) => (
+                              <span
+                                style={{
+                                  "font-size": "9px",
+                                  padding: "1px 6px",
+                                  "border-radius": "3px",
+                                  background: "var(--ctp-surface1)",
+                                  color: "var(--ctp-subtext0)",
+                                  cursor: "pointer",
+                                }}
+                                onClick={(e: MouseEvent) => { e.stopPropagation(); removeTag(session.id, tag); }}
+                                title={`Remove tag: ${tag}`}
+                              >
+                                {tag} ×
+                              </span>
+                            )}
+                          </For>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
+              </For>
+            </div>
+          }>
+            {/* Ungrouped mode: VirtualScroller for performance */}
+            <VirtualScroller
+              items={flatItems()}
+              estimateHeight={56}
+              overscan={5}
+              getKey={(item: ListItem) => item.kind === "header" ? `hdr-${item.label}` : item.session.id}
+              renderItem={(item: ListItem) => {
+                if (item.kind !== "session") return <div />;
+                const session = item.session;
+                const tags = sessionTags().get(session.id) || [];
+                return (
+                  <div onContextMenu={(e: MouseEvent) => handleContextMenu(e, session)}>
+                    <SessionCard
+                      session={session}
+                      isActive={store.state.activeSessionId === session.id}
+                      isPinned={store.isPinned(session.id)}
+                      orbState={
+                        store.state.activeSessionId === session.id
+                          ? store.state.orbState
+                          : orbStateForSession(session)
+                      }
+                      onClick={() => {
+                        store.setActiveSession(session.id);
+                        window.dispatchEvent(new CustomEvent("noaide:navigate-tab", { detail: "chat" }));
                       }}
-                    >
-                      {groupLabel}
-                    </div>
-                  )}
-                  <SessionCard
-                    session={session}
-                    isActive={store.state.activeSessionId === session.id}
-                    isPinned={store.isPinned(session.id)}
-                    orbState={
-                      store.state.activeSessionId === session.id
-                        ? store.state.orbState
-                        : orbStateForSession(session)
-                    }
-                    onClick={() => {
-                      store.setActiveSession(session.id);
-                      window.dispatchEvent(new CustomEvent("noaide:navigate-tab", { detail: "chat" }));
-                    }}
-                    onTogglePin={(id) => store.togglePin(id)}
-                  />
-                  {tags.length > 0 && (
-                    <div data-testid={`session-tag-${session.id}`} style={{ display: "flex", gap: "3px", padding: "0 8px 4px", "flex-wrap": "wrap" }}>
-                      <For each={tags}>
-                        {(tag: string) => (
-                          <span
-                            style={{
-                              "font-size": "9px",
-                              padding: "1px 6px",
-                              "border-radius": "3px",
-                              background: "var(--ctp-surface1)",
-                              color: "var(--ctp-subtext0)",
-                              cursor: "pointer",
-                            }}
-                            onClick={(e) => { e.stopPropagation(); removeTag(session.id, tag); }}
-                            title={`Remove tag: ${tag}`}
-                          >
-                            {tag} ×
-                          </span>
-                        )}
-                      </For>
-                    </div>
-                  )}
-                </div>
-              );
-            }}
-          />
+                      onTogglePin={(id: string) => store.togglePin(id)}
+                    />
+                    {tags.length > 0 && (
+                      <div data-testid={`session-tag-${session.id}`} style={{ display: "flex", gap: "3px", padding: "0 8px 4px", "flex-wrap": "wrap" }}>
+                        <For each={tags}>
+                          {(tag: string) => (
+                            <span
+                              style={{
+                                "font-size": "9px",
+                                padding: "1px 6px",
+                                "border-radius": "3px",
+                                background: "var(--ctp-surface1)",
+                                color: "var(--ctp-subtext0)",
+                                cursor: "pointer",
+                              }}
+                              onClick={(e: MouseEvent) => { e.stopPropagation(); removeTag(session.id, tag); }}
+                              title={`Remove tag: ${tag}`}
+                            >
+                              {tag} ×
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
+            />
+          </Show>
         </Show>
       </div>
 

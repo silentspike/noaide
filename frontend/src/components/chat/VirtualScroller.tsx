@@ -266,8 +266,14 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
   let animateFrontier = 0;
   let needsScrollToEnd = true;
 
+  // Track first key to detect major list changes (grouping toggled, filter changed)
+  let resetPrevLen = 0;
+  let resetPrevKey: string | null = null;
+
   createEffect(() => {
     const len = props.items.length;
+    const fk = len > 0 && props.getKey ? props.getKey(props.items[0]) : null;
+
     if (len === 0) {
       measuredHeights.clear();
       runningTotal = 0;
@@ -276,7 +282,19 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
       needsScrollToEnd = true;
       prefixCache = null;
       prefixCacheVersion = -1;
+    } else if (resetPrevLen > 0 && (Math.abs(len - resetPrevLen) > resetPrevLen * 0.01 + 2 || fk !== resetPrevKey)) {
+      // Major change (items added/removed beyond natural polling, or first item changed)
+      // Reset measured heights since indices shifted
+      measuredHeights.clear();
+      runningTotal = len * props.estimateHeight;
+      trackedItemCount = len;
+      prefixCache = null;
+      prefixCacheVersion = -1;
+      setHeightVersion((v) => v + 1);
     }
+
+    resetPrevLen = len;
+    resetPrevKey = fk;
   });
 
   createEffect(() => {
