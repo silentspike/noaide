@@ -222,6 +222,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/sessions/{id}/input", post(api_send_input))
         .route("/api/sessions/{id}/stats", get(api_get_session_stats))
         .route("/api/sessions/{id}/close", post(api_close_session))
+        .route("/api/sessions/{id}", delete(api_delete_session))
         .route("/api/proxy/requests", get(api_get_proxy_requests))
         .route("/api/proxy/requests", delete(api_clear_proxy_requests))
         .route(
@@ -2333,6 +2334,48 @@ async fn api_close_session(
             axum::Json(serde_json::json!({"error": "managed session not found"})),
         ),
     }
+}
+
+/// DELETE /api/sessions/{id} — Delete a session and its JSONL files.
+async fn api_delete_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl axum::response::IntoResponse {
+    let Ok(uuid) = Uuid::parse_str(&id) else {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({"error": "invalid session id"})),
+        );
+    };
+
+    // Remove from ECS world
+    {
+        let mut world = state.ecs.write().await;
+        world.despawn_session(uuid);
+    }
+
+    // Delete JSONL file(s)
+    let paths = state.session_paths.read().await;
+    if let Some(jsonl_path) = paths.get(&uuid) {
+        let path = jsonl_path.clone();
+        drop(paths);
+        if let Err(e) = tokio::fs::remove_file(&path).await {
+            tracing::warn!(error = %e, path = %path.display(), "failed to delete JSONL file");
+        } else {
+            info!(session = %uuid, path = %path.display(), "deleted JSONL file");
+        }
+        // Remove from session_paths
+        state.session_paths.write().await.remove(&uuid);
+    }
+
+    // Remove from cli types
+    state.session_cli_types.write().await.remove(&uuid);
+
+    info!(session = %uuid, "session deleted via API");
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(serde_json::json!({"ok": true, "deleted": id})),
+    )
 }
 
 // ── Append Message Handler ──────────────────────────────────────────────────
