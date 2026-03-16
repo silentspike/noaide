@@ -5,7 +5,7 @@ pub mod types;
 
 pub use codex::parse_codex_file;
 pub use gemini::parse_gemini_file;
-pub use jsonl::{parse_file, parse_incremental, parse_line};
+pub use jsonl::{parse_file, parse_incremental, parse_line, parse_tail};
 pub use types::{ClaudeMessage, ContentBlock, ImageSource, MessageContent};
 
 use uuid::Uuid;

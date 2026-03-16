@@ -1555,7 +1555,8 @@ async fn api_get_sessions(State(state): State<AppState>) -> axum::Json<serde_jso
     let json: Vec<serde_json::Value> = sessions
         .iter()
         .map(|s| {
-            let ecs_count = world.query_messages_by_session(s.id).len();
+            // Use zero-alloc count instead of cloning all messages
+            let ecs_count = world.message_count_for_session(s.id);
             // For Codex/Gemini sessions that aren't loaded into ECS, use the hint
             let message_count = if ecs_count > 0 {
                 ecs_count
@@ -1663,6 +1664,36 @@ async fn api_get_messages(
 
     // Fallback: direct parse (if cache fails or no JSONL path)
     if let Some(ref path) = jsonl_path {
+        // For large Claude JSONL files (>10MB), use tail-based parsing
+        // to avoid loading 400MB+ into memory just to serve the last 50 messages.
+        let file_size = tokio::fs::metadata(path).await.map(|m| m.len()).unwrap_or(0);
+        let use_tail = cli_type == noaide_server::discovery::scanner::CliType::Claude
+            && file_size > 10 * 1024 * 1024;
+
+        if use_tail {
+            // Parse only the last 2MB (~1300 messages) — enough for any reasonable limit+offset
+            let tail_bytes = (2 * 1024 * 1024u64).min(file_size);
+            if let Ok((messages, estimated_total)) = parser::parse_tail(path, tail_bytes).await {
+                let total = estimated_total;
+                let tail_len = messages.len();
+                // Apply offset+limit within the tail window
+                let start = tail_len.saturating_sub(offset);
+                let range_start = start.saturating_sub(limit);
+                let json: Vec<serde_json::Value> = messages[range_start..start]
+                    .iter()
+                    .filter_map(|msg| parser::message_to_component(msg, uuid))
+                    .map(|m| component_to_json(&m))
+                    .collect();
+                return axum::Json(serde_json::json!({
+                    "messages": json,
+                    "total": total,
+                    "offset": offset,
+                    "limit": limit,
+                    "hasMore": true, // large files always have more (we only parsed tail)
+                }));
+            }
+        }
+
         let parse_result = match cli_type {
             noaide_server::discovery::scanner::CliType::Codex => {
                 parser::parse_codex_file(path).await
