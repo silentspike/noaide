@@ -649,7 +649,7 @@ export default function SessionList() {
           }
         >
           <Show when={groupBy() === "none"} fallback={
-            /* Grouped mode: simple For loop (no virtualization needed for grouped view) */
+            /* Grouped mode: For loop with content-visibility for lazy rendering */
             <div style={{ overflow: "auto", height: "100%" }}>
               <For each={flatItems()}>
                 {(item) => {
@@ -679,7 +679,10 @@ export default function SessionList() {
                   const session = item.session;
                   const tags = sessionTags().get(session.id) || [];
                   return (
-                    <div onContextMenu={(e: MouseEvent) => handleContextMenu(e, session)}>
+                    <div
+                      onContextMenu={(e: MouseEvent) => handleContextMenu(e, session)}
+                      style={{ "content-visibility": "auto", "contain-intrinsic-height": "56px" }}
+                    >
                       <SessionCard
                         session={session}
                         isActive={store.state.activeSessionId === session.id}
