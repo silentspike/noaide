@@ -1033,6 +1033,20 @@ async fn main() -> anyhow::Result<()> {
                                         );
                                     }
 
+                                    // Update session status based on last parsed message.
+                                    // Active = assistant is streaming (no stop_reason yet).
+                                    if let Some(last_msg) = messages.last() {
+                                        let is_active = last_msg.role.as_deref() == Some("assistant")
+                                            && last_msg.stop_reason.is_none();
+                                        let new_status = if is_active {
+                                            SessionStatus::Active
+                                        } else {
+                                            SessionStatus::Idle
+                                        };
+                                        ecs_handle.write().await
+                                            .update_session_status(effective_sid, new_status);
+                                    }
+
                                     if !serialized_messages.is_empty() {
                                         let payload = serde_json::to_vec(&serde_json::json!({
                                             "type": "new_messages",
