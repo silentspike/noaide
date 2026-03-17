@@ -124,6 +124,18 @@ export default function App() {
       url: serverUrl,
       onEvent: (topic, envelope) => {
         store.handleEvent(topic, envelope);
+        // Real-time orbState push — no more 5s polling delay
+        if (topic === "session/status" && envelope.payload) {
+          try {
+            const text = new TextDecoder().decode(envelope.payload);
+            const data = JSON.parse(text) as { session_id?: string; status?: string };
+            if (data.session_id && data.status && data.session_id === store.state.activeSessionId) {
+              const orbMap: Record<string, string> = { active: "streaming", idle: "idle", error: "error" };
+              const orbState = orbMap[data.status] ?? "idle";
+              store.updateOrbState(orbState as "idle" | "streaming" | "thinking" | "tool_use" | "error");
+            }
+          } catch { /* ignore decode errors */ }
+        }
         if (topic === "files/changes" && envelope.payload) {
           try {
             // Payload is MessagePack (Hot Path, NOT JSON!)
