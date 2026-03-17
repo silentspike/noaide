@@ -387,22 +387,34 @@ function CenterPanel(props: { activeTab: CenterTabId; onTabChange: (tab: CenterT
       {/* Tab Content */}
       <div style={{ flex: "1", "min-height": "0", overflow: "hidden" }}>
         <Show when={props.activeTab === "chat"}>
-          <ChatPanel />
+          <PanelErrorBoundary name="Chat">
+            <ChatPanel />
+          </PanelErrorBoundary>
         </Show>
         <Show when={props.activeTab === "network"}>
-          <NetworkPanel />
+          <PanelErrorBoundary name="Network">
+            <NetworkPanel />
+          </PanelErrorBoundary>
         </Show>
         <Show when={props.activeTab === "teams"}>
-          <TeamsPanel />
+          <PanelErrorBoundary name="Teams">
+            <TeamsPanel />
+          </PanelErrorBoundary>
         </Show>
         <Show when={props.activeTab === "gallery"}>
-          <GalleryPanel />
+          <PanelErrorBoundary name="Gallery">
+            <GalleryPanel />
+          </PanelErrorBoundary>
         </Show>
         <Show when={props.activeTab === "tasks"}>
-          <TaskPanel />
+          <PanelErrorBoundary name="Tasks">
+            <TaskPanel />
+          </PanelErrorBoundary>
         </Show>
         <Show when={props.activeTab === "plan"}>
-          <PlanSelector sessionId={sessionStore.state.activeSessionId ?? undefined} />
+          <PanelErrorBoundary name="Plan">
+            <PlanSelector sessionId={sessionStore.state.activeSessionId ?? undefined} />
+          </PanelErrorBoundary>
         </Show>
         <Show when={props.activeTab === "git"}>
           <div style={{ display: "flex", "flex-direction": "column", height: "100%", overflow: "auto" }}>
