@@ -35,6 +35,8 @@ pub enum GitError {
     NotRepo(String),
     #[error("branch not found: {0}")]
     BranchNotFound(String),
+    #[error("{0}")]
+    Other(String),
 }
 
 pub fn status(repo_path: &Path) -> Result<Vec<FileStatus>, GitError> {
@@ -260,30 +262,35 @@ pub fn diff_hunks(repo_path: &Path, file_path: &str) -> Result<Vec<DiffHunk>, Gi
     let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
     let mut hunks = Vec::new();
 
-    diff.foreach(
-        &mut |_, _| true,
-        None,
-        Some(&mut |_delta, hunk| {
-            hunks.push(DiffHunk {
-                header: String::from_utf8_lossy(hunk.header()).trim().to_string(),
-                old_start: hunk.old_start(),
-                old_lines: hunk.old_lines(),
-                new_start: hunk.new_start(),
-                new_lines: hunk.new_lines(),
-                lines: Vec::new(),
-            });
-            true
-        }),
-        Some(&mut |_delta, _hunk, line| {
-            if let Some(last) = hunks.last_mut() {
-                last.lines.push(DiffLine {
-                    origin: line.origin(),
-                    content: String::from_utf8_lossy(line.content()).to_string(),
+    // Collect all diff data in a single pass using print callback
+    diff.print(git2::DiffFormat::Patch, |_delta, maybe_hunk, line| {
+        if let Some(hunk) = maybe_hunk {
+            // Check if this is a new hunk (different header from last)
+            let header = String::from_utf8_lossy(hunk.header()).trim().to_string();
+            if hunks.last().map_or(true, |h: &DiffHunk| h.header != header) {
+                hunks.push(DiffHunk {
+                    header,
+                    old_start: hunk.old_start(),
+                    old_lines: hunk.old_lines(),
+                    new_start: hunk.new_start(),
+                    new_lines: hunk.new_lines(),
+                    lines: Vec::new(),
                 });
             }
-            true
-        }),
-    )?;
+        }
+        match line.origin() {
+            '+' | '-' | ' ' => {
+                if let Some(last) = hunks.last_mut() {
+                    last.lines.push(DiffLine {
+                        origin: line.origin(),
+                        content: String::from_utf8_lossy(line.content()).to_string(),
+                    });
+                }
+            }
+            _ => {}
+        }
+        true
+    })?;
 
     Ok(hunks)
 }
