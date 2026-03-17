@@ -165,7 +165,12 @@ async fn main() -> anyhow::Result<()> {
     // Restore managed session→plan mappings from previous run (if available)
     let session_plan_mapping: Arc<RwLock<HashMap<Uuid, String>>> =
         Arc::new(RwLock::new(HashMap::new()));
-    if let Ok(data) = tokio::fs::read_to_string("/tmp/noaide-managed-sessions.json").await {
+    // Persistent storage: /data/noaide/ for session state (survives restarts)
+    let persist_dir = std::path::Path::new("/data/noaide");
+    if !persist_dir.exists() {
+        let _ = tokio::fs::create_dir_all(persist_dir).await;
+    }
+    if let Ok(data) = tokio::fs::read_to_string("/data/noaide/managed-sessions.json").await {
         if let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&data) {
             let mut mapping = session_plan_mapping.write().await;
             for entry in &entries {
@@ -2264,7 +2269,7 @@ async fn api_create_managed_session(
                     serde_json::json!({"session_id": id.to_string(), "path": path, "plan": plan})
                 }).collect();
                 if let Ok(json) = serde_json::to_string_pretty(&persist) {
-                    let _ = tokio::fs::write("/tmp/noaide-managed-sessions.json", json).await;
+                    let _ = tokio::fs::write("/data/noaide/managed-sessions.json", json).await;
                 }
             }
             (

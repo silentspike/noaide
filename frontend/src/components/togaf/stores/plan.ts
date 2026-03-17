@@ -5,6 +5,7 @@
 
 import { createStore, reconcile, produce } from "solid-js/store";
 import { createSignal, createMemo } from "solid-js";
+import { showToast } from "../../../lib/notifications";
 import type {
   PlanDocument,
   SectionData,
@@ -256,6 +257,11 @@ export function createPlanStore(initialData?: PlanDocument) {
       })
     );
     patchApi?.(`/api/plan/work-packages/${wpId}`, { status: newStatus });
+    // Toast notification when WP moves to done
+    if (newStatus === "done") {
+      const wpTitle = store.work_packages.find((w) => w.id === wpId)?.title ?? wpId;
+      showToast({ type: "success", title: `${wpId} completed`, message: wpTitle, duration: 4000 });
+    }
   }
 
   /** Update a gate's status */
