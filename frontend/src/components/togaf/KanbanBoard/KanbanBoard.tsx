@@ -57,7 +57,11 @@ export const KanbanBoard: Component = () => {
     e.preventDefault();
     setPointerDrag({ ...drag, x: e.clientX, y: e.clientY });
     // Hit-detect which column we're over
+    // Temporarily hide the dragged card so elementFromPoint can see through it
+    const draggedEl = document.querySelector(`[data-testid="kanban-card-${drag.wpId}"]`) as HTMLElement | null;
+    if (draggedEl) draggedEl.style.pointerEvents = "none";
     const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (draggedEl) draggedEl.style.pointerEvents = "";
     const col = el?.closest("[data-column-id]") as HTMLElement | null;
     setDropTarget(col?.dataset.columnId as WPStatus ?? null);
   };
@@ -194,7 +198,8 @@ const WPCard: Component<WPCardProps> = (props) => {
       onDragEnd={() => props.onDragEnd()}
       onPointerDown={(e) => {
         if (e.button !== 0) return; // only primary button
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        // No setPointerCapture — document-level listeners handle move/up
+        // Capture breaks elementFromPoint() hit-detection for column targeting
         props.onPointerDragStart(e);
       }}
       class={`${sizeClass()} ${props.isDragging ? "dragging" : ""} ${props.wp.status === "in_progress" ? "wp-working" : ""}`}
