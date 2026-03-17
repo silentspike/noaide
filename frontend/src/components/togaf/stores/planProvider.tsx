@@ -117,6 +117,9 @@ export function StandalonePlanProvider(props: StandaloneProps) {
     // Start polling
     const interval = props.pollIntervalMs ?? 2000;
     intervalId = setInterval(fetchPlan, interval);
+
+    // Expose store for E2E testing (dev only)
+    (window as any).__PLAN_STORE__ = store;
   });
 
   onCleanup(() => {
