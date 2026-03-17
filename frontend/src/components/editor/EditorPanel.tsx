@@ -15,6 +15,7 @@ interface EditorPanelProps {
   filePath?: string;
   content?: string;
   readOnly?: boolean;
+  onSave?: (content: string) => Promise<boolean>;
 }
 
 function languageFromPath(path: string) {
@@ -95,8 +96,26 @@ export default function EditorPanel(props: EditorPanelProps) {
   let editorView: EditorView | undefined;
   const [claudeEditing, _setClaudeEditing] = createSignal(false);
   const [showDiff, setShowDiff] = createSignal(false);
-  const [diffOriginal, _setDiffOriginal] = createSignal("");
-  const [diffModified, _setDiffModified] = createSignal("");
+  const [diffOriginal, setDiffOriginal] = createSignal("");
+  const [diffModified, setDiffModified] = createSignal("");
+  const [isDirty, setIsDirty] = createSignal(false);
+
+  // Expose for E2E testing
+  (window as any).__EDITOR_DEBUG__ = { setShowDiff, setDiffOriginal, setDiffModified };
+  const [isSaving, setIsSaving] = createSignal(false);
+  let lastSavedContent = "";
+
+  const handleSave = async () => {
+    if (!editorView || !props.onSave || isSaving()) return;
+    setIsSaving(true);
+    const content = editorView.state.doc.toString();
+    const ok = await props.onSave(content);
+    if (ok) {
+      lastSavedContent = content;
+      setIsDirty(false);
+    }
+    setIsSaving(false);
+  };
 
   createEffect(() => {
     // Track filePath reactively so editor is created when Show renders the container
@@ -111,10 +130,31 @@ export default function EditorPanel(props: EditorPanelProps) {
       catppuccinTheme,
       EditorView.lineWrapping,
       EditorState.readOnly.of(props.readOnly ?? false),
+      // Track dirty state on every document change
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          const current = update.state.doc.toString();
+          setIsDirty(current !== lastSavedContent);
+        }
+      }),
+      // Cmd+S / Ctrl+S keyboard shortcut
+      EditorView.domEventHandlers({
+        keydown(event) {
+          if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+            event.preventDefault();
+            handleSave();
+            return true;
+          }
+          return false;
+        },
+      }),
     ];
 
     const lang = languageFromPath(filePath);
     if (lang) extensions.push(lang);
+
+    lastSavedContent = props.content ?? "";
+    setIsDirty(false);
 
     editorView = new EditorView({
       state: EditorState.create({
@@ -123,6 +163,21 @@ export default function EditorPanel(props: EditorPanelProps) {
       }),
       parent: containerRef,
     });
+  });
+
+  // Update editor content reactively when props.content changes (e.g. WebTransport push)
+  createEffect(() => {
+    const newContent = props.content;
+    if (!editorView || newContent === undefined) return;
+    const currentDoc = editorView.state.doc.toString();
+    if (newContent !== currentDoc) {
+      editorView.dispatch({
+        changes: { from: 0, to: currentDoc.length, insert: newContent },
+      });
+      // External update = new baseline for dirty tracking
+      lastSavedContent = newContent;
+      setIsDirty(false);
+    }
   });
 
   onCleanup(() => {
@@ -170,6 +225,40 @@ export default function EditorPanel(props: EditorPanelProps) {
           >
             {props.filePath}
           </span>
+          <Show when={isDirty()}>
+            <span
+              style={{
+                "margin-left": "6px",
+                width: "6px",
+                height: "6px",
+                "border-radius": "50%",
+                background: "var(--ctp-peach)",
+                "flex-shrink": "0",
+              }}
+              title="Unsaved changes"
+            />
+          </Show>
+          <div style={{ flex: "1" }} />
+          <Show when={props.onSave}>
+            <button
+              onClick={handleSave}
+              disabled={!isDirty() || isSaving()}
+              style={{
+                padding: "2px 10px",
+                "font-size": "11px",
+                "font-family": "var(--font-mono)",
+                background: isDirty() ? "var(--ctp-blue)" : "var(--ctp-surface1)",
+                color: isDirty() ? "var(--ctp-base)" : "var(--ctp-overlay0)",
+                border: "none",
+                "border-radius": "3px",
+                cursor: isDirty() ? "pointer" : "default",
+                opacity: isSaving() ? "0.6" : "1",
+                transition: "background 150ms, color 150ms",
+              }}
+            >
+              {isSaving() ? "Saving..." : "Save"}
+            </button>
+          </Show>
         </div>
       </Show>
 
