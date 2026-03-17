@@ -23,6 +23,9 @@ pub const SYSTEM_EVENTS: &str = "system/events";
 /// API proxy request/response pairs.
 pub const API_REQUESTS: &str = "api/requests";
 
+/// TOGAF plan updates (plan.json changed or edits applied).
+pub const PLAN_UPDATES: &str = "plan/updates";
+
 // ── Backpressure Policies ────────────────────────────────────────────────────
 
 /// Backpressure policy for a topic's bounded queue.
@@ -66,6 +69,10 @@ pub fn topic_config(topic: &str) -> TopicConfig {
         },
         API_REQUESTS => TopicConfig {
             capacity: 1_000,
+            drop_policy: DropPolicy::DropOldest,
+        },
+        PLAN_UPDATES => TopicConfig {
+            capacity: 50,
             drop_policy: DropPolicy::DropOldest,
         },
         // Unknown topics get sensible defaults
