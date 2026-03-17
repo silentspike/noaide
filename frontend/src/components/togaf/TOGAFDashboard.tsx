@@ -228,6 +228,27 @@ const TOGAFDashboard: Component = () => {
 
       {/* ═══ MAIN CONTENT ═══ */}
       <main class="togaf-main">
+        {/* Error overlay for offline/corrupt plan */}
+        <Show when={store.status() === "offline" && store.error()}>
+          <div
+            data-testid="plan-error-overlay"
+            style={{
+              padding: "24px",
+              margin: "16px",
+              background: "rgba(243,139,168,0.08)",
+              border: "1px solid var(--red)",
+              "border-radius": "8px",
+              color: "var(--red)",
+              "text-align": "center",
+            }}
+          >
+            <div style={{ "font-size": "20px", "margin-bottom": "8px" }}>&#x26A0;</div>
+            <div style={{ "font-weight": "700", "margin-bottom": "4px" }}>Plan unavailable</div>
+            <div style={{ "font-size": "11px", color: "var(--text-muted)", "word-break": "break-all" }}>
+              {store.error()}
+            </div>
+          </div>
+        </Show>
         <Show when={activeView() === "adm"}>
           <ADMCycleView />
         </Show>

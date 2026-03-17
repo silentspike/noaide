@@ -92,6 +92,7 @@ export default function SearchBar(props: SearchBarProps) {
         <input
           ref={inputRef}
           data-testid="search-input"
+          aria-label="Search messages"
           type="text"
           placeholder="Search messages..."
           value={query()}

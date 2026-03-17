@@ -5,6 +5,7 @@ interface FileEntry {
   path: string;
   status: string;
   staged: boolean;
+  hunks?: number; // number of diff hunks (for hunk-level staging hint)
 }
 
 const statusColors: Record<string, string> = {
@@ -44,7 +45,10 @@ export default function StagingArea() {
     return resp.json();
   };
 
-  const [files, { refetch }] = createResource(() => apiUrl(), fetchStatus);
+  const [files, { refetch }] = createResource(
+    () => [apiUrl(), sessionId()] as const,
+    fetchStatus,
+  );
 
   const stagedFiles = () => (files() ?? []).filter((f) => f.staged);
   const unstagedFiles = () => (files() ?? []).filter((f) => !f.staged);
@@ -54,6 +58,18 @@ export default function StagingArea() {
     if (!base) return;
     const sid = sessionId();
     await fetch(`${base}/api/git/stage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sid ?? undefined, paths }),
+    });
+    refetch();
+  };
+
+  const doUnstage = async (paths: string[]) => {
+    const base = apiUrl();
+    if (!base) return;
+    const sid = sessionId();
+    await fetch(`${base}/api/git/unstage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sid ?? undefined, paths }),
@@ -102,9 +118,32 @@ export default function StagingArea() {
           }}
         >
           <span>Staged ({stagedFiles().length})</span>
+          <Show when={stagedFiles().length > 0}>
+            <button
+              onClick={() =>
+                doUnstage(stagedFiles().map((f) => f.path))
+              }
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--ctp-overlay0)",
+                "font-size": "10px",
+                cursor: "pointer",
+                padding: "0 4px",
+              }}
+            >
+              Unstage all
+            </button>
+          </Show>
         </div>
         <For each={stagedFiles()}>
-          {(file) => <FileRow file={file} actionLabel="−" onAction={() => {}} />}
+          {(file) => (
+            <FileRow
+              file={file}
+              actionLabel="−"
+              onAction={() => doUnstage([file.path])}
+            />
+          )}
         </For>
       </div>
 
@@ -168,7 +207,11 @@ export default function StagingArea() {
       >
         <textarea
           value={commitMsg()}
-          onInput={(e) => setCommitMsg(e.currentTarget.value)}
+          onInput={(e) => {
+            setCommitMsg(e.currentTarget.value);
+            e.currentTarget.style.height = "auto";
+            e.currentTarget.style.height = e.currentTarget.scrollHeight + "px";
+          }}
           placeholder="Commit message..."
           rows={3}
           style={{
@@ -180,11 +223,22 @@ export default function StagingArea() {
             color: "var(--ctp-text)",
             "font-size": "12px",
             "font-family": "inherit",
-            resize: "vertical",
+            resize: "none",
+            overflow: "hidden",
             outline: "none",
             "box-sizing": "border-box",
           }}
         />
+        <div
+          style={{
+            "font-size": "10px",
+            color: "var(--ctp-overlay0)",
+            "text-align": "right",
+            padding: "2px 0",
+          }}
+        >
+          {commitMsg().length}
+        </div>
         <button
           disabled={stagedFiles().length === 0 || !commitMsg()}
           onClick={doCommit}

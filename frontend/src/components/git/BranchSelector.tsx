@@ -12,6 +12,8 @@ export default function BranchSelector() {
   const store = useSession();
   const [open, setOpen] = createSignal(false);
   const [filter, setFilter] = createSignal("");
+  const [newBranch, setNewBranch] = createSignal("");
+  const [creating, setCreating] = createSignal(false);
 
   const apiUrl = () => store.state.httpApiUrl;
   const sessionId = () => store.state.activeSessionId;
@@ -29,7 +31,7 @@ export default function BranchSelector() {
   };
 
   const [branches, { refetch }] = createResource(
-    () => apiUrl(),
+    () => [apiUrl(), sessionId()] as const,
     fetchBranches,
   );
 
@@ -255,9 +257,73 @@ export default function BranchSelector() {
                 )}
               </For>
             </Show>
+
+            {/* Create new branch */}
+            <div style={{ padding: "6px", "border-top": "1px solid var(--ctp-surface1)" }}>
+              <div style={{ display: "flex", gap: "4px" }}>
+                <input
+                  data-testid="create-branch-input"
+                  type="text"
+                  placeholder="New branch name..."
+                  value={newBranch()}
+                  onInput={(e) => setNewBranch(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newBranch().trim()) {
+                      createBranch(newBranch().trim());
+                    }
+                  }}
+                  style={{
+                    flex: "1",
+                    padding: "4px 8px",
+                    background: "var(--ctp-base)",
+                    border: "1px solid var(--ctp-surface1)",
+                    "border-radius": "4px",
+                    color: "var(--ctp-text)",
+                    "font-size": "11px",
+                    outline: "none",
+                    "min-width": "0",
+                  }}
+                />
+                <button
+                  data-testid="create-branch-btn"
+                  disabled={!newBranch().trim() || creating()}
+                  onClick={() => createBranch(newBranch().trim())}
+                  style={{
+                    padding: "4px 8px",
+                    background: newBranch().trim() ? "var(--ctp-green)" : "var(--ctp-surface1)",
+                    color: newBranch().trim() ? "var(--ctp-base)" : "var(--ctp-overlay0)",
+                    border: "none",
+                    "border-radius": "4px",
+                    "font-size": "10px",
+                    "font-weight": "600",
+                    cursor: newBranch().trim() ? "pointer" : "default",
+                    "white-space": "nowrap",
+                  }}
+                >
+                  {creating() ? "..." : "+ Create"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </Show>
     </div>
   );
+
+  async function createBranch(name: string) {
+    const base = apiUrl();
+    if (!base || !name) return;
+    setCreating(true);
+    try {
+      await fetch(`${base}/api/git/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId() ?? undefined, branch: name, create: true }),
+      });
+      setNewBranch("");
+      setOpen(false);
+      refetch();
+    } catch { /* ignore */ }
+    setCreating(false);
+  }
 }

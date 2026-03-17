@@ -581,6 +581,7 @@ export default function SessionList() {
         <div style={{ display: "flex", gap: "4px", "margin-bottom": "6px", "align-items": "center" }}>
           <select
             data-testid="session-sort-dropdown"
+            aria-label="Sort sessions by"
             value={sortBy()}
             onChange={(e) => updateSort(e.currentTarget.value as SortBy)}
             style={{
@@ -596,6 +597,7 @@ export default function SessionList() {
           </select>
           <select
             data-testid="session-group-dropdown"
+            aria-label="Group sessions by"
             value={groupBy()}
             onChange={(e) => updateGroup(e.currentTarget.value as GroupBy)}
             style={{
@@ -627,6 +629,7 @@ export default function SessionList() {
         {/* Search filter */}
         <input
           data-testid="session-filter"
+          aria-label="Filter sessions"
           type="text"
           placeholder="Filter sessions..."
           value={filter()}
