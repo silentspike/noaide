@@ -3,7 +3,8 @@ pub mod zenoh_bus;
 
 pub use topics::{
     AGENT_METRICS, API_REQUESTS, DedupTracker, DropPolicy, EventEnvelope, EventSource,
-    FILE_CHANGES, LamportClock, SESSION_MESSAGES, SYSTEM_EVENTS, TASK_UPDATES, TopicConfig,
+    FILE_CHANGES, LamportClock, PLAN_UPDATES, SESSION_MESSAGES, SYSTEM_EVENTS, TASK_UPDATES,
+    TopicConfig,
 };
 pub use zenoh_bus::ZenohBus;
 

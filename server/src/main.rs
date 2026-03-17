@@ -1964,6 +1964,22 @@ async fn api_post_plan_edits(
                 return axum::Json(serde_json::json!({"error": "write failed"}));
             }
             info!(plan = %name, path = %edits_path.display(), "wrote plan-edits.json");
+
+            // Publish plan update via WebTransport bus so connected clients
+            // receive the change instantly without polling.
+            let plan_json_path = state.plan_base_dir.join(&name).join("plan.json");
+            if let Ok(plan_data) = tokio::fs::read(&plan_json_path).await {
+                let envelope = bus::EventEnvelope::new(
+                    bus::EventSource::User,
+                    0,
+                    0,
+                    None,
+                    plan_data,
+                );
+                let _ = state.event_bus.publish(bus::PLAN_UPDATES, envelope).await;
+                info!(plan = %name, "published plan update via WebTransport");
+            }
+
             axum::Json(serde_json::json!({"ok": true, "plan": name}))
         }
         Err(e) => axum::Json(serde_json::json!({"error": e.to_string()})),
