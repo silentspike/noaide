@@ -150,11 +150,44 @@ export function IntegrationPlanProvider(props: IntegrationProps) {
   const store = createPlanStore();
 
   onMount(() => {
-    // Phase C: Connect to WebTransport endpoint
-    // const wt = new WebTransport(`https://localhost:4433/plan/${props.sessionId}`);
-    // wt.datagrams.readable → reconcile updates
-    store.setStatus("offline");
-    store.setError("WebTransport provider not yet implemented (Phase C)");
+    // Phase C: WebTransport push for plan updates
+    // Subscribe to QUIC datagrams on topic "plan.updates"
+    // When server pushes new plan.json content, reconcile into store
+    try {
+      const certHash = (window as any).__NOAIDE_CERT_HASH__;
+      if (certHash && typeof WebTransport !== "undefined") {
+        const wt = new WebTransport(`https://localhost:4433`, {
+          serverCertificateHashes: [{ algorithm: "sha-256", value: Uint8Array.from(atob(certHash), c => c.charCodeAt(0)) }],
+        });
+        wt.ready.then(() => {
+          store.setStatus("live");
+          // Read datagrams for plan updates
+          const reader = wt.datagrams.readable.getReader();
+          (async function readLoop() {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              try {
+                const text = new TextDecoder().decode(value);
+                const data = JSON.parse(text);
+                if (data.$schema === "togaf-plan/1.0") {
+                  store.updatePlan(data);
+                }
+              } catch { /* skip malformed datagrams */ }
+            }
+          })();
+        }).catch(() => {
+          store.setStatus("offline");
+          store.setError("WebTransport connection failed — falling back to polling");
+        });
+      } else {
+        store.setStatus("offline");
+        store.setError("WebTransport not available — use StandalonePlanProvider for HTTP polling");
+      }
+    } catch {
+      store.setStatus("offline");
+      store.setError("WebTransport initialization failed");
+    }
   });
 
   return (

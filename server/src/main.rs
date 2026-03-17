@@ -280,8 +280,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/git/blame", get(api_git_blame))
         .route("/api/git/checkout", post(api_git_checkout))
         .route("/api/git/stage", post(api_git_stage))
+        .route("/api/git/stage-hunk", post(api_git_stage_hunk))
         .route("/api/git/unstage", post(api_git_unstage))
         .route("/api/git/commit", post(api_git_commit))
+        .route("/api/git/diff-hunks", get(api_git_diff_hunks))
+        .route("/api/git/prs", get(api_git_pr_list))
+        .route("/api/git/prs", post(api_git_pr_create))
         .route("/api/browse", get(api_browse_directories))
         .route("/api/sessions/{id}/files", get(api_list_session_files))
         .route("/api/sessions/{id}/file", get(api_get_session_file).put(api_save_session_file))
@@ -3674,6 +3678,144 @@ async fn api_git_commit(
                 axum::Json(serde_json::json!({"error": e.to_string()})),
             )
         }
+    }
+}
+
+// ── Git PR Integration (via gh CLI) ──────────────────────────────────────
+
+async fn api_git_pr_list(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<GitSessionQuery>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, query.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return axum::Json(serde_json::json!({"error": "no git repo"}));
+        }
+    };
+    let output = tokio::process::Command::new("gh")
+        .args(["pr", "list", "--json", "number,title,state,headRefName,url", "--limit", "20"])
+        .current_dir(&repo_path)
+        .output()
+        .await;
+    match output {
+        Ok(out) if out.status.success() => {
+            let json_str = String::from_utf8_lossy(&out.stdout);
+            match serde_json::from_str::<serde_json::Value>(&json_str) {
+                Ok(val) => axum::Json(val),
+                Err(_) => axum::Json(serde_json::json!([])),
+            }
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            axum::Json(serde_json::json!({"error": stderr.to_string()}))
+        }
+        Err(e) => axum::Json(serde_json::json!({"error": format!("gh not found: {e}")})),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GitPrCreateBody {
+    session_id: Option<String>,
+    title: String,
+    body: Option<String>,
+}
+
+async fn api_git_pr_create(
+    State(state): State<AppState>,
+    axum::Json(body): axum::Json<GitPrCreateBody>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, body.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repo"})),
+            );
+        }
+    };
+    let mut args = vec!["pr", "create", "--title", &body.title];
+    let body_text = body.body.unwrap_or_default();
+    if !body_text.is_empty() {
+        args.extend(["--body", &body_text]);
+    }
+    let output = tokio::process::Command::new("gh")
+        .args(&args)
+        .current_dir(&repo_path)
+        .output()
+        .await;
+    match output {
+        Ok(out) if out.status.success() => {
+            let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (axum::http::StatusCode::OK, axum::Json(serde_json::json!({"ok": true, "url": url})))
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"error": stderr.to_string()})))
+        }
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": format!("gh not found: {e}")})),
+        ),
+    }
+}
+
+// ── Git Hunk-Level Staging ───────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct GitDiffHunksQuery {
+    session_id: Option<String>,
+    path: String,
+}
+
+async fn api_git_diff_hunks(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<GitDiffHunksQuery>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, query.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repo"})),
+            );
+        }
+    };
+    match noaide_server::git::diff_hunks(&repo_path, &query.path) {
+        Ok(hunks) => (axum::http::StatusCode::OK, axum::Json(serde_json::json!(hunks))),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GitStageHunkBody {
+    session_id: Option<String>,
+    path: String,
+    hunk_index: usize,
+}
+
+async fn api_git_stage_hunk(
+    State(state): State<AppState>,
+    axum::Json(body): axum::Json<GitStageHunkBody>,
+) -> impl axum::response::IntoResponse {
+    let repo_path = match resolve_git_repo(&state, body.session_id.as_deref()).await {
+        Some(p) => p,
+        None => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::Json(serde_json::json!({"error": "no git repo"})),
+            );
+        }
+    };
+    match noaide_server::git::stage_hunk(&repo_path, &body.path, body.hunk_index) {
+        Ok(()) => (axum::http::StatusCode::OK, axum::Json(serde_json::json!({"ok": true}))),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": e.to_string()})),
+        ),
     }
 }
 
