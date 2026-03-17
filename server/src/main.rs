@@ -1053,8 +1053,33 @@ async fn main() -> anyhow::Result<()> {
                                         } else {
                                             SessionStatus::Idle
                                         };
+                                        let old_status = {
+                                            let w = ecs_handle.read().await;
+                                            w.query_session_by_id(effective_sid)
+                                                .map(|s| s.status)
+                                                .unwrap_or(SessionStatus::Idle)
+                                        };
                                         ecs_handle.write().await
                                             .update_session_status(effective_sid, new_status);
+                                        // Push orbState change via WebTransport (instant, no polling needed)
+                                        if old_status != new_status {
+                                            let status_str = match new_status {
+                                                SessionStatus::Active => "active",
+                                                SessionStatus::Idle => "idle",
+                                                SessionStatus::Error => "error",
+                                                SessionStatus::Archived => "archived",
+                                            };
+                                            let payload = serde_json::to_vec(&serde_json::json!({
+                                                "type": "session_status",
+                                                "session_id": effective_sid.to_string(),
+                                                "status": status_str,
+                                            })).unwrap_or_default();
+                                            let envelope = EventEnvelope::new(
+                                                EventSource::Jsonl, 0, 0,
+                                                Some(effective_sid), payload,
+                                            );
+                                            let _ = bus_handle.publish(bus::SESSION_STATUS, envelope).await;
+                                        }
                                     }
 
                                     if !serialized_messages.is_empty() {

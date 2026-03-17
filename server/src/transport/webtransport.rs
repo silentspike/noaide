@@ -10,8 +10,8 @@ use tracing::{debug, info, warn};
 
 use crate::bus::EventBus;
 use crate::bus::topics::{
-    AGENT_METRICS, API_REQUESTS, FILE_CHANGES, PLAN_UPDATES, SESSION_MESSAGES, SYSTEM_EVENTS,
-    TASK_UPDATES,
+    AGENT_METRICS, API_REQUESTS, FILE_CHANGES, PLAN_UPDATES, SESSION_MESSAGES, SESSION_STATUS,
+    SYSTEM_EVENTS, TASK_UPDATES,
 };
 
 use super::adaptive::AdaptiveQuality;
@@ -20,6 +20,7 @@ use super::codec::{WireCodec, codec_path_for_topic};
 /// All topics each connected client receives.
 const ALL_TOPICS: &[&str] = &[
     SESSION_MESSAGES,
+    SESSION_STATUS,
     FILE_CHANGES,
     SYSTEM_EVENTS,
     TASK_UPDATES,

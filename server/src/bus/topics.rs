@@ -26,6 +26,9 @@ pub const API_REQUESTS: &str = "api/requests";
 /// TOGAF plan updates (plan.json changed or edits applied).
 pub const PLAN_UPDATES: &str = "plan/updates";
 
+/// Session status changes (active/idle/error — for real-time orbState).
+pub const SESSION_STATUS: &str = "session/status";
+
 // ── Backpressure Policies ────────────────────────────────────────────────────
 
 /// Backpressure policy for a topic's bounded queue.
@@ -73,6 +76,10 @@ pub fn topic_config(topic: &str) -> TopicConfig {
         },
         PLAN_UPDATES => TopicConfig {
             capacity: 50,
+            drop_policy: DropPolicy::DropOldest,
+        },
+        SESSION_STATUS => TopicConfig {
+            capacity: 100,
             drop_policy: DropPolicy::DropOldest,
         },
         // Unknown topics get sensible defaults
