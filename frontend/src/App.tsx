@@ -22,6 +22,7 @@ import ToastContainer from "./components/shared/ToastContainer";
 import KeyboardShortcutsHelp from "./components/shared/KeyboardShortcutsHelp";
 import WelcomeScreen from "./components/shared/WelcomeScreen";
 import PanelErrorBoundary from "./components/shared/ErrorBoundary";
+import Breadcrumb from "./components/shared/Breadcrumb";
 import { useIsMobile } from "./hooks/useMediaQuery";
 import { useKeymap, type KeyBinding } from "./shortcuts/keymap";
 import { createSessionStore, type SessionStore } from "./stores/session";
@@ -376,6 +377,12 @@ function CenterPanel(props: { activeTab: CenterTabId; onTabChange: (tab: CenterT
           )}
         </For>
       </div>
+
+      {/* Breadcrumb navigation */}
+      <Breadcrumb items={[
+        { label: "noaide", onClick: () => props.onTabChange("chat") },
+        { label: CENTER_TABS.find((t) => t.id === props.activeTab)?.label ?? props.activeTab },
+      ]} />
 
       {/* Tab Content */}
       <div style={{ flex: "1", "min-height": "0", overflow: "hidden" }}>
