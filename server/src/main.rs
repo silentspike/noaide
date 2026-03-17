@@ -3426,6 +3426,8 @@ struct GitBlameQuery {
 struct GitCheckoutBody {
     session_id: Option<String>,
     branch: String,
+    #[serde(default)]
+    create: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -3590,7 +3592,12 @@ async fn api_git_checkout(
             );
         }
     };
-    match noaide_server::git::checkout(&repo_path, &body.branch) {
+    let result = if body.create {
+        noaide_server::git::create_branch(&repo_path, &body.branch)
+    } else {
+        noaide_server::git::checkout(&repo_path, &body.branch)
+    };
+    match result {
         Ok(()) => (
             axum::http::StatusCode::OK,
             axum::Json(serde_json::json!({"ok": true})),

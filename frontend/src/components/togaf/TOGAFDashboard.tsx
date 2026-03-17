@@ -229,7 +229,7 @@ const TOGAFDashboard: Component = () => {
       {/* ═══ MAIN CONTENT ═══ */}
       <main class="togaf-main">
         {/* Error overlay for offline/corrupt plan */}
-        <Show when={store.status() === "offline" && store.error()}>
+        <Show when={(store.status() === "offline" || store.status() === "stale") && store.error()}>
           <div
             data-testid="plan-error-overlay"
             style={{

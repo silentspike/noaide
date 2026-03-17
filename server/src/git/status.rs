@@ -142,6 +142,15 @@ pub fn checkout(repo_path: &Path, branch_name: &str) -> Result<(), GitError> {
     Ok(())
 }
 
+/// Create a new branch from HEAD and check it out.
+pub fn create_branch(repo_path: &Path, branch_name: &str) -> Result<(), GitError> {
+    let repo = Repository::open(repo_path)?;
+    let head = repo.head()?.peel_to_commit()?;
+    repo.branch(branch_name, &head, false)?;
+    checkout(repo_path, branch_name)?;
+    Ok(())
+}
+
 pub fn stage(repo_path: &Path, paths: &[&str]) -> Result<(), GitError> {
     let repo = Repository::open(repo_path)?;
     let mut index = repo.index()?;
