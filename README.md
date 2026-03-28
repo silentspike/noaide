@@ -29,8 +29,8 @@ Requires your AI coding agent running in the background. Not included — you kn
 
 <br>
 
-> **Pre-Alpha** — Architecture and CI/CD are in place. No buildable application code exists yet.
-> Work packages are tracked as [GitHub Issues](../../issues). Not ready for any use.
+> **Pre-Alpha** — The application builds and runs with a functional backend and frontend.
+> Active development in progress. Not production-ready. See [Project Status](#project-status) for details.
 
 ---
 
@@ -218,8 +218,9 @@ Architectural decisions are documented as [11 ADRs in llms.txt](llms.txt). Each 
 
 ```
 File event to browser       ████████████████████████████░░  < 50ms p99
+Message fetch (cached)      ██████████████████████████████  < 5ms
 Rendering (1000+ msgs)      ██████████████████████████████  120 Hz
-Server RSS (5 sessions)     █████████████░░░░░░░░░░░░░░░░░  < 200 MB
+Server RSS (10 sessions)    █████████████░░░░░░░░░░░░░░░░░  < 200 MB
 Browser memory              ████████████████░░░░░░░░░░░░░░  < 500 MB
 JSONL parse rate            ██████████████████████████████  > 10k lines/s
 Zenoh SHM latency           ██████████████████████████████  ~1 us
@@ -249,8 +250,6 @@ Verify: `grep CONFIG_BPF /boot/config-$(uname -r)`
 
 ## Quick Start
 
-> **Note:** No buildable application code exists yet. These commands will work once Sprint 1 is complete.
-
 ```bash
 # Clone
 git clone https://github.com/silentspike/noaide.git && cd noaide
@@ -266,14 +265,17 @@ for mod in jsonl-parser markdown compress; do
 done
 
 # Install frontend dependencies and build
-cd frontend && npm install && npm run build && cd ..
+cd frontend && pnpm install && pnpm run build && cd ..
 
 # Build and run server
 cargo build --release
 ./target/release/noaide-server
 
+# Start frontend dev server (separate terminal)
+cd frontend && pnpm dev
+
 # Open in browser
-# https://localhost:4433
+# http://localhost:9999/noaide/
 ```
 
 ## Configuration
@@ -285,7 +287,7 @@ cargo build --release
 |----------|---------|-------------|
 | `NOAIDE_PORT` | `4433` | WebTransport/QUIC port |
 | `NOAIDE_HTTP_PORT` | `8080` | HTTP port (health endpoint, API proxy) |
-| `NOAIDE_DB_PATH` | `~/.local/share/noaide/ide.db` | Limbo database path |
+| `NOAIDE_DB_PATH` | `./data/noaide/ide.db` | Limbo database path |
 | `NOAIDE_WATCH_PATHS` | `~/.claude/` | Directories to watch for JSONL changes |
 | `NOAIDE_TLS_CERT` | `./certs/cert.pem` | TLS certificate path |
 | `NOAIDE_TLS_KEY` | `./certs/key.pem` | TLS private key path |
@@ -303,6 +305,7 @@ cargo build --release
 | `ENABLE_WASM_PARSER` | `true` | WASM JSONL parser (false = JavaScript fallback) |
 | `ENABLE_API_PROXY` | `true` | Anthropic API proxy and Network tab |
 | `ENABLE_PROFILER` | `false` | Performance profiler panel |
+| `ENABLE_AUDIO` | `false` | UI notification sounds |
 
 </details>
 
@@ -317,9 +320,9 @@ cargo bench                              # performance benchmarks
 
 # ── Frontend ─────────────────────────────────
 cd frontend
-npm run dev                              # Vite dev server with HMR
-npm run build                            # production build
-npm run lint                             # ESLint
+pnpm dev                                 # Vite dev server with HMR
+pnpm build                               # production build
+pnpm lint                                # ESLint
 
 # ── WASM ─────────────────────────────────────
 wasm-pack build wasm/jsonl-parser --target web
@@ -333,53 +336,86 @@ flatc --rust --ts -o generated/ schemas/messages.fbs
 See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, commit style, and PR process.
 See [TESTING.md](TESTING.md) for the full test gate matrix and benchmark commands.
 
+## Features (RC2)
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Message Cache** | Done | ECS-backed in-memory cache with incremental JSONL parsing. <5ms cached responses. |
+| **Pagination** | Done | Infinite scroll with scroll-anchor preservation. Loads 200 messages at a time. |
+| **Thinking Blocks** | Done | Animated collapse/expand with measured `scrollHeight`. Token count estimate. |
+| **Session Pinning** | Done | Star sessions, sorted pinned-first. Persisted in localStorage. |
+| **Profiler Metrics** | Done | Real-time FPS, heap usage, events/sec, render time, DOM nodes, transport RTT. |
+| **Command Palette** | Done | Cmd+K with scope prefixes (`>` commands, `#` sessions, `@` tabs). Fuzzy matching with highlights. |
+| **Session Search** | Done | Cmd+F in-chat search with match counter and prev/next navigation. |
+| **Notifications** | Done | Glassmorphism toasts (max 3 stack), Browser Notification API, Web Audio cues. |
+| **Cost Dashboard** | Done | Per-model token breakdown, cost bars, session ranking, input/output/cache ratios. |
+| **Export** | Done | Markdown, JSON, or HTML export with configurable options. Mobile Web Share API support. |
+| **Session Stats** | Done | Backend `/api/sessions/{id}/stats` endpoint with token counts, model breakdown, duration. |
+| **Subagent Tree** | Done | Tree visualization of `agentId`/`parentUuid` hierarchies in the Teams panel. |
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd/Ctrl + K` | Open command palette |
+| `Cmd/Ctrl + F` | Search in chat |
+| `Cmd/Ctrl + 1-8` | Switch tabs (Chat, Network, Teams, Gallery, Tasks, Git, Cost, Settings) |
+| `Escape` | Close overlay / search |
+| `Tab` (in palette) | Cycle scope prefixes |
+
 ## Project Status
 
-noaide is developed in 4 sprints with 20 work packages. Track progress via [Milestones](../../milestones) and [Issues](../../issues).
+noaide is in active pre-alpha development. The application compiles, runs, and provides a functional UI for monitoring AI coding sessions.
 
 ```
-Sprint 1 ── Foundation                             ░░░░░░░░░░░░░░  Planned
+Sprint 1 ── Foundation                             ██████████████  Complete
              ECS state, Limbo DB, JSONL parser,
              eBPF watcher, session manager
 
-Sprint 2 ── Streaming Pipeline                     ░░░░░░░░░░░░░░  Planned
+Sprint 2 ── Streaming Pipeline                     ██████████████  Complete
              Zenoh event bus, WebTransport,
              SolidJS shell, WASM modules
 
-Sprint 3 ── Frontend                               ░░░░░░░░░░░░░░  Planned
+Sprint 3 ── Frontend                               ██████████████  Complete
              Chat panel, editor, sessions,
              API proxy, tools, teams, tasks
 
-Sprint 4 ── Integration                            ░░░░░░░░░░░░░░  Planned
+Sprint 4 ── Integration                            ██████████████  Complete
              Mobile layout, performance
              tuning, command palette, polish
+
+RC2     ── Cache + UX Polish                       ██████████████  Complete
+             Message cache, pagination, cost
+             dashboard, export, search, profiler
 ```
 
 <details>
-<summary><b>Completed so far</b></summary>
+<summary><b>Backend (203 tests passing)</b></summary>
 
-- Project scaffolding and repository structure
-- CI/CD pipeline (9 jobs, path-filtered, concurrency-managed)
-- Nightly pipeline (E2E, benchmarks, extended security)
-- Release pipeline (WASM, frontend bundle, SHA256 checksums)
-- Security scanning (Gitleaks, Semgrep, CodeQL, cargo-audit)
-- GitHub community files and issue quality gate
-- 11 Architecture Decision Records
-- 20 work package issues with dependency graph
+- ECS state engine with session, message, file, task, agent components
+- Incremental JSONL parser with byte-offset caching
+- eBPF file watcher with inotify fallback
+- PTY session manager (spawn + tmux attach)
+- Zenoh event bus with shared memory
+- WebTransport server with adaptive quality tiers
+- API proxy with automatic key redaction
+- Git integration (branches, staging, commits, blame)
+- Multi-LLM support (Claude, Gemini, Codex)
+- Whisper voice-to-text sidecar integration
 
 </details>
 
 ## Multi-LLM Support
 
-noaide is built for Claude Code first, with an adapter architecture planned for Phase 2:
+noaide supports multiple AI coding agents out of the box:
 
 | Agent | Status | Notes |
 |-------|--------|-------|
-| **Claude Code** | Primary target | Full JSONL support, PTY + tmux session control |
-| **Gemini CLI** | Phase 2 | Adapter for Gemini conversation format |
-| **OpenAI Codex** | Phase 2 | Adapter for Codex session format |
+| **Claude Code** | Supported | Full JSONL support, PTY + tmux session control, API proxy |
+| **Gemini CLI** | Supported | JSON conversation parsing, PTY session management |
+| **OpenAI Codex** | Supported | JSONL parsing, image injection, managed sessions |
 
-The JSONL parser and session manager are designed with pluggable format adapters. Core UI components (chat panel, editor, network tab) are agent-agnostic.
+The JSONL parser and session manager use pluggable format adapters. Core UI components (chat panel, editor, network tab) are agent-agnostic.
 
 ## Security
 

@@ -133,6 +133,65 @@ pub async fn load_tasks(task_dir: &Path) -> Vec<TaskFile> {
     tasks
 }
 
+/// A single message from an agent's inbox file.
+///
+/// Inbox files live at `~/.claude/teams/{name}/inboxes/{agent}.json`
+/// and contain arrays of messages sent TO that agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InboxMessage {
+    pub from: String,
+    /// Recipient — derived from the inbox filename, not from JSON
+    #[serde(skip_deserializing, default)]
+    pub to: String,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub timestamp: Option<String>,
+}
+
+/// Load all inbox messages for a team.
+///
+/// Reads `~/.claude/teams/{name}/inboxes/*.json`, parses each as a
+/// `Vec<InboxMessage>`, and sets the `to` field from the filename.
+pub async fn load_inboxes(team_dir: &Path) -> Vec<InboxMessage> {
+    let inbox_dir = team_dir.join("inboxes");
+    let mut messages = Vec::new();
+
+    let mut entries = match tokio::fs::read_dir(&inbox_dir).await {
+        Ok(e) => e,
+        Err(_) => return messages,
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+
+        let recipient = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(name) => name.to_string(),
+            None => continue,
+        };
+
+        let content = match tokio::fs::read_to_string(&path).await {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let inbox: Vec<InboxMessage> = match serde_json::from_str(&content) {
+            Ok(msgs) => msgs,
+            Err(_) => continue,
+        };
+
+        for mut msg in inbox {
+            msg.to = recipient.clone();
+            messages.push(msg);
+        }
+    }
+
+    messages
+}
+
 /// Scans ~/.claude/teams/ for team configurations
 pub struct TeamDiscovery {
     claude_dir: PathBuf,
