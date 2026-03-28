@@ -44,6 +44,9 @@ pub struct ApiRequestLog {
     pub timestamp: i64,
     pub request_size: usize,
     pub response_size: usize,
+    /// Traffic category (Api, Telemetry, Auth, Update, Git, Unknown).
+    /// None for regular reverse-proxy API requests, Some for CONNECT MITM requests.
+    pub category: Option<String>,
 }
 
 /// Builds a redacted log entry from request/response data
@@ -87,6 +90,7 @@ pub fn build_log(
             .as_millis() as i64,
         request_size: request_body.len(),
         response_size: response_body.len(),
+        category: None,
     }
 }
 
