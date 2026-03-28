@@ -55,7 +55,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
   let pcmChunksSent = 0;
 
   function cleanup() {
-    console.log("[voice] cleanup — chunks sent:", pcmChunksSent);
+    console.warn("[voice] cleanup — chunks sent:", pcmChunksSent);
     pcmChunksSent = 0;
 
     // Stop worklet
@@ -85,7 +85,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
 
     // Close AudioContext
     if (audioCtx) {
-      console.log("[voice] closing AudioContext (sampleRate was", audioCtx.sampleRate + ")");
+      console.warn("[voice] closing AudioContext (sampleRate was", audioCtx.sampleRate + ")");
       audioCtx.close().catch(() => {});
       audioCtx = null;
     }
@@ -111,13 +111,13 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
 
     try {
       // 1. Open WebSocket to whisper proxy
-      console.log("[voice] connecting WS to", options.wsUrl);
+      console.warn("[voice] connecting WS to", options.wsUrl);
       const socket = new WebSocket(options.wsUrl);
       ws = socket;
 
       await new Promise<void>((resolve, reject) => {
         socket.onopen = () => {
-          console.log("[voice] WS connected");
+          console.warn("[voice] WS connected");
           resolve();
         };
         socket.onerror = (ev) => {
@@ -132,18 +132,18 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
       socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          console.log("[voice] WS msg:", msg.type, msg.text ? `"${msg.text.slice(0, 80)}"` : "");
+          console.warn("[voice] WS msg:", msg.type, msg.text ? `"${msg.text.slice(0, 80)}"` : "");
           if (msg.type === "partial") {
             setPartialText(msg.text || "");
             options.onPartialText?.(msg.text || "");
           } else if (msg.type === "final") {
             const finalText = msg.text || partialText();
-            console.log("[voice] final text:", finalText.slice(0, 120));
+            console.warn("[voice] final text:", finalText.slice(0, 120));
             setPartialText(finalText);
             options.onFinalText?.(finalText);
             cleanup();
           } else if (msg.type === "silence_detected") {
-            console.log("[voice] silence detected — auto-stop");
+            console.warn("[voice] silence detected — auto-stop");
             cleanup();
           } else if (msg.type === "error") {
             console.error("[voice] server error:", msg.message);
@@ -157,7 +157,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
       };
 
       socket.onclose = (ev) => {
-        console.log("[voice] WS closed — code:", ev.code, "reason:", ev.reason, "recording:", isRecording());
+        console.warn("[voice] WS closed — code:", ev.code, "reason:", ev.reason, "recording:", isRecording());
         if (isRecording()) {
           // Unexpected close — finalize with whatever we have
           const text = partialText();
@@ -176,7 +176,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
       };
 
       // 3. Get microphone access
-      console.log("[voice] requesting getUserMedia...");
+      console.warn("[voice] requesting getUserMedia...");
       mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -188,18 +188,18 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
       });
       const track = mediaStream.getAudioTracks()[0];
       const settings = track?.getSettings();
-      console.log("[voice] mic acquired:", track?.label, "rate:", settings?.sampleRate, "channels:", settings?.channelCount);
+      console.warn("[voice] mic acquired:", track?.label, "rate:", settings?.sampleRate, "channels:", settings?.channelCount);
 
       // 4. Create AudioContext
       audioCtx = new AudioContext({ sampleRate: 16000 });
       // Some browsers ignore the sampleRate hint — worklet handles resampling
       const actualRate = audioCtx.sampleRate;
-      console.log("[voice] AudioContext created — requested 16kHz, got", actualRate + "Hz");
+      console.warn("[voice] AudioContext created — requested 16kHz, got", actualRate + "Hz");
 
       // 5. Load AudioWorklet module
-      console.log("[voice] loading AudioWorklet from", WORKLET_URL);
+      console.warn("[voice] loading AudioWorklet from", WORKLET_URL);
       await audioCtx.audioWorklet.addModule(WORKLET_URL);
-      console.log("[voice] AudioWorklet loaded");
+      console.warn("[voice] AudioWorklet loaded");
 
       // 6. Create worklet node
       workletNode = new AudioWorkletNode(audioCtx, "pcm-capture-processor", {
@@ -213,7 +213,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
           socket.send(chunk);
           pcmChunksSent++;
           if (pcmChunksSent <= 3 || pcmChunksSent % 50 === 0) {
-            console.log("[voice] PCM chunk #" + pcmChunksSent, "size:", chunk.byteLength, "bytes");
+            console.warn("[voice] PCM chunk #" + pcmChunksSent, "size:", chunk.byteLength, "bytes");
           }
         }
       };
@@ -225,7 +225,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
 
       setIsConnecting(false);
       setIsRecording(true);
-      console.log("[voice] recording started");
+      console.warn("[voice] recording started");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[voice] startRecording error:", msg, err);
@@ -237,7 +237,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
 
   function stopRecording() {
     if (!isRecording() && !isConnecting()) return;
-    console.log("[voice] stopRecording — sending stop to server");
+    console.warn("[voice] stopRecording — sending stop to server");
 
     // Tell server we're stopping
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -254,7 +254,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
         }
       }, 2000);
     } else {
-      console.log("[voice] WS not open — cleaning up directly");
+      console.warn("[voice] WS not open — cleaning up directly");
       cleanup();
     }
   }

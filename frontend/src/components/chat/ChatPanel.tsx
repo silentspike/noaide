@@ -151,19 +151,19 @@ export default function ChatPanel() {
       // Fetch via same origin (Vite proxies /api/server-info to backend port 8080)
       // This avoids mixed content (http fetch from https page)
       const infoUrl = `${window.location.origin}/api/server-info`;
-      console.log("[chat] fetching server-info from", infoUrl);
+      console.warn("[chat] fetching server-info from", infoUrl);
       const res = await fetch(infoUrl);
       const info = await res.json();
-      console.log("[chat] server-info:", JSON.stringify(info));
+      console.warn("[chat] server-info:", JSON.stringify(info));
       if (info.whisperEnabled) {
         // Use same origin (port 9999) — Vite proxies WS to backend port 8080
         // This avoids mixed content (wss from https page) since port 8080 has no TLS
         const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
         const url = `${wsProto}//${window.location.host}/api/ws/transcribe`;
-        console.log("[chat] whisper enabled — wsUrl:", url);
+        console.warn("[chat] whisper enabled — wsUrl:", url);
         setWhisperUrl(url);
       } else {
-        console.log("[chat] whisper not enabled in server-info");
+        console.warn("[chat] whisper not enabled in server-info");
       }
     } catch (e) {
       console.warn("[chat] server-info fetch failed (whisper unavailable):", e);

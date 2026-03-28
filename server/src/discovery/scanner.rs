@@ -191,22 +191,21 @@ impl SessionScanner {
 
                     // Derive project path from Codex session_meta CWD field.
                     // Falls back to date label (YYYY/MM/DD) if extraction fails.
-                    let codex_label = extract_codex_cwd(&entry.path()).await
-                        .or_else(|| {
-                            entry.path().parent().map(|p| {
-                                let components: Vec<_> = p
-                                    .components()
-                                    .rev()
-                                    .take(3)
-                                    .map(|c| c.as_os_str().to_string_lossy().to_string())
-                                    .collect();
-                                if components.len() == 3 {
-                                    format!("{}/{}/{}", components[2], components[1], components[0])
-                                } else {
-                                    "codex".to_string()
-                                }
-                            })
-                        });
+                    let codex_label = extract_codex_cwd(&entry.path()).await.or_else(|| {
+                        entry.path().parent().map(|p| {
+                            let components: Vec<_> = p
+                                .components()
+                                .rev()
+                                .take(3)
+                                .map(|c| c.as_os_str().to_string_lossy().to_string())
+                                .collect();
+                            if components.len() == 3 {
+                                format!("{}/{}/{}", components[2], components[1], components[0])
+                            } else {
+                                "codex".to_string()
+                            }
+                        })
+                    });
 
                     let line_count = estimate_line_count(&entry.path()).await;
                     let first_ts = extract_first_timestamp(&entry.path()).await;
@@ -435,7 +434,12 @@ pub async fn extract_first_timestamp(path: &Path) -> i64 {
 
     let text = String::from_utf8_lossy(&buf[..bytes_read]);
     // Try both compact ("timestamp":"...") and pretty-printed ("timestamp": "...") formats
-    for needle in &["\"timestamp\":\"", "\"timestamp\": \"", "\"startTime\":\"", "\"startTime\": \""] {
+    for needle in &[
+        "\"timestamp\":\"",
+        "\"timestamp\": \"",
+        "\"startTime\":\"",
+        "\"startTime\": \"",
+    ] {
         if let Some(pos) = text.find(needle) {
             let abs_pos = pos + needle.len();
             if let Some(end) = text[abs_pos..].find('"') {
@@ -489,7 +493,12 @@ pub async fn extract_last_timestamp(path: &Path) -> i64 {
     // Find the LAST occurrence of timestamp patterns in the tail.
     // Supports both compact and pretty-printed JSON (Gemini uses spaces after colon).
     let mut last_ts: i64 = 0;
-    for needle in &["\"timestamp\":\"", "\"timestamp\": \"", "\"lastUpdated\":\"", "\"lastUpdated\": \""] {
+    for needle in &[
+        "\"timestamp\":\"",
+        "\"timestamp\": \"",
+        "\"lastUpdated\":\"",
+        "\"lastUpdated\": \"",
+    ] {
         let mut search_from = 0;
         while let Some(pos) = text[search_from..].find(needle) {
             let abs_pos = search_from + pos + needle.len();
