@@ -34,7 +34,8 @@ impl SessionManager {
         cli_type: &str,
         auto_approve: bool,
     ) -> Result<SessionId, SessionError> {
-        let session = ManagedSession::spawn(working_dir, anthropic_base_url, cli_type, auto_approve)?;
+        let session =
+            ManagedSession::spawn(working_dir, anthropic_base_url, cli_type, auto_approve)?;
         let id = session.id().clone();
         self.sessions.insert(id.clone(), session);
         info!(session = %id, mode = "managed", "session registered");

@@ -59,7 +59,7 @@ pub fn update_section_status(md: &str, section_id: &str, checked: bool) -> Strin
     // Match patterns like "- [x] P.1" or "- [ ] E.4"
     let pattern = format!(
         r"(?m)^(\s*-\s+)\[[ xX]\]\s+({}\.?\d*)",
-        &search_id[..1]  // First char (P, A, B, etc.)
+        &search_id[..1] // First char (P, A, B, etc.)
     );
 
     let re = match Regex::new(&pattern) {
@@ -86,11 +86,7 @@ pub fn update_section_status(md: &str, section_id: &str, checked: bool) -> Strin
 
         if in_checklist {
             // Look for the specific section ID in checkbox lines
-            let section_dot = format!(
-                "{}.{}",
-                &search_id[..1],
-                &search_id[1..]
-            );
+            let section_dot = format!("{}.{}", &search_id[..1], &search_id[1..]);
             if line.contains(&section_dot) || line.contains(&search_id) {
                 if let Some(caps) = re.captures(line) {
                     let replaced = format!("{}[{}] {}", &caps[1], mark, &caps[2]);
@@ -108,8 +104,10 @@ pub fn update_section_status(md: &str, section_id: &str, checked: bool) -> Strin
 
 // ── Gate Status ───────────────────────────────────────────────
 
-static GATE_PASS_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?im)GATE\s+(\d)\s+(bestanden|nicht bestanden|ausstehend|pass|fail|pending)").unwrap());
+static GATE_PASS_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?im)GATE\s+(\d)\s+(bestanden|nicht bestanden|ausstehend|pass|fail|pending)")
+        .unwrap()
+});
 
 /// Update a gate status in the markdown.
 pub fn update_gate_status(md: &str, gate: u8, status: &str) -> String {
@@ -187,7 +185,9 @@ pub fn toggle_verify_check(md: &str, wp_id: &str, check_index: usize, passed: bo
         }
 
         // End verify section
-        if in_verify && (line.starts_with("---") || (line.starts_with("**") && !line.contains("VERIFY"))) {
+        if in_verify
+            && (line.starts_with("---") || (line.starts_with("**") && !line.contains("VERIFY")))
+        {
             in_verify = false;
         }
 
