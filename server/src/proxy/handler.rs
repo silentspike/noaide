@@ -360,103 +360,117 @@ pub async fn proxy_handler(
     let skip_image_injection = provider == ApiProvider::GoogleCodeAssist
         && !effective_path.contains("streamGenerateContent");
     if !skip_image_injection {
-    if let Some(ref sid) = session_id {
-        let mut pending = state.pending_images.write().await;
-        if let Some(images) = pending.remove(sid) {
-            if !images.is_empty() && !request_bytes.is_empty() {
-                if let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes) {
-                    let mut injected = false;
+        if let Some(ref sid) = session_id {
+            let mut pending = state.pending_images.write().await;
+            if let Some(images) = pending.remove(sid) {
+                if !images.is_empty() && !request_bytes.is_empty() {
+                    if let Ok(mut body_json) =
+                        serde_json::from_slice::<serde_json::Value>(&request_bytes)
+                    {
+                        let mut injected = false;
 
-                    // Anthropic format: "messages" array with {role, content} objects
-                    if let Some(messages) = body_json.get_mut("messages").and_then(|m| m.as_array_mut()) {
-                        if let Some(last_user) = messages.iter_mut().rev().find(|m| {
-                            m.get("role").and_then(|r| r.as_str()) == Some("user")
-                        }) {
-                            let content = last_user.get_mut("content");
-                            match content {
-                                Some(c) if c.is_array() => {
-                                    if let Some(arr) = c.as_array_mut() {
+                        // Anthropic format: "messages" array with {role, content} objects
+                        if let Some(messages) =
+                            body_json.get_mut("messages").and_then(|m| m.as_array_mut())
+                        {
+                            if let Some(last_user) = messages
+                                .iter_mut()
+                                .rev()
+                                .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+                            {
+                                let content = last_user.get_mut("content");
+                                match content {
+                                    Some(c) if c.is_array() => {
+                                        if let Some(arr) = c.as_array_mut() {
+                                            for img in &images {
+                                                arr.push(img.clone());
+                                            }
+                                            injected = true;
+                                        }
+                                    }
+                                    Some(c) if c.is_string() => {
+                                        let text_val = c.clone();
+                                        let mut blocks = vec![serde_json::json!({
+                                            "type": "text",
+                                            "text": text_val.as_str().unwrap_or("")
+                                        })];
                                         for img in &images {
-                                            arr.push(img.clone());
+                                            blocks.push(img.clone());
+                                        }
+                                        *c = serde_json::Value::Array(blocks);
+                                        injected = true;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+
+                        // Google Gemini format: "contents" array with {role, parts} objects
+                        // Image parts use: {"inlineData": {"mimeType": "image/png", "data": "base64..."}}
+                        // Supports both top-level "contents" (public API) and nested
+                        // "request.contents" (code_assist v1internal API).
+                        if !injected {
+                            // Check top-level first, then nested under "request"
+                            let has_nested = body_json.get("contents").is_none()
+                                && body_json
+                                    .get("request")
+                                    .and_then(|r| r.get("contents"))
+                                    .is_some();
+                            let contents = if has_nested {
+                                body_json
+                                    .get_mut("request")
+                                    .and_then(|r| r.get_mut("contents"))
+                                    .and_then(|c| c.as_array_mut())
+                            } else {
+                                body_json.get_mut("contents").and_then(|c| c.as_array_mut())
+                            };
+                            if let Some(contents) = contents {
+                                if let Some(last_user) = contents.iter_mut().rev().find(|c| {
+                                    c.get("role").and_then(|r| r.as_str()) == Some("user")
+                                }) {
+                                    if let Some(parts) =
+                                        last_user.get_mut("parts").and_then(|p| p.as_array_mut())
+                                    {
+                                        for img in &images {
+                                            // Convert from Anthropic image format to Google format
+                                            if let Some(source) = img.get("source") {
+                                                let mime = source
+                                                    .get("media_type")
+                                                    .and_then(|m| m.as_str())
+                                                    .unwrap_or("image/png");
+                                                let data = source
+                                                    .get("data")
+                                                    .and_then(|d| d.as_str())
+                                                    .unwrap_or("");
+                                                parts.push(serde_json::json!({
+                                                    "inlineData": {
+                                                        "mimeType": mime,
+                                                        "data": data,
+                                                    }
+                                                }));
+                                            }
                                         }
                                         injected = true;
                                     }
                                 }
-                                Some(c) if c.is_string() => {
-                                    let text_val = c.clone();
-                                    let mut blocks = vec![serde_json::json!({
-                                        "type": "text",
-                                        "text": text_val.as_str().unwrap_or("")
-                                    })];
-                                    for img in &images {
-                                        blocks.push(img.clone());
-                                    }
-                                    *c = serde_json::Value::Array(blocks);
-                                    injected = true;
-                                }
-                                _ => {}
                             }
                         }
-                    }
 
-                    // Google Gemini format: "contents" array with {role, parts} objects
-                    // Image parts use: {"inlineData": {"mimeType": "image/png", "data": "base64..."}}
-                    // Supports both top-level "contents" (public API) and nested
-                    // "request.contents" (code_assist v1internal API).
-                    if !injected {
-                        // Check top-level first, then nested under "request"
-                        let has_nested = body_json.get("contents").is_none()
-                            && body_json.get("request").and_then(|r| r.get("contents")).is_some();
-                        let contents = if has_nested {
-                            body_json.get_mut("request")
-                                .and_then(|r| r.get_mut("contents"))
-                                .and_then(|c| c.as_array_mut())
-                        } else {
-                            body_json.get_mut("contents").and_then(|c| c.as_array_mut())
-                        };
-                        if let Some(contents) = contents {
-                            if let Some(last_user) = contents.iter_mut().rev().find(|c| {
-                                c.get("role").and_then(|r| r.as_str()) == Some("user")
-                            }) {
-                                if let Some(parts) = last_user.get_mut("parts").and_then(|p| p.as_array_mut()) {
-                                    for img in &images {
-                                        // Convert from Anthropic image format to Google format
-                                        if let Some(source) = img.get("source") {
-                                            let mime = source.get("media_type")
-                                                .and_then(|m| m.as_str())
-                                                .unwrap_or("image/png");
-                                            let data = source.get("data")
-                                                .and_then(|d| d.as_str())
-                                                .unwrap_or("");
-                                            parts.push(serde_json::json!({
-                                                "inlineData": {
-                                                    "mimeType": mime,
-                                                    "data": data,
-                                                }
-                                            }));
-                                        }
-                                    }
-                                    injected = true;
-                                }
+                        if injected {
+                            if let Ok(modified) = serde_json::to_vec(&body_json) {
+                                info!(
+                                    session = %sid,
+                                    image_count = images.len(),
+                                    provider = %provider.label(),
+                                    "injected pending images into API request"
+                                );
+                                request_bytes = Bytes::from(modified);
                             }
-                        }
-                    }
-
-                    if injected {
-                        if let Ok(modified) = serde_json::to_vec(&body_json) {
-                            info!(
-                                session = %sid,
-                                image_count = images.len(),
-                                provider = %provider.label(),
-                                "injected pending images into API request"
-                            );
-                            request_bytes = Bytes::from(modified);
                         }
                     }
                 }
             }
         }
-    }
     } // skip_image_injection
 
     // ── System Prompt Injection ──────────────────────────────────────────
@@ -481,9 +495,8 @@ pub async fn proxy_handler(
                     // Anthropic: body_json["system"] — string or array of content blocks
                     match body_json.get("system") {
                         Some(serde_json::Value::String(s)) => {
-                            body_json["system"] = serde_json::Value::String(
-                                format!("{s}\n\n{noaide_context}"),
-                            );
+                            body_json["system"] =
+                                serde_json::Value::String(format!("{s}\n\n{noaide_context}"));
                             injected_system = true;
                         }
                         Some(serde_json::Value::Array(_)) => {
@@ -497,9 +510,8 @@ pub async fn proxy_handler(
                         }
                         _ => {
                             // No system field — create it
-                            body_json["system"] = serde_json::Value::String(
-                                noaide_context.to_string(),
-                            );
+                            body_json["system"] =
+                                serde_json::Value::String(noaide_context.to_string());
                             injected_system = true;
                         }
                     }
@@ -517,7 +529,9 @@ pub async fn proxy_handler(
                         for (i, key) in target.iter().enumerate() {
                             if i == target.len() - 1 {
                                 // Last key — should be "parts" array
-                                if let Some(arr) = cursor.get_mut(*key).and_then(|v| v.as_array_mut()) {
+                                if let Some(arr) =
+                                    cursor.get_mut(*key).and_then(|v| v.as_array_mut())
+                                {
                                     arr.push(serde_json::json!({"text": noaide_context}));
                                     injected_system = true;
                                 } else {
@@ -1147,10 +1161,9 @@ pub async fn connect_handler(
     let category = super::classify::classify_domain(&hostname);
 
     // Check network rules (block before even connecting)
-    let rule_action =
-        state
-            .network_rules
-            .evaluate(session_id.as_deref(), &hostname, "", category);
+    let rule_action = state
+        .network_rules
+        .evaluate(session_id.as_deref(), &hostname, "", category);
 
     if matches!(rule_action, super::rules::RuleAction::Block) {
         info!(

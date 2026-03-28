@@ -165,7 +165,12 @@ mod tests {
     #[test]
     fn test_no_rules_allows() {
         let engine = make_engine();
-        let action = engine.evaluate(Some("sess-1"), "datadoghq.com", "/", TrafficCategory::Telemetry);
+        let action = engine.evaluate(
+            Some("sess-1"),
+            "datadoghq.com",
+            "/",
+            TrafficCategory::Telemetry,
+        );
         assert_eq!(action, RuleAction::Allow);
     }
 
@@ -179,23 +184,36 @@ mod tests {
     #[test]
     fn test_exact_domain_block() {
         let engine = make_engine();
-        engine.add_rule("sess-1", NetworkRule {
-            id: String::new(),
-            session_id: String::new(),
-            domain_pattern: Some("play.googleapis.com".into()),
-            category_filter: None,
-            action: RuleAction::Block,
-            enabled: true,
-            priority: 100,
-        });
+        engine.add_rule(
+            "sess-1",
+            NetworkRule {
+                id: String::new(),
+                session_id: String::new(),
+                domain_pattern: Some("play.googleapis.com".into()),
+                category_filter: None,
+                action: RuleAction::Block,
+                enabled: true,
+                priority: 100,
+            },
+        );
 
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "play.googleapis.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-1"),
+                "play.googleapis.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Block
         );
         // Different domain: not blocked
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "api.anthropic.com", "/", TrafficCategory::Api),
+            engine.evaluate(
+                Some("sess-1"),
+                "api.anthropic.com",
+                "/",
+                TrafficCategory::Api
+            ),
             RuleAction::Allow
         );
     }
@@ -203,23 +221,36 @@ mod tests {
     #[test]
     fn test_wildcard_domain_block() {
         let engine = make_engine();
-        engine.add_rule("sess-1", NetworkRule {
-            id: String::new(),
-            session_id: String::new(),
-            domain_pattern: Some("*.datadoghq.com".into()),
-            category_filter: None,
-            action: RuleAction::Block,
-            enabled: true,
-            priority: 100,
-        });
+        engine.add_rule(
+            "sess-1",
+            NetworkRule {
+                id: String::new(),
+                session_id: String::new(),
+                domain_pattern: Some("*.datadoghq.com".into()),
+                category_filter: None,
+                action: RuleAction::Block,
+                enabled: true,
+                priority: 100,
+            },
+        );
 
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "http-intake.logs.us5.datadoghq.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-1"),
+                "http-intake.logs.us5.datadoghq.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Block
         );
         // datadoghq.com itself matches
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "datadoghq.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-1"),
+                "datadoghq.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Block
         );
     }
@@ -227,28 +258,46 @@ mod tests {
     #[test]
     fn test_category_block() {
         let engine = make_engine();
-        engine.add_rule("sess-1", NetworkRule {
-            id: String::new(),
-            session_id: String::new(),
-            domain_pattern: None,
-            category_filter: Some(TrafficCategory::Telemetry),
-            action: RuleAction::Block,
-            enabled: true,
-            priority: 100,
-        });
+        engine.add_rule(
+            "sess-1",
+            NetworkRule {
+                id: String::new(),
+                session_id: String::new(),
+                domain_pattern: None,
+                category_filter: Some(TrafficCategory::Telemetry),
+                action: RuleAction::Block,
+                enabled: true,
+                priority: 100,
+            },
+        );
 
         // Any telemetry domain blocked
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "datadoghq.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-1"),
+                "datadoghq.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Block
         );
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "play.googleapis.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-1"),
+                "play.googleapis.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Block
         );
         // API not blocked
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "api.anthropic.com", "/", TrafficCategory::Api),
+            engine.evaluate(
+                Some("sess-1"),
+                "api.anthropic.com",
+                "/",
+                TrafficCategory::Api
+            ),
             RuleAction::Allow
         );
     }
@@ -257,34 +306,50 @@ mod tests {
     fn test_priority_ordering() {
         let engine = make_engine();
         // Low priority (100): block all telemetry
-        engine.add_rule("sess-1", NetworkRule {
-            id: "block-all".into(),
-            session_id: String::new(),
-            domain_pattern: None,
-            category_filter: Some(TrafficCategory::Telemetry),
-            action: RuleAction::Block,
-            enabled: true,
-            priority: 100,
-        });
+        engine.add_rule(
+            "sess-1",
+            NetworkRule {
+                id: "block-all".into(),
+                session_id: String::new(),
+                domain_pattern: None,
+                category_filter: Some(TrafficCategory::Telemetry),
+                action: RuleAction::Block,
+                enabled: true,
+                priority: 100,
+            },
+        );
         // High priority (10): allow play.googleapis.com specifically
-        engine.add_rule("sess-1", NetworkRule {
-            id: "allow-play".into(),
-            session_id: String::new(),
-            domain_pattern: Some("play.googleapis.com".into()),
-            category_filter: None,
-            action: RuleAction::Allow,
-            enabled: true,
-            priority: 10,
-        });
+        engine.add_rule(
+            "sess-1",
+            NetworkRule {
+                id: "allow-play".into(),
+                session_id: String::new(),
+                domain_pattern: Some("play.googleapis.com".into()),
+                category_filter: None,
+                action: RuleAction::Allow,
+                enabled: true,
+                priority: 10,
+            },
+        );
 
         // play.googleapis.com: higher-prio Allow wins over lower-prio Block
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "play.googleapis.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-1"),
+                "play.googleapis.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Allow
         );
         // Other telemetry: still blocked
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "datadoghq.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-1"),
+                "datadoghq.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Block
         );
     }
@@ -292,24 +357,37 @@ mod tests {
     #[test]
     fn test_session_isolation() {
         let engine = make_engine();
-        engine.add_rule("sess-A", NetworkRule {
-            id: String::new(),
-            session_id: String::new(),
-            domain_pattern: Some("datadoghq.com".into()),
-            category_filter: None,
-            action: RuleAction::Block,
-            enabled: true,
-            priority: 100,
-        });
+        engine.add_rule(
+            "sess-A",
+            NetworkRule {
+                id: String::new(),
+                session_id: String::new(),
+                domain_pattern: Some("datadoghq.com".into()),
+                category_filter: None,
+                action: RuleAction::Block,
+                enabled: true,
+                priority: 100,
+            },
+        );
 
         // Session A: blocked
         assert_eq!(
-            engine.evaluate(Some("sess-A"), "datadoghq.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-A"),
+                "datadoghq.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Block
         );
         // Session B: not blocked (no rules)
         assert_eq!(
-            engine.evaluate(Some("sess-B"), "datadoghq.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-B"),
+                "datadoghq.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Allow
         );
     }
@@ -317,18 +395,26 @@ mod tests {
     #[test]
     fn test_disabled_rule_ignored() {
         let engine = make_engine();
-        engine.add_rule("sess-1", NetworkRule {
-            id: String::new(),
-            session_id: String::new(),
-            domain_pattern: Some("datadoghq.com".into()),
-            category_filter: None,
-            action: RuleAction::Block,
-            enabled: false, // disabled!
-            priority: 100,
-        });
+        engine.add_rule(
+            "sess-1",
+            NetworkRule {
+                id: String::new(),
+                session_id: String::new(),
+                domain_pattern: Some("datadoghq.com".into()),
+                category_filter: None,
+                action: RuleAction::Block,
+                enabled: false, // disabled!
+                priority: 100,
+            },
+        );
 
         assert_eq!(
-            engine.evaluate(Some("sess-1"), "datadoghq.com", "/", TrafficCategory::Telemetry),
+            engine.evaluate(
+                Some("sess-1"),
+                "datadoghq.com",
+                "/",
+                TrafficCategory::Telemetry
+            ),
             RuleAction::Allow // disabled rule doesn't match
         );
     }
@@ -338,15 +424,18 @@ mod tests {
         let engine = make_engine();
 
         // Add
-        let id = engine.add_rule("sess-1", NetworkRule {
-            id: String::new(),
-            session_id: String::new(),
-            domain_pattern: Some("test.com".into()),
-            category_filter: None,
-            action: RuleAction::Block,
-            enabled: true,
-            priority: 100,
-        });
+        let id = engine.add_rule(
+            "sess-1",
+            NetworkRule {
+                id: String::new(),
+                session_id: String::new(),
+                domain_pattern: Some("test.com".into()),
+                category_filter: None,
+                action: RuleAction::Block,
+                enabled: true,
+                priority: 100,
+            },
+        );
         assert!(!id.is_empty());
 
         // Get
@@ -362,26 +451,29 @@ mod tests {
         assert!(!engine.remove_rule("sess-1", "fake-id"));
 
         // Set (replace all)
-        engine.set_rules("sess-1", vec![
-            NetworkRule {
-                id: "r1".into(),
-                session_id: "sess-1".into(),
-                domain_pattern: Some("a.com".into()),
-                category_filter: None,
-                action: RuleAction::Allow,
-                enabled: true,
-                priority: 10,
-            },
-            NetworkRule {
-                id: "r2".into(),
-                session_id: "sess-1".into(),
-                domain_pattern: Some("b.com".into()),
-                category_filter: None,
-                action: RuleAction::Block,
-                enabled: true,
-                priority: 20,
-            },
-        ]);
+        engine.set_rules(
+            "sess-1",
+            vec![
+                NetworkRule {
+                    id: "r1".into(),
+                    session_id: "sess-1".into(),
+                    domain_pattern: Some("a.com".into()),
+                    category_filter: None,
+                    action: RuleAction::Allow,
+                    enabled: true,
+                    priority: 10,
+                },
+                NetworkRule {
+                    id: "r2".into(),
+                    session_id: "sess-1".into(),
+                    domain_pattern: Some("b.com".into()),
+                    category_filter: None,
+                    action: RuleAction::Block,
+                    enabled: true,
+                    priority: 20,
+                },
+            ],
+        );
         assert_eq!(engine.get_rules("sess-1").len(), 2);
     }
 }

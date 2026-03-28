@@ -172,10 +172,7 @@ mod tests {
     // Api
     #[test]
     fn test_anthropic() {
-        assert_eq!(
-            classify_domain("api.anthropic.com"),
-            TrafficCategory::Api
-        );
+        assert_eq!(classify_domain("api.anthropic.com"), TrafficCategory::Api);
     }
 
     #[test]
