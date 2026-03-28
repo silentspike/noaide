@@ -41,7 +41,7 @@ export class TransportClient {
     this.url = options.url;
     this.certHashUrl =
       options.certHashUrl ??
-      `http://${window.location.hostname}:8080/api/cert-hash`;
+      `${window.location.origin}/api/cert-hash`;
     this.onEvent = options.onEvent;
     this.onStatusChange = options.onStatusChange;
     this.onTierChange = options.onTierChange;

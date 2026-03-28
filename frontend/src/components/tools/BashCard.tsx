@@ -1,5 +1,16 @@
-import { Show, createMemo } from "solid-js";
+import { Show, createMemo, createEffect } from "solid-js";
+import AnsiToHtml from "ansi-to-html";
+import type { DetectedMedia } from "../../lib/media-detect";
+import InlineMedia from "./InlineMedia";
 import ToolCardBase from "./ToolCardBase";
+import type { GalleryImage } from "../gallery/GalleryPanel";
+
+const ansiConvert = new AnsiToHtml({
+  fg: "#cdd6f4",
+  bg: "transparent",
+  newline: false,
+  escapeXML: true,
+});
 
 interface BashCardProps {
   command: string;
@@ -8,6 +19,9 @@ interface BashCardProps {
   exitCode?: number;
   isError?: boolean;
   executionMs?: number;
+  media?: DetectedMedia[];
+  apiBase?: string;
+  onImageClick?: (images: GalleryImage[], index: number) => void;
 }
 
 const TAIL_LINES = 10;
@@ -69,6 +83,11 @@ export default function BashCard(props: BashCardProps) {
             />
           </Show>
           <pre
+            ref={(el) => {
+              createEffect(() => {
+                el.innerHTML = ansiConvert.toHtml(tailOutput());
+              });
+            }}
             style={{
               margin: "0",
               padding: isTruncated() ? "16px 10px 6px" : "6px 10px",
@@ -80,9 +99,7 @@ export default function BashCard(props: BashCardProps) {
               "max-height": "200px",
               overflow: "hidden",
             }}
-          >
-            {tailOutput()}
-          </pre>
+          />
           <Show when={isTruncated()}>
             <div
               style={{
@@ -95,6 +112,13 @@ export default function BashCard(props: BashCardProps) {
               {totalLines()} lines total
             </div>
           </Show>
+        </div>
+      </Show>
+
+      {/* Inline media (images, video, audio created by the command) */}
+      <Show when={props.media && props.media.length > 0 && props.apiBase}>
+        <div style={{ padding: "4px 10px" }}>
+          <InlineMedia media={props.media!} apiBase={props.apiBase!} onImageClick={props.onImageClick} />
         </div>
       </Show>
 
@@ -143,6 +167,11 @@ export default function BashCard(props: BashCardProps) {
           }}
         >
           <pre
+            ref={(el) => {
+              createEffect(() => {
+                el.innerHTML = ansiConvert.toHtml(props.output ?? "");
+              });
+            }}
             style={{
               margin: "0",
               padding: "8px 10px",
@@ -155,9 +184,7 @@ export default function BashCard(props: BashCardProps) {
               "max-height": "600px",
               overflow: "auto",
             }}
-          >
-            {props.output}
-          </pre>
+          />
         </div>
       </Show>
     </ToolCardBase>

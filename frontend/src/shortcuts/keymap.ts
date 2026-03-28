@@ -27,15 +27,16 @@ function matchesBinding(e: KeyboardEvent, binding: KeyBinding): boolean {
 
 export function useKeymap(getBindings: () => KeyBinding[]) {
   const handler = (e: KeyboardEvent) => {
-    // Skip if user is typing in an input
+    // Skip if user is typing in an input or CodeMirror editor
     const target = e.target as HTMLElement;
+    if (target.closest(".cm-editor") && !(e.metaKey || e.ctrlKey)) return;
     if (
       target.tagName === "INPUT" ||
       target.tagName === "TEXTAREA" ||
       target.isContentEditable
     ) {
-      // Allow Escape even in inputs
-      if (e.key !== "Escape") return;
+      // Allow Escape and Cmd/Ctrl combos even in inputs
+      if (e.key !== "Escape" && !(e.metaKey || e.ctrlKey)) return;
     }
 
     for (const binding of getBindings()) {

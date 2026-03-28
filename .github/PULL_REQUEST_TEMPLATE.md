@@ -34,7 +34,7 @@ Closes #<!-- issue number -->
 - [ ] New and existing tests pass locally
 - [ ] `cargo clippy -- -D warnings` passes
 - [ ] `cargo fmt -- --check` passes
-- [ ] `npm run lint` passes (if frontend changes)
+- [ ] `pnpm lint` passes (if frontend changes)
 - [ ] I have updated documentation accordingly
 - [ ] I have updated CHANGELOG.md
 - [ ] My changes generate no new warnings

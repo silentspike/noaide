@@ -85,8 +85,36 @@ impl TopologyBuilder {
         }
     }
 
-    /// Record a message between agents
+    /// Record a message between agents.
+    /// Automatically creates nodes for unknown agents (discovered via inbox).
     pub fn add_message(&mut self, from: &str, to: &str, msg_type: &str, summary: Option<String>) {
+        // Auto-create nodes for agents discovered via inbox but not in config
+        for agent_name in [from, to] {
+            if !self.nodes.contains_key(agent_name) {
+                let node = AgentNode {
+                    name: agent_name.to_string(),
+                    agent_id: format!("{}@{}", agent_name, self.team_name),
+                    agent_type: None,
+                    is_leader: false,
+                    children: Vec::new(),
+                    message_count: 0,
+                    status: AgentStatus::Unknown,
+                };
+                self.nodes.insert(agent_name.to_string(), node);
+                // Add as child of leader if one exists
+                let leader_name = self.nodes.values()
+                    .find(|n| n.is_leader)
+                    .map(|n| n.name.clone());
+                if let Some(leader) = leader_name {
+                    if let Some(leader_node) = self.nodes.get_mut(&leader) {
+                        if !leader_node.children.contains(&agent_name.to_string()) {
+                            leader_node.children.push(agent_name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
         // Increment message counts
         if let Some(node) = self.nodes.get_mut(from) {
             node.message_count += 1;

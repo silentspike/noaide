@@ -1,9 +1,12 @@
 pub mod bus;
+pub mod cache;
 pub mod db;
 pub mod discovery;
 pub mod ecs;
+pub mod files;
 pub mod git;
 pub mod parser;
+pub mod plan;
 pub mod proxy;
 pub mod session;
 pub mod teams;

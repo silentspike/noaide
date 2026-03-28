@@ -17,29 +17,24 @@ export default function SwipeView(props: SwipeViewProps) {
 
   const SWIPE_THRESHOLD = 50;
   const VELOCITY_THRESHOLD = 0.3;
+  const LOCK_THRESHOLD = 12;
 
   let startTime = 0;
+  let startY = 0;
+  let locked = false;
 
-  const handleTouchStart = (e: TouchEvent) => {
-    setStartX(e.touches[0].clientX);
-    setCurrentX(e.touches[0].clientX);
-    setIsDragging(true);
-    startTime = Date.now();
-  };
-
-  const handleTouchMove = (e: TouchEvent) => {
-    if (!isDragging()) return;
+  // These are only attached AFTER horizontal lock — zero overhead during vertical scroll
+  const handleLockedMove = (e: TouchEvent) => {
     setCurrentX(e.touches[0].clientX);
   };
 
-  const handleTouchEnd = () => {
-    if (!isDragging()) return;
+  const handleLockedEnd = () => {
+    cleanup();
     setIsDragging(false);
 
     const diff = currentX() - startX();
     const elapsed = Date.now() - startTime;
     const velocity = Math.abs(diff) / elapsed;
-
     const count = props.children.length;
 
     if (Math.abs(diff) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
@@ -55,17 +50,65 @@ export default function SwipeView(props: SwipeViewProps) {
     setCurrentX(startX());
   };
 
+  function cleanup() {
+    const el = containerRef;
+    if (!el || !locked) return;
+    el.removeEventListener("touchmove", handleLockedMove);
+    el.removeEventListener("touchend", handleLockedEnd);
+    locked = false;
+  }
+
+  // Lightweight probe — only checks direction, no signals, no transforms
+  const handleProbeMove = (e: TouchEvent) => {
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+    const dx = Math.abs(x - startX());
+    const dy = Math.abs(y - startY);
+
+    if (dx < LOCK_THRESHOLD && dy < LOCK_THRESHOLD) return;
+
+    // Remove probe immediately — one-shot
+    containerRef!.removeEventListener("touchmove", handleProbeMove);
+    containerRef!.removeEventListener("touchend", handleProbeEnd);
+
+    if (dx > dy * 1.2) {
+      // Horizontal confirmed — attach real handlers
+      locked = true;
+      setIsDragging(true);
+      setCurrentX(x);
+      containerRef!.addEventListener("touchmove", handleLockedMove, { passive: true });
+      containerRef!.addEventListener("touchend", handleLockedEnd, { passive: true });
+    }
+    // Vertical: do nothing — browser handles native scroll with zero JS overhead
+  };
+
+  const handleProbeEnd = () => {
+    containerRef!.removeEventListener("touchmove", handleProbeMove);
+    containerRef!.removeEventListener("touchend", handleProbeEnd);
+  };
+
+  const handleTouchStart = (e: TouchEvent) => {
+    cleanup();
+    setStartX(e.touches[0].clientX);
+    setCurrentX(e.touches[0].clientX);
+    startY = e.touches[0].clientY;
+    startTime = Date.now();
+
+    // Attach lightweight probe — removed after first direction decision
+    containerRef!.addEventListener("touchmove", handleProbeMove, { passive: true });
+    containerRef!.addEventListener("touchend", handleProbeEnd, { passive: true });
+  };
+
   onMount(() => {
     const el = containerRef;
     if (!el) return;
     el.addEventListener("touchstart", handleTouchStart, { passive: true });
-    el.addEventListener("touchmove", handleTouchMove, { passive: true });
-    el.addEventListener("touchend", handleTouchEnd, { passive: true });
 
     onCleanup(() => {
       el.removeEventListener("touchstart", handleTouchStart);
-      el.removeEventListener("touchmove", handleTouchMove);
-      el.removeEventListener("touchend", handleTouchEnd);
+      cleanup();
+      el.removeEventListener("touchmove", handleProbeMove);
+      el.removeEventListener("touchend", handleProbeEnd);
     });
   });
 
@@ -90,7 +133,7 @@ export default function SwipeView(props: SwipeViewProps) {
           height: "100%",
           transform: `translateX(calc(-${props.activeIndex * 100}% + ${dragOffset()}px))`,
           transition: isDragging() ? "none" : "transform 0.3s ease-out",
-          "will-change": "transform",
+          ...(isDragging() ? { "will-change": "transform" } : {}),
         }}
       >
         <For each={props.children}>{(child) => (
@@ -99,6 +142,9 @@ export default function SwipeView(props: SwipeViewProps) {
               "min-width": "100%",
               height: "100%",
               overflow: "auto",
+              "touch-action": "pan-y",
+              "-webkit-overflow-scrolling": "touch",
+              "overscroll-behavior-y": "contain",
             }}
           >
             {child}
