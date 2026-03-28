@@ -72,8 +72,14 @@ fn run_parse(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
             let tmp_path = path.with_extension("json.tmp");
             fs::write(&tmp_path, &json)
                 .map_err(|e| format!("Cannot write {}: {}", tmp_path.display(), e))?;
-            fs::rename(&tmp_path, path)
-                .map_err(|e| format!("Cannot rename {} → {}: {}", tmp_path.display(), path.display(), e))?;
+            fs::rename(&tmp_path, path).map_err(|e| {
+                format!(
+                    "Cannot rename {} → {}: {}",
+                    tmp_path.display(),
+                    path.display(),
+                    e
+                )
+            })?;
             eprintln!("Wrote {} ({} bytes)", path.display(), json.len());
         }
         None => {

@@ -124,9 +124,7 @@ pub async fn parse_tail(
 
     let mut reader = BufReader::with_capacity(64 * 1024, file);
     if seek_to > 0 {
-        reader
-            .seek(std::io::SeekFrom::Start(seek_to))
-            .await?;
+        reader.seek(std::io::SeekFrom::Start(seek_to)).await?;
         // Skip partial first line (we seeked into the middle of it)
         let mut discard = String::new();
         reader.read_line(&mut discard).await?;

@@ -309,7 +309,11 @@ pub fn diff_hunks(repo_path: &Path, file_path: &str) -> Result<Vec<DiffHunk>, Gi
 pub fn stage_hunk(repo_path: &Path, file_path: &str, hunk_index: usize) -> Result<(), GitError> {
     let hunks = diff_hunks(repo_path, file_path)?;
     let hunk = hunks.get(hunk_index).ok_or_else(|| {
-        GitError::Other(format!("hunk index {} out of range ({})", hunk_index, hunks.len()))
+        GitError::Other(format!(
+            "hunk index {} out of range ({})",
+            hunk_index,
+            hunks.len()
+        ))
     })?;
 
     // Build a unified diff patch for this single hunk

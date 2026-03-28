@@ -102,7 +102,9 @@ impl TopologyBuilder {
                 };
                 self.nodes.insert(agent_name.to_string(), node);
                 // Add as child of leader if one exists
-                let leader_name = self.nodes.values()
+                let leader_name = self
+                    .nodes
+                    .values()
                     .find(|n| n.is_leader)
                     .map(|n| n.name.clone());
                 if let Some(leader) = leader_name {

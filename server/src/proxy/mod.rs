@@ -51,7 +51,9 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
             Some(Arc::new(ca))
         }
         Err(e) => {
-            tracing::warn!("CONNECT MITM disabled (CA not found: {e}). CONNECT tunnels will be transparent.");
+            tracing::warn!(
+                "CONNECT MITM disabled (CA not found: {e}). CONNECT tunnels will be transparent."
+            );
             None
         }
     };
