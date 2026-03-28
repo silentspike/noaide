@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
-use axum::http::HeaderValue;
+use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{delete, get, patch, post};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -269,6 +269,22 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/proxy/intercept/{session_id}/pending-responses/{id}/forward",
             post(api_forward_response_intercept),
+        )
+        .route(
+            "/api/proxy/network-rules/{session_id}",
+            get(api_get_network_rules).put(api_set_network_rules),
+        )
+        .route(
+            "/api/proxy/network-rules/{session_id}/rules",
+            post(api_add_network_rule),
+        )
+        .route(
+            "/api/proxy/network-rules/{session_id}/rules/{rule_id}",
+            delete(api_delete_network_rule),
+        )
+        .route(
+            "/api/proxy/network-rules/{session_id}/quick-block",
+            post(api_quick_block_domain),
         )
         .route("/api/plans", get(api_list_plans))
         .route("/api/plans/for-session/{session_id}", get(api_plan_for_session))
@@ -2627,6 +2643,7 @@ fn proxy_log_to_component(log: &noaide_server::proxy::ApiRequestLog) -> ApiReque
         response_headers: Some(serde_json::to_string(&log.response_headers).unwrap_or_default()),
         request_size: Some(log.request_size as u64),
         response_size: Some(log.response_size as u64),
+        category: log.category.clone(),
     }
 }
 
@@ -2658,6 +2675,7 @@ fn component_to_proxy_log(c: &ApiRequestComponent) -> noaide_server::proxy::ApiR
         timestamp: c.timestamp,
         request_size: c.request_size.unwrap_or(0) as usize,
         response_size: c.response_size.unwrap_or(0) as usize,
+        category: c.category.clone(),
     }
 }
 
@@ -3426,6 +3444,72 @@ async fn api_save_session_file(
 struct SaveFileRequest {
     path: String,
     content: String,
+}
+
+// ── Network Rules API Endpoints ─────────────────────────────────────────────
+
+/// Get all network rules for a session.
+async fn api_get_network_rules(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<Vec<noaide_server::proxy::NetworkRule>> {
+    axum::Json(state.proxy.network_rules.get_rules(&session_id))
+}
+
+/// Replace all network rules for a session.
+async fn api_set_network_rules(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(rules): axum::Json<Vec<noaide_server::proxy::NetworkRule>>,
+) -> StatusCode {
+    state.proxy.network_rules.set_rules(&session_id, rules);
+    StatusCode::OK
+}
+
+/// Add a single network rule to a session.
+async fn api_add_network_rule(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(rule): axum::Json<noaide_server::proxy::NetworkRule>,
+) -> (StatusCode, axum::Json<serde_json::Value>) {
+    let id = state.proxy.network_rules.add_rule(&session_id, rule);
+    (StatusCode::CREATED, axum::Json(serde_json::json!({ "id": id })))
+}
+
+/// Delete a network rule by ID.
+async fn api_delete_network_rule(
+    State(state): State<AppState>,
+    axum::extract::Path((session_id, rule_id)): axum::extract::Path<(String, String)>,
+) -> StatusCode {
+    if state.proxy.network_rules.remove_rule(&session_id, &rule_id) {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct QuickBlockRequest {
+    domain: String,
+}
+
+/// Quick-block: create a Block rule for a domain in one call.
+async fn api_quick_block_domain(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(body): axum::Json<QuickBlockRequest>,
+) -> (StatusCode, axum::Json<serde_json::Value>) {
+    let rule = noaide_server::proxy::NetworkRule {
+        id: String::new(),
+        session_id: session_id.clone(),
+        domain_pattern: Some(body.domain),
+        category_filter: None,
+        action: noaide_server::proxy::RuleAction::Block,
+        enabled: true,
+        priority: 50,
+    };
+    let id = state.proxy.network_rules.add_rule(&session_id, rule);
+    (StatusCode::CREATED, axum::Json(serde_json::json!({ "id": id })))
 }
 
 // ── Git API Endpoints ────────────────────────────────────────────────────────
