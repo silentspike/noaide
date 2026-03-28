@@ -76,6 +76,25 @@ pub enum MessageType {
     CompactBoundary,
 }
 
+// === Message Cache Meta ===
+
+/// Tracks caching state for a session's JSONL file.
+/// Used by the cache layer to know when to re-parse incrementally.
+#[derive(Debug, Clone)]
+pub struct CacheMetaComponent {
+    pub session_id: Uuid,
+    /// Byte offset up to which messages have been cached.
+    pub file_offset: u64,
+    /// Last known file size (for truncation detection).
+    pub file_size: u64,
+    /// Unix timestamp of last refresh.
+    pub last_refreshed: i64,
+    /// Number of cached messages for this session.
+    pub message_count: usize,
+    /// Whether the cache is warm (initial parse completed).
+    pub is_warm: bool,
+}
+
 // === File ===
 
 #[derive(Debug, Clone)]
@@ -85,6 +104,19 @@ pub struct FileComponent {
     pub path: String,
     pub modified: i64,
     pub size: u64,
+}
+
+/// Marker: Claude is currently editing this file.
+///
+/// Used for Conflict Resolution (ADR-5, AC-14).
+/// Spawned when eBPF detects a write from a Claude PID,
+/// cleared after 2s idle timeout.
+#[derive(Debug, Clone)]
+pub struct ClaudeEditingComponent {
+    pub file_path: String,
+    pub session_id: Uuid,
+    pub pid: u32,
+    pub started_at: i64,
 }
 
 // === Task ===
@@ -128,4 +160,6 @@ pub struct ApiRequestComponent {
     pub response_headers: Option<String>,
     pub request_size: Option<u64>,
     pub response_size: Option<u64>,
+    /// Traffic category for CONNECT MITM requests (e.g. "telemetry", "auth").
+    pub category: Option<String>,
 }

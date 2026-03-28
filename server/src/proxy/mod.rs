@@ -1,5 +1,8 @@
+pub mod classify;
 pub mod handler;
 pub mod mitm;
+pub mod rules;
+pub mod tls_mitm;
 
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
@@ -10,10 +13,12 @@ use axum::routing::any;
 use tokio::sync::{RwLock, broadcast};
 use tracing::info;
 
+pub use classify::TrafficCategory;
 pub use handler::{
     InterceptDecision, InterceptMode, PendingIntercept, PendingResponseIntercept, ProxyState,
 };
 pub use mitm::ApiRequestLog;
+pub use rules::{NetworkRule, NetworkRulesEngine, RuleAction};
 
 /// Default proxy port for API interception (IMPL-PLAN: port 4434)
 const DEFAULT_PROXY_PORT: u16 = 4434;
@@ -21,7 +26,10 @@ const DEFAULT_PROXY_PORT: u16 = 4434;
 /// Channel capacity for API request events
 const EVENT_CHANNEL_CAPACITY: usize = 256;
 
-/// Create the proxy state with an HTTP client, event broadcast channel, and in-memory storage
+/// Create the proxy state with an HTTP client, event broadcast channel, and in-memory storage.
+///
+/// Attempts to load the mkcert CA for CONNECT MITM. If CA cert+key are not found,
+/// MITM is disabled and CONNECT tunnels fall back to transparent forwarding.
 pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestLog>) {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
@@ -36,6 +44,18 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
 
     let (event_tx, event_rx) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
 
+    // Load CA for CONNECT MITM (optional — graceful degradation)
+    let ca = match tls_mitm::CaAuthority::load_from_disk() {
+        Ok(ca) => {
+            info!("CONNECT MITM enabled (CA loaded)");
+            Some(Arc::new(ca))
+        }
+        Err(e) => {
+            tracing::warn!("CONNECT MITM disabled (CA not found: {e}). CONNECT tunnels will be transparent.");
+            None
+        }
+    };
+
     let state = Arc::new(ProxyState {
         client,
         event_tx,
@@ -43,6 +63,9 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
         intercept_modes: RwLock::new(HashMap::new()),
         pending_intercepts: RwLock::new(HashMap::new()),
         pending_response_intercepts: RwLock::new(HashMap::new()),
+        pending_images: RwLock::new(HashMap::new()),
+        ca,
+        network_rules: Arc::new(rules::NetworkRulesEngine::new()),
     });
 
     (state, event_rx)
