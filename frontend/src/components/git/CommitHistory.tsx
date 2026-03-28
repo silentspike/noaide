@@ -38,7 +38,10 @@ export default function CommitHistory() {
     return resp.json();
   };
 
-  const [commits] = createResource(() => apiUrl(), fetchCommits);
+  const [commits] = createResource(
+    () => [apiUrl(), sessionId()] as const,
+    fetchCommits,
+  );
 
   return (
     <div

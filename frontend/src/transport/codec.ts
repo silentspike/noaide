@@ -65,12 +65,12 @@ export function parseTopicFrame(data: Uint8Array): {
   if (codecId === CODEC_MSGPACK) {
     const raw = msgpackDecode(decompressed) as Record<string, unknown>;
     const envelope: EventEnvelope = {
-      eventId: raw.event_id as string,
+      eventId: uuidFieldToString(raw.event_id),
       source: mapSource(raw.source as string),
       sequence: raw.sequence as number,
       logicalTs: raw.logical_ts as number,
       wallTs: raw.wall_ts as number,
-      sessionId: raw.session_id as string | undefined,
+      sessionId: raw.session_id != null ? uuidFieldToString(raw.session_id) : undefined,
       dedupKey: raw.dedup_key as string | undefined,
       payload:
         raw.payload instanceof Uint8Array
@@ -81,6 +81,29 @@ export function parseTopicFrame(data: Uint8Array): {
   }
 
   throw new Error(`Unsupported codec: 0x${codecId.toString(16)}`);
+}
+
+/**
+ * Convert a UUID field from MessagePack to a hyphenated string.
+ *
+ * rmp-serde serializes Uuid as 16 raw bytes (serialize_bytes) because
+ * MessagePack is non-human-readable. JS msgpack decodes this as Uint8Array.
+ * The frontend expects hyphenated UUID strings for session ID matching.
+ */
+function uuidFieldToString(value: unknown): string {
+  if (typeof value === "string") return value;
+  // Raw 16-byte UUID from rmp-serde
+  if (value instanceof Uint8Array && value.length === 16) {
+    const h = Array.from(value, (b) => b.toString(16).padStart(2, "0")).join("");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+  // Object with numeric keys (serialized Uint8Array in some contexts)
+  if (value && typeof value === "object" && "0" in value) {
+    const bytes = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) bytes[i] = (value as Record<number, number>)[i] ?? 0;
+    return uuidFieldToString(bytes);
+  }
+  return String(value);
 }
 
 function mapSource(source: string): EventSource {
