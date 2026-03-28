@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use super::listing::validate_path_within_root;
 use super::FileError;
+use super::listing::validate_path_within_root;
 
 /// Default maximum file size for content serving (10 MB).
 const DEFAULT_MAX_BYTES: u64 = 10 * 1024 * 1024;
@@ -30,7 +30,9 @@ pub async fn read_file_content(
     let canonical = validate_path_within_root(&full_path, project_root)?;
 
     // Check file size before reading
-    let metadata = tokio::fs::metadata(&canonical).await.map_err(FileError::Io)?;
+    let metadata = tokio::fs::metadata(&canonical)
+        .await
+        .map_err(FileError::Io)?;
     if metadata.len() > max {
         return Err(FileError::FileTooLarge {
             size: metadata.len(),
@@ -94,7 +96,9 @@ pub async fn write_file_content(
                     return Err(FileError::PathTraversal);
                 }
             }
-            tokio::fs::create_dir_all(parent).await.map_err(FileError::Io)?;
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(FileError::Io)?;
             // Re-validate after creation
             validate_path_within_root(&normalized, project_root)?;
         }
@@ -109,11 +113,7 @@ pub async fn write_file_content(
 
 /// Guess a simple content type from the file extension.
 fn guess_content_type(path: &str) -> String {
-    let ext = path
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
+    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
 
     match ext.as_str() {
         "rs" => "text/x-rust",
