@@ -37,7 +37,9 @@ const MAX_CACHEABLE_FILE_SIZE: u64 = 10 * 1024 * 1024;
 /// Front = least recently used, Back = most recently used.
 /// This is separate from ECS to avoid polluting the entity model.
 static LRU: std::sync::LazyLock<tokio::sync::Mutex<VecDeque<Uuid>>> =
-    std::sync::LazyLock::new(|| tokio::sync::Mutex::new(VecDeque::with_capacity(MAX_WARM_SESSIONS + 1)));
+    std::sync::LazyLock::new(|| {
+        tokio::sync::Mutex::new(VecDeque::with_capacity(MAX_WARM_SESSIONS + 1))
+    });
 
 /// Touch a session in the LRU (move to back = most recently used).
 async fn lru_touch(session_id: Uuid) {
@@ -172,8 +174,7 @@ pub async fn refresh(
     // Parse new data
     let (new_messages, new_components, new_offset) = match cli_type {
         CliType::Claude => {
-            let (msgs, offset) =
-                parser::parse_incremental(jsonl_path, effective_offset).await?;
+            let (msgs, offset) = parser::parse_incremental(jsonl_path, effective_offset).await?;
             let components: Vec<MessageComponent> = msgs
                 .iter()
                 .filter_map(|m| parser::message_to_component(m, session_id))

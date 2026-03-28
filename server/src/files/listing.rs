@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use ignore::WalkBuilder;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde::Serialize;
 
 use super::FileError;
@@ -102,7 +102,9 @@ pub async fn list_directory(
     let gitignore = build_gitignore(&root);
 
     let mut entries = Vec::new();
-    let mut read_dir = tokio::fs::read_dir(&target_dir).await.map_err(FileError::Io)?;
+    let mut read_dir = tokio::fs::read_dir(&target_dir)
+        .await
+        .map_err(FileError::Io)?;
 
     while let Some(entry) = read_dir.next_entry().await.map_err(FileError::Io)? {
         if entries.len() >= MAX_ENTRIES {
@@ -316,7 +318,10 @@ mod tests {
         let evil = root.join("..").join("etc").join("passwd");
 
         let result = validate_path_within_root(&evil, root);
-        assert!(matches!(result, Err(FileError::PathTraversal) | Err(FileError::Io(_))));
+        assert!(matches!(
+            result,
+            Err(FileError::PathTraversal) | Err(FileError::Io(_))
+        ));
     }
 
     #[test]
@@ -334,10 +339,7 @@ mod tests {
             Path::new("/work/project/target/debug/binary"),
             root
         ));
-        assert!(should_ignore_path(
-            Path::new("/work/project/.env"),
-            root
-        ));
+        assert!(should_ignore_path(Path::new("/work/project/.env"), root));
     }
 
     #[test]
@@ -383,7 +385,10 @@ mod tests {
         assert!(!names.contains(&".env"));
 
         // Directories first
-        let first_file_idx = entries.iter().position(|e| !e.is_dir).unwrap_or(entries.len());
+        let first_file_idx = entries
+            .iter()
+            .position(|e| !e.is_dir)
+            .unwrap_or(entries.len());
         let last_dir_idx = entries.iter().rposition(|e| e.is_dir).unwrap_or(0);
         assert!(last_dir_idx < first_file_idx || entries.iter().all(|e| e.is_dir));
     }

@@ -44,7 +44,7 @@ export default function InputField(props: InputFieldProps) {
       }
     },
     onFinalText: (final) => {
-      console.log("[input] voice finalText:", final.slice(0, 120));
+      console.warn("[input] voice finalText:", final.slice(0, 120));
       // Replace partial with final text
       const prefix = textBeforeRecording;
       const separator = prefix && !prefix.endsWith(" ") ? " " : "";
@@ -57,7 +57,7 @@ export default function InputField(props: InputFieldProps) {
   });
 
   function toggleMic() {
-    console.log("[input] toggleMic — recording:", voice.isRecording(), "connecting:", voice.isConnecting(), "url:", props.whisperUrl);
+    console.warn("[input] toggleMic — recording:", voice.isRecording(), "connecting:", voice.isConnecting(), "url:", props.whisperUrl);
     if (voice.isRecording()) {
       voice.stopRecording();
     } else {
