@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Path, Query, State};
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{delete, get, patch, post};
 use tokio::sync::RwLock;
@@ -175,7 +175,9 @@ async fn main() -> anyhow::Result<()> {
             let mut mapping = session_plan_mapping.write().await;
             for entry in &entries {
                 if let (Some(sid), Some(plan)) = (
-                    entry["session_id"].as_str().and_then(|s| Uuid::parse_str(s).ok()),
+                    entry["session_id"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok()),
                     entry["plan"].as_str(),
                 ) {
                     if !plan.is_empty() {
@@ -183,7 +185,10 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            info!(restored = mapping.len(), "restored session→plan mappings from previous run");
+            info!(
+                restored = mapping.len(),
+                "restored session→plan mappings from previous run"
+            );
             drop(mapping);
         }
     }
@@ -287,7 +292,10 @@ async fn main() -> anyhow::Result<()> {
             post(api_quick_block_domain),
         )
         .route("/api/plans", get(api_list_plans))
-        .route("/api/plans/for-session/{session_id}", get(api_plan_for_session))
+        .route(
+            "/api/plans/for-session/{session_id}",
+            get(api_plan_for_session),
+        )
         .route("/api/plans/{name}/plan.json", get(api_get_plan_json))
         .route("/api/plans/{name}/edits", post(api_post_plan_edits))
         .route("/api/git/status", get(api_git_status))
@@ -304,7 +312,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/git/prs", post(api_git_pr_create))
         .route("/api/browse", get(api_browse_directories))
         .route("/api/sessions/{id}/files", get(api_list_session_files))
-        .route("/api/sessions/{id}/file", get(api_get_session_file).put(api_save_session_file))
+        .route(
+            "/api/sessions/{id}/file",
+            get(api_get_session_file).put(api_save_session_file),
+        )
         .route("/api/teams", get(api_get_teams))
         .route("/api/teams/{name}/topology", get(api_get_team_topology))
         .route("/api/teams/{name}/tasks", get(api_get_team_tasks))
@@ -395,8 +406,8 @@ async fn main() -> anyhow::Result<()> {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(8082);
-        let venv_python = std::env::var("WHISPER_PYTHON")
-            .unwrap_or_else(|_| "/venv/bin/python".into());
+        let venv_python =
+            std::env::var("WHISPER_PYTHON").unwrap_or_else(|_| "/venv/bin/python".into());
         let script_path = std::env::current_dir()
             .unwrap_or_default()
             .join("server/whisper/server.py");
@@ -410,16 +421,14 @@ async fn main() -> anyhow::Result<()> {
                         .kill_on_drop(true)
                         .spawn();
                     match result {
-                        Ok(mut child) => {
-                            match child.wait().await {
-                                Ok(status) => {
-                                    warn!(code = ?status.code(), "whisper sidecar exited");
-                                }
-                                Err(e) => {
-                                    warn!(error = %e, "whisper sidecar wait error");
-                                }
+                        Ok(mut child) => match child.wait().await {
+                            Ok(status) => {
+                                warn!(code = ?status.code(), "whisper sidecar exited");
                             }
-                        }
+                            Err(e) => {
+                                warn!(error = %e, "whisper sidecar wait error");
+                            }
+                        },
                         Err(e) => {
                             warn!(error = %e, python = %venv_python, "failed to spawn whisper sidecar");
                         }
@@ -512,7 +521,8 @@ async fn main() -> anyhow::Result<()> {
     // detects non-JSONL file changes and publishes them via the event bus.
     {
         let mut watches = project_watches.write().await;
-        let mut watched_roots: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        let mut watched_roots: std::collections::HashSet<PathBuf> =
+            std::collections::HashSet::new();
         for session_info in &all_sessions {
             if let Some(ref project_path) = session_info.project_path {
                 let session_id = match Uuid::parse_str(&session_info.id) {
@@ -638,7 +648,10 @@ async fn main() -> anyhow::Result<()> {
 
                         if let Some((session_id, project_root)) = match_result {
                             // Skip hard-excluded paths
-                            if noaide_server::files::listing::should_ignore_path(path, &project_root) {
+                            if noaide_server::files::listing::should_ignore_path(
+                                path,
+                                &project_root,
+                            ) {
                                 continue;
                             }
 
@@ -647,13 +660,17 @@ async fn main() -> anyhow::Result<()> {
                             {
                                 let mut debounce = file_change_debounce.lock().await;
                                 if let Some(last) = debounce.get(path) {
-                                    if now.duration_since(*last) < std::time::Duration::from_millis(50) {
+                                    if now.duration_since(*last)
+                                        < std::time::Duration::from_millis(50)
+                                    {
                                         continue;
                                     }
                                 }
                                 debounce.insert(path.clone(), now);
                                 // Evict old entries (>10s) to prevent unbounded growth
-                                debounce.retain(|_, ts| now.duration_since(*ts) < std::time::Duration::from_secs(10));
+                                debounce.retain(|_, ts| {
+                                    now.duration_since(*ts) < std::time::Duration::from_secs(10)
+                                });
                             }
 
                             let relative = path
@@ -697,7 +714,8 @@ async fn main() -> anyhow::Result<()> {
                                 content,
                                 size: file_size,
                             };
-                            let payload_bytes = rmp_serde::to_vec_named(&payload).unwrap_or_default();
+                            let payload_bytes =
+                                rmp_serde::to_vec_named(&payload).unwrap_or_default();
 
                             let envelope = EventEnvelope::new(
                                 EventSource::Watcher,
@@ -747,10 +765,7 @@ async fn main() -> anyhow::Result<()> {
                     match event.kind {
                         FileEventKind::Created | FileEventKind::Modified => {
                             // Extract session UUID from filename — format varies by CLI type
-                            let filename = path
-                                .file_name()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("");
+                            let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
                             let session_id = if ext == "json" {
                                 // Gemini: session-{timestamp}-{uuid}.json
                                 discovery::extract_gemini_uuid(filename)
@@ -1037,16 +1052,22 @@ async fn main() -> anyhow::Result<()> {
                                             }
                                         }
                                         // Update cache meta with new offset
-                                        let file_size = tokio::fs::metadata(path).await
+                                        let file_size = tokio::fs::metadata(path)
+                                            .await
                                             .map(|m| m.len())
                                             .unwrap_or(0);
                                         let now_secs = std::time::SystemTime::now()
                                             .duration_since(std::time::UNIX_EPOCH)
                                             .map(|d| d.as_secs() as i64)
                                             .unwrap_or(0);
-                                        let total_count = world.message_count_for_session(effective_sid);
-                                        let current_offset = offsets_watch.lock().await
-                                            .get(path).copied().unwrap_or(0);
+                                        let total_count =
+                                            world.message_count_for_session(effective_sid);
+                                        let current_offset = offsets_watch
+                                            .lock()
+                                            .await
+                                            .get(path)
+                                            .copied()
+                                            .unwrap_or(0);
                                         world.upsert_cache_meta(
                                             noaide_server::ecs::components::CacheMetaComponent {
                                                 session_id: effective_sid,
@@ -1062,7 +1083,8 @@ async fn main() -> anyhow::Result<()> {
                                     // Update session status based on last parsed message.
                                     // Active = assistant is streaming (no stop_reason yet).
                                     if let Some(last_msg) = messages.last() {
-                                        let is_active = last_msg.role.as_deref() == Some("assistant")
+                                        let is_active = last_msg.role.as_deref()
+                                            == Some("assistant")
                                             && last_msg.stop_reason.is_none();
                                         let new_status = if is_active {
                                             SessionStatus::Active
@@ -1075,7 +1097,9 @@ async fn main() -> anyhow::Result<()> {
                                                 .map(|s| s.status)
                                                 .unwrap_or(SessionStatus::Idle)
                                         };
-                                        ecs_handle.write().await
+                                        ecs_handle
+                                            .write()
+                                            .await
                                             .update_session_status(effective_sid, new_status);
                                         // Push orbState change via WebTransport (instant, no polling needed)
                                         if old_status != new_status {
@@ -1089,12 +1113,18 @@ async fn main() -> anyhow::Result<()> {
                                                 "type": "session_status",
                                                 "session_id": effective_sid.to_string(),
                                                 "status": status_str,
-                                            })).unwrap_or_default();
+                                            }))
+                                            .unwrap_or_default();
                                             let envelope = EventEnvelope::new(
-                                                EventSource::Jsonl, 0, 0,
-                                                Some(effective_sid), payload,
+                                                EventSource::Jsonl,
+                                                0,
+                                                0,
+                                                Some(effective_sid),
+                                                payload,
                                             );
-                                            let _ = bus_handle.publish(bus::SESSION_STATUS, envelope).await;
+                                            let _ = bus_handle
+                                                .publish(bus::SESSION_STATUS, envelope)
+                                                .await;
                                         }
                                     }
 
@@ -1716,7 +1746,10 @@ async fn api_get_messages(
     if let Some(ref path) = jsonl_path {
         // For large Claude JSONL files (>10MB), use tail-based parsing
         // to avoid loading 400MB+ into memory just to serve the last 50 messages.
-        let file_size = tokio::fs::metadata(path).await.map(|m| m.len()).unwrap_or(0);
+        let file_size = tokio::fs::metadata(path)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
         let use_tail = cli_type == noaide_server::discovery::scanner::CliType::Claude
             && file_size > 10 * 1024 * 1024;
 
@@ -1819,8 +1852,10 @@ async fn api_get_session_stats(
     let mut total_cache_creation: u64 = 0;
     let mut total_cache_read: u64 = 0;
     let mut total_cost: f64 = 0.0;
-    let mut model_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let mut tool_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut model_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut tool_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     let mut user_messages = 0u64;
     let mut assistant_messages = 0u64;
     let mut thinking_messages = 0u64;
@@ -1847,7 +1882,11 @@ async fn api_get_session_stats(
         }
         if msg.message_type == noaide_server::ecs::components::MessageType::ToolUse {
             // Extract tool name from content if possible
-            if let Some(name) = msg.content.strip_prefix("[tool_use: ").and_then(|s| s.split(']').next()) {
+            if let Some(name) = msg
+                .content
+                .strip_prefix("[tool_use: ")
+                .and_then(|s| s.split(']').next())
+            {
                 *tool_counts.entry(name.to_string()).or_insert(0) += 1;
             }
         }
@@ -1902,9 +1941,7 @@ async fn api_get_session_stats(
 // ═══════════════════════════════════════════════════════════════
 
 /// GET /api/plans — List available plans in the plan base directory.
-async fn api_list_plans(
-    State(state): State<AppState>,
-) -> axum::Json<serde_json::Value> {
+async fn api_list_plans(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
     let base = &*state.plan_base_dir;
     let mut plans = Vec::new();
 
@@ -1914,7 +1951,10 @@ async fn api_list_plans(
                 if ft.is_dir() {
                     let name = entry.file_name().to_string_lossy().to_string();
                     // Validate name (alphanumeric + dash + underscore only)
-                    if name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+                    if name
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+                    {
                         let plan_json = base.join(&name).join("plan.json");
                         let has_plan = tokio::fs::metadata(&plan_json).await.is_ok();
                         let edits_json = base.join(&name).join("plan-edits.json");
@@ -1932,7 +1972,10 @@ async fn api_list_plans(
 
     // Sort by name
     plans.sort_by(|a, b| {
-        a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or(""))
+        a["name"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(b["name"].as_str().unwrap_or(""))
     });
 
     axum::Json(serde_json::json!(plans))
@@ -1959,10 +2002,13 @@ async fn api_get_plan_json(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> axum::response::Response {
-    use axum::http::{header, StatusCode};
+    use axum::http::{StatusCode, header};
     use axum::response::IntoResponse;
 
-    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return (StatusCode::BAD_REQUEST, "invalid plan name").into_response();
     }
 
@@ -1970,9 +2016,13 @@ async fn api_get_plan_json(
     match tokio::fs::read(&path).await {
         Ok(bytes) => (
             StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json"), (header::CACHE_CONTROL, "no-cache")],
+            [
+                (header::CONTENT_TYPE, "application/json"),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
             bytes,
-        ).into_response(),
+        )
+            .into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "plan.json not found").into_response(),
     }
 }
@@ -1984,7 +2034,10 @@ async fn api_post_plan_edits(
     axum::Json(edits): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
     // Validate plan name (prevent path traversal)
-    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return axum::Json(serde_json::json!({"error": "invalid plan name"}));
     }
 
@@ -2010,13 +2063,8 @@ async fn api_post_plan_edits(
             // receive the change instantly without polling.
             let plan_json_path = state.plan_base_dir.join(&name).join("plan.json");
             if let Ok(plan_data) = tokio::fs::read(&plan_json_path).await {
-                let envelope = bus::EventEnvelope::new(
-                    bus::EventSource::User,
-                    0,
-                    0,
-                    None,
-                    plan_data,
-                );
+                let envelope =
+                    bus::EventEnvelope::new(bus::EventSource::User, 0, 0, None, plan_data);
                 let _ = state.event_bus.publish(bus::PLAN_UPDATES, envelope).await;
                 info!(plan = %name, "published plan update via WebTransport");
             }
@@ -2293,14 +2341,16 @@ async fn api_create_managed_session(
                                 // Check if this plan dir has an IMPL-PLAN.md and the session
                                 // working dir contains an IMPL-PLAN.md too
                                 if plan_json.exists() {
-                                    let session_impl = PathBuf::from(&body.working_dir).join("IMPL-PLAN.md");
+                                    let session_impl =
+                                        PathBuf::from(&body.working_dir).join("IMPL-PLAN.md");
                                     // Match by: plan dir has symlink to session dir, or
                                     // session dir name matches plan name
                                     let working_dir_name = PathBuf::from(&body.working_dir)
                                         .file_name()
                                         .map(|n| n.to_string_lossy().to_string())
                                         .unwrap_or_default();
-                                    if impl_plan.exists() || name == working_dir_name
+                                    if impl_plan.exists()
+                                        || name == working_dir_name
                                         || name.contains(&working_dir_name)
                                     {
                                         let mut mapping = state.session_plan_mapping.write().await;
@@ -2507,7 +2557,10 @@ async fn api_queue_images(
         let mgr = state.session_manager.read().await;
         // First try direct UUID lookup
         if let Ok(uuid) = Uuid::parse_str(&id) {
-            if mgr.get(&noaide_server::session::types::SessionId(uuid)).is_some() {
+            if mgr
+                .get(&noaide_server::session::types::SessionId(uuid))
+                .is_some()
+            {
                 Some(uuid.to_string())
             } else {
                 // Check if this is a JSONL session linked to a managed session
@@ -3203,7 +3256,10 @@ struct FileContentQuery {
 ///
 /// Same resolution pattern as `resolve_git_repo`: JSONL path → CWD → project root.
 /// Falls back to reverse alias for managed sessions.
-async fn resolve_session_project_root(state: &AppState, session_id: &str) -> Option<std::path::PathBuf> {
+async fn resolve_session_project_root(
+    state: &AppState,
+    session_id: &str,
+) -> Option<std::path::PathBuf> {
     let uuid = Uuid::parse_str(session_id).ok()?;
 
     // Try project_watches first (works for managed sessions immediately)
@@ -3280,7 +3336,11 @@ async fn api_browse_directories(
     while let Ok(Some(entry)) = dir_entries.next_entry().await {
         let name = entry.file_name().to_string_lossy().to_string();
         // Skip hidden dirs and common large dirs
-        if name.starts_with('.') || name == "node_modules" || name == "target" || name == "__pycache__" {
+        if name.starts_with('.')
+            || name == "node_modules"
+            || name == "target"
+            || name == "__pycache__"
+        {
             continue;
         }
         if let Ok(ft) = entry.file_type().await {
@@ -3295,12 +3355,18 @@ async fn api_browse_directories(
     }
 
     dirs.sort_by(|a, b| {
-        a["name"].as_str().unwrap_or("").to_lowercase()
+        a["name"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase()
             .cmp(&b["name"].as_str().unwrap_or("").to_lowercase())
     });
     entries.extend(dirs);
 
-    (axum::http::StatusCode::OK, axum::Json(serde_json::json!(entries)))
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(serde_json::json!(entries)),
+    )
 }
 
 #[derive(serde::Deserialize)]
@@ -3335,13 +3401,20 @@ async fn api_list_session_files(
         Err(e) => {
             let status = match &e {
                 noaide_server::files::FileError::PathTraversal => axum::http::StatusCode::FORBIDDEN,
-                noaide_server::files::FileError::ProjectNotFound => axum::http::StatusCode::NOT_FOUND,
-                noaide_server::files::FileError::Io(io_err) if io_err.kind() == std::io::ErrorKind::NotFound => {
+                noaide_server::files::FileError::ProjectNotFound => {
+                    axum::http::StatusCode::NOT_FOUND
+                }
+                noaide_server::files::FileError::Io(io_err)
+                    if io_err.kind() == std::io::ErrorKind::NotFound =>
+                {
                     axum::http::StatusCode::NOT_FOUND
                 }
                 _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             };
-            (status, axum::Json(serde_json::json!({"error": e.to_string()})))
+            (
+                status,
+                axum::Json(serde_json::json!({"error": e.to_string()})),
+            )
         }
     }
 }
@@ -3383,14 +3456,22 @@ async fn api_get_session_file(
             let status = match &e {
                 noaide_server::files::FileError::PathTraversal => StatusCode::FORBIDDEN,
                 noaide_server::files::FileError::ProjectNotFound => StatusCode::NOT_FOUND,
-                noaide_server::files::FileError::FileTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
+                noaide_server::files::FileError::FileTooLarge { .. } => {
+                    StatusCode::PAYLOAD_TOO_LARGE
+                }
                 noaide_server::files::FileError::BinaryFile => StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                noaide_server::files::FileError::Io(io_err) if io_err.kind() == std::io::ErrorKind::NotFound => {
+                noaide_server::files::FileError::Io(io_err)
+                    if io_err.kind() == std::io::ErrorKind::NotFound =>
+                {
                     StatusCode::NOT_FOUND
                 }
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            (status, axum::Json(serde_json::json!({"error": e.to_string()}))).into_response()
+            (
+                status,
+                axum::Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response()
         }
     }
 }
@@ -3418,24 +3499,32 @@ async fn api_save_session_file(
         }
     };
 
-    match noaide_server::files::write_file_content(&project_root, &body.path, &body.content, None).await {
-        Ok(bytes_written) => {
-            (
-                StatusCode::OK,
-                axum::Json(serde_json::json!({"ok": true, "bytes": bytes_written})),
-            )
-                .into_response()
-        }
+    match noaide_server::files::write_file_content(&project_root, &body.path, &body.content, None)
+        .await
+    {
+        Ok(bytes_written) => (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({"ok": true, "bytes": bytes_written})),
+        )
+            .into_response(),
         Err(e) => {
             let status = match &e {
                 noaide_server::files::FileError::PathTraversal => StatusCode::FORBIDDEN,
-                noaide_server::files::FileError::FileTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
-                noaide_server::files::FileError::Io(io_err) if io_err.kind() == std::io::ErrorKind::PermissionDenied => {
+                noaide_server::files::FileError::FileTooLarge { .. } => {
+                    StatusCode::PAYLOAD_TOO_LARGE
+                }
+                noaide_server::files::FileError::Io(io_err)
+                    if io_err.kind() == std::io::ErrorKind::PermissionDenied =>
+                {
                     StatusCode::FORBIDDEN
                 }
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            (status, axum::Json(serde_json::json!({"error": e.to_string()}))).into_response()
+            (
+                status,
+                axum::Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response()
         }
     }
 }
@@ -3473,7 +3562,10 @@ async fn api_add_network_rule(
     axum::Json(rule): axum::Json<noaide_server::proxy::NetworkRule>,
 ) -> (StatusCode, axum::Json<serde_json::Value>) {
     let id = state.proxy.network_rules.add_rule(&session_id, rule);
-    (StatusCode::CREATED, axum::Json(serde_json::json!({ "id": id })))
+    (
+        StatusCode::CREATED,
+        axum::Json(serde_json::json!({ "id": id })),
+    )
 }
 
 /// Delete a network rule by ID.
@@ -3509,7 +3601,10 @@ async fn api_quick_block_domain(
         priority: 50,
     };
     let id = state.proxy.network_rules.add_rule(&session_id, rule);
-    (StatusCode::CREATED, axum::Json(serde_json::json!({ "id": id })))
+    (
+        StatusCode::CREATED,
+        axum::Json(serde_json::json!({ "id": id })),
+    )
 }
 
 // ── Git API Endpoints ────────────────────────────────────────────────────────
@@ -3826,7 +3921,14 @@ async fn api_git_pr_list(
         }
     };
     let output = tokio::process::Command::new("gh")
-        .args(["pr", "list", "--json", "number,title,state,headRefName,url", "--limit", "20"])
+        .args([
+            "pr",
+            "list",
+            "--json",
+            "number,title,state,headRefName,url",
+            "--limit",
+            "20",
+        ])
         .current_dir(&repo_path)
         .output()
         .await;
@@ -3879,11 +3981,17 @@ async fn api_git_pr_create(
     match output {
         Ok(out) if out.status.success() => {
             let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            (axum::http::StatusCode::OK, axum::Json(serde_json::json!({"ok": true, "url": url})))
+            (
+                axum::http::StatusCode::OK,
+                axum::Json(serde_json::json!({"ok": true, "url": url})),
+            )
         }
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"error": stderr.to_string()})))
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                axum::Json(serde_json::json!({"error": stderr.to_string()})),
+            )
         }
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -3914,7 +4022,10 @@ async fn api_git_diff_hunks(
         }
     };
     match noaide_server::git::diff_hunks(&repo_path, &query.path) {
-        Ok(hunks) => (axum::http::StatusCode::OK, axum::Json(serde_json::json!(hunks))),
+        Ok(hunks) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!(hunks)),
+        ),
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(serde_json::json!({"error": e.to_string()})),
@@ -3943,7 +4054,10 @@ async fn api_git_stage_hunk(
         }
     };
     match noaide_server::git::stage_hunk(&repo_path, &body.path, body.hunk_index) {
-        Ok(()) => (axum::http::StatusCode::OK, axum::Json(serde_json::json!({"ok": true}))),
+        Ok(()) => (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!({"ok": true})),
+        ),
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(serde_json::json!({"error": e.to_string()})),
@@ -3968,7 +4082,7 @@ async fn api_serve_file(
     State(state): State<AppState>,
     Query(params): Query<FileServeParams>,
 ) -> axum::response::Response {
-    use axum::http::{header, StatusCode};
+    use axum::http::{StatusCode, header};
     use axum::response::IntoResponse;
 
     let ext_map: &[(&str, &str)] = &[
@@ -4136,7 +4250,10 @@ async fn api_get_team_topology(Path(team_name): Path<String>) -> impl axum::resp
                         .collect();
                     if agent_tasks.is_empty() {
                         // No tasks assigned — check if agent has inbox messages
-                        if inbox_messages.iter().any(|m| m.from == member.name || m.to == member.name) {
+                        if inbox_messages
+                            .iter()
+                            .any(|m| m.from == member.name || m.to == member.name)
+                        {
                             builder.set_status(&member.name, AgentStatus::Idle);
                         }
                         // else: leave as Unknown
@@ -4151,8 +4268,13 @@ async fn api_get_team_topology(Path(team_name): Path<String>) -> impl axum::resp
             }
 
             let topology = builder.build();
-            let agents_active = topology.nodes.iter().filter(|n| n.status == AgentStatus::Active).count();
-            let total_messages: u64 = topology.nodes.iter().map(|n| n.message_count).sum::<u64>() / 2; // counted on both sides
+            let agents_active = topology
+                .nodes
+                .iter()
+                .filter(|n| n.status == AgentStatus::Active)
+                .count();
+            let total_messages: u64 =
+                topology.nodes.iter().map(|n| n.message_count).sum::<u64>() / 2; // counted on both sides
             tracing::info!(
                 team = %team_name,
                 agents_active = agents_active,
@@ -4200,7 +4322,6 @@ async fn api_get_team_tasks(Path(team_name): Path<String>) -> impl axum::respons
         ),
     }
 }
-
 
 /// Check if a PID belongs to a managed Claude Code session.
 ///

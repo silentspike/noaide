@@ -67,14 +67,17 @@ impl CaAuthority {
                 )
             })?;
 
-        let key_pem_bytes =
-            find_file("NOAIDE_CA_KEY", &["./certs/rootCA-key.pem"], "rootCA-key.pem")
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "CA key not found (checked NOAIDE_CA_KEY, ./certs/rootCA-key.pem, \
+        let key_pem_bytes = find_file(
+            "NOAIDE_CA_KEY",
+            &["./certs/rootCA-key.pem"],
+            "rootCA-key.pem",
+        )
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "CA key not found (checked NOAIDE_CA_KEY, ./certs/rootCA-key.pem, \
                          ~/.local/share/mkcert/rootCA-key.pem)"
-                    )
-                })?;
+            )
+        })?;
 
         let cert_pem = std::str::from_utf8(&cert_pem_bytes)?;
         let key_pem = std::str::from_utf8(&key_pem_bytes)?;
@@ -107,8 +110,9 @@ impl CaAuthority {
             loop {
                 interval.tick().await;
                 let now = Instant::now();
-                cache_clone
-                    .retain(|_, cached: &mut CachedCert| now.duration_since(cached.created_at) < CERT_TTL);
+                cache_clone.retain(|_, cached: &mut CachedCert| {
+                    now.duration_since(cached.created_at) < CERT_TTL
+                });
             }
         });
 
@@ -150,12 +154,8 @@ impl CaAuthority {
 
         // 24h validity with small backdate for clock skew
         let now = OffsetDateTime::now_utc();
-        params.not_before = now
-            .checked_sub(Duration::minutes(5))
-            .unwrap_or(now);
-        params.not_after = now
-            .checked_add(Duration::days(1))
-            .unwrap_or(now);
+        params.not_before = now.checked_sub(Duration::minutes(5)).unwrap_or(now);
+        params.not_after = now.checked_add(Duration::days(1)).unwrap_or(now);
 
         let leaf_cert = params.signed_by(&leaf_key, &self.ca_issuer)?;
 
