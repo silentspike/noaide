@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS api_requests (
     request_headers TEXT,
     response_headers TEXT,
     request_size INTEGER,
-    response_size INTEGER
+    response_size INTEGER,
+    category TEXT
 )";
 
 // Standalone FTS5 table (no content= since Limbo lacks triggers)

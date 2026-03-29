@@ -39,6 +39,7 @@ export const ADRTable: Component = () => {
               {(adr) => (
                 <>
                   <tr
+                    data-testid={`adr-row-${adr.id}`}
                     onClick={() => setExpandedId(expandedId() === adr.id ? null : adr.id)}
                     style={{
                       cursor: "pointer",
@@ -50,7 +51,7 @@ export const ADRTable: Component = () => {
                     </td>
                     <td>{adr.title}</td>
                     <td>
-                      <span class={`badge ${STATUS_BADGE[adr.status] ?? "badge-peach"}`}>
+                      <span class={`badge ${STATUS_BADGE[adr.status] ?? "badge-peach"}`} data-testid={`adr-status-${adr.id}`}>
                         {adr.status}
                       </span>
                     </td>

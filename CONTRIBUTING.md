@@ -41,9 +41,9 @@ cargo audit
 
 # Frontend
 cd frontend
-npm run lint
-npm test
-npm audit
+pnpm lint
+pnpm test
+pnpm audit
 
 # WASM
 wasm-pack build wasm/jsonl-parser --target web

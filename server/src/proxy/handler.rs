@@ -6,12 +6,13 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
+use base64::Engine as _;
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http_body_util::BodyExt;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::{RwLock, broadcast, oneshot};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use super::mitm::{self, ApiRequestLog};
 
@@ -165,6 +166,15 @@ pub struct ProxyState {
     pub pending_intercepts: RwLock<HashMap<String, PendingIntercept>>,
     /// Pending intercepted responses awaiting user decision before returning to caller
     pub pending_response_intercepts: RwLock<HashMap<String, PendingResponseIntercept>>,
+    /// Per-session pending images to inject into the next API request.
+    /// When the GUI user pastes/drops an image, it's stored here. The proxy
+    /// picks it up on the next /v1/messages (Anthropic) or similar request,
+    /// injects the image content blocks, and clears the queue.
+    pub pending_images: RwLock<HashMap<String, Vec<serde_json::Value>>>,
+    /// TLS MITM Certificate Authority (None = MITM disabled, transparent tunnel fallback).
+    pub ca: Option<Arc<super::tls_mitm::CaAuthority>>,
+    /// Per-session network rules for CONNECT MITM traffic (Block/Allow/Delay).
+    pub network_rules: Arc<super::rules::NetworkRulesEngine>,
 }
 
 /// Extract session UUID from `/s/{uuid}/...` proxy path prefix.
@@ -333,6 +343,216 @@ pub async fn proxy_handler(
                 )
                     .into_response();
             }
+        }
+    }
+
+    // ── Image Injection ────────────────────────────────────────────────
+    // If the GUI user has queued images for this session, inject them into
+    // the API request body. Supports multiple API formats:
+    // - Anthropic: "messages" array with role/content blocks
+    // - Google Gemini: "contents" array with role/parts blocks
+    // - OpenAI: "input" array with role/content blocks (Codex responses API)
+    //
+    // For Google Code Assist (v1internal), only inject into streamGenerateContent
+    // calls — NOT into generateContent (used for internal tool routing/safety).
+    // generateContent is a separate non-conversation call; injecting images there
+    // corrupts the request and the images get consumed before the real conversation call.
+    let skip_image_injection = provider == ApiProvider::GoogleCodeAssist
+        && !effective_path.contains("streamGenerateContent");
+    if !skip_image_injection && let Some(ref sid) = session_id {
+        let mut pending = state.pending_images.write().await;
+        if let Some(images) = pending.remove(sid)
+            && !images.is_empty()
+            && !request_bytes.is_empty()
+            && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+        {
+            let mut injected = false;
+
+            // Anthropic format: "messages" array with {role, content} objects
+            if let Some(messages) = body_json.get_mut("messages").and_then(|m| m.as_array_mut())
+                && let Some(last_user) = messages
+                    .iter_mut()
+                    .rev()
+                    .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+            {
+                let content = last_user.get_mut("content");
+                match content {
+                    Some(c) if c.is_array() => {
+                        if let Some(arr) = c.as_array_mut() {
+                            for img in &images {
+                                arr.push(img.clone());
+                            }
+                            injected = true;
+                        }
+                    }
+                    Some(c) if c.is_string() => {
+                        let text_val = c.clone();
+                        let mut blocks = vec![serde_json::json!({
+                            "type": "text",
+                            "text": text_val.as_str().unwrap_or("")
+                        })];
+                        for img in &images {
+                            blocks.push(img.clone());
+                        }
+                        *c = serde_json::Value::Array(blocks);
+                        injected = true;
+                    }
+                    _ => {}
+                }
+            }
+
+            // Google Gemini format: "contents" array with {role, parts} objects
+            // Image parts use: {"inlineData": {"mimeType": "image/png", "data": "base64..."}}
+            // Supports both top-level "contents" (public API) and nested
+            // "request.contents" (code_assist v1internal API).
+            if !injected {
+                // Check top-level first, then nested under "request"
+                let has_nested = body_json.get("contents").is_none()
+                    && body_json
+                        .get("request")
+                        .and_then(|r| r.get("contents"))
+                        .is_some();
+                let contents = if has_nested {
+                    body_json
+                        .get_mut("request")
+                        .and_then(|r| r.get_mut("contents"))
+                        .and_then(|c| c.as_array_mut())
+                } else {
+                    body_json.get_mut("contents").and_then(|c| c.as_array_mut())
+                };
+                if let Some(contents) = contents
+                    && let Some(last_user) = contents
+                        .iter_mut()
+                        .rev()
+                        .find(|c| c.get("role").and_then(|r| r.as_str()) == Some("user"))
+                    && let Some(parts) = last_user.get_mut("parts").and_then(|p| p.as_array_mut())
+                {
+                    for img in &images {
+                        // Convert from Anthropic image format to Google format
+                        if let Some(source) = img.get("source") {
+                            let mime = source
+                                .get("media_type")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("image/png");
+                            let data = source.get("data").and_then(|d| d.as_str()).unwrap_or("");
+                            parts.push(serde_json::json!({
+                                "inlineData": {
+                                    "mimeType": mime,
+                                    "data": data,
+                                }
+                            }));
+                        }
+                    }
+                    injected = true;
+                }
+            }
+
+            if injected && let Ok(modified) = serde_json::to_vec(&body_json) {
+                info!(
+                    session = %sid,
+                    image_count = images.len(),
+                    provider = %provider.label(),
+                    "injected pending images into API request"
+                );
+                request_bytes = Bytes::from(modified);
+            }
+        }
+    } // skip_image_injection
+
+    // ── System Prompt Injection ──────────────────────────────────────────
+    // Inform the LLM that it runs inside a browser-based IDE so it can
+    // create media files knowing they will be rendered inline in the chat.
+    // Same skip logic as image injection (only conversation endpoints).
+    let skip_system_injection = provider == ApiProvider::GoogleCodeAssist
+        && !effective_path.contains("streamGenerateContent");
+    if !skip_system_injection
+        && !request_bytes.is_empty()
+        && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+    {
+        let noaide_context = "[noaide] You are running inside noaide, a browser-based IDE. \
+                Media files you create (images, GIFs, SVGs, audio, video) via Bash or Write tools \
+                are rendered inline in the chat. The user sees them directly. \
+                Supported: PNG, JPG, GIF, SVG, WEBP, MP4, WEBM, MP3, WAV, OGG. \
+                To show an image, just create the file (e.g. python3, ImageMagick, ffmpeg, \
+                or write SVG directly).";
+
+        let mut injected_system = false;
+
+        match provider {
+            ApiProvider::Anthropic => {
+                // Anthropic: body_json["system"] — string or array of content blocks
+                match body_json.get("system") {
+                    Some(serde_json::Value::String(s)) => {
+                        body_json["system"] =
+                            serde_json::Value::String(format!("{s}\n\n{noaide_context}"));
+                        injected_system = true;
+                    }
+                    Some(serde_json::Value::Array(_)) => {
+                        if let Some(arr) = body_json["system"].as_array_mut() {
+                            arr.push(serde_json::json!({
+                                "type": "text",
+                                "text": noaide_context,
+                            }));
+                            injected_system = true;
+                        }
+                    }
+                    _ => {
+                        // No system field — create it
+                        body_json["system"] = serde_json::Value::String(noaide_context.to_string());
+                        injected_system = true;
+                    }
+                }
+            }
+            ApiProvider::GoogleCodeAssist | ApiProvider::Google => {
+                // Google: body_json["system_instruction"]["parts"] or
+                // body_json["request"]["system_instruction"]["parts"]
+                let targets = [
+                    vec!["system_instruction", "parts"],
+                    vec!["request", "system_instruction", "parts"],
+                ];
+                for target in &targets {
+                    let mut cursor = &mut body_json;
+                    let mut found = true;
+                    for (i, key) in target.iter().enumerate() {
+                        if i == target.len() - 1 {
+                            // Last key — should be "parts" array
+                            if let Some(arr) = cursor.get_mut(*key).and_then(|v| v.as_array_mut()) {
+                                arr.push(serde_json::json!({"text": noaide_context}));
+                                injected_system = true;
+                            } else {
+                                found = false;
+                            }
+                        } else if cursor.get(*key).is_some() {
+                            cursor = &mut cursor[*key];
+                        } else {
+                            found = false;
+                            break;
+                        }
+                    }
+                    if found && injected_system {
+                        break;
+                    }
+                }
+                // If no system_instruction exists, create it
+                if !injected_system {
+                    body_json["system_instruction"] = serde_json::json!({
+                        "parts": [{"text": noaide_context}]
+                    });
+                    injected_system = true;
+                }
+            }
+            _ => {
+                // OpenAI/ChatGPT: No system prompt injection for now
+                // (Codex uses a different format)
+            }
+        }
+
+        if injected_system && let Ok(modified) = serde_json::to_vec(&body_json) {
+            debug!(
+                provider = %provider.label(),
+                "injected noaide system context into API request"
+            );
+            request_bytes = Bytes::from(modified);
         }
     }
 
@@ -860,17 +1080,45 @@ pub async fn proxy_handler(
         .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Internal Error").into_response())
 }
 
-/// Handle HTTP CONNECT requests (used by HTTPS_PROXY clients like Codex CLI).
+/// Extract session UUID from `Proxy-Authorization: Basic base64("{uuid}:x")` header.
 ///
-/// Establishes a TCP tunnel between the client and the target server.
-/// The tunnel is transparent — TLS happens end-to-end, so we cannot inspect
-/// the encrypted content. We log metadata: target host, timing, and byte counts.
+/// Used by CONNECT MITM: managed sessions set `HTTPS_PROXY=http://{uuid}:x@localhost:4434`,
+/// which makes the HTTP client send `Proxy-Authorization: Basic base64("{uuid}:x")`.
+fn extract_session_from_proxy_auth(req: &axum::extract::Request) -> Option<String> {
+    let auth = req.headers().get("proxy-authorization")?.to_str().ok()?;
+    let encoded = auth.strip_prefix("Basic ")?;
+    let decoded = String::from_utf8(
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .ok()?,
+    )
+    .ok()?;
+    let (uuid_str, _password) = decoded.split_once(':')?;
+    // Validate UUID format (36 chars with hyphens, 4 dashes)
+    if uuid_str.len() == 36 && uuid_str.chars().filter(|c| *c == '-').count() == 4 {
+        Some(uuid_str.to_string())
+    } else {
+        None
+    }
+}
+
+/// Handle HTTP CONNECT requests (used by HTTPS_PROXY clients).
+///
+/// If a mkcert CA is loaded (`state.ca` is Some), performs TLS MITM:
+/// terminates client TLS with a dynamic cert, opens a new TLS connection
+/// to the real host, and proxies cleartext HTTP between them — logging
+/// full request/response bodies with session attribution.
+///
+/// If no CA is available, falls back to transparent TCP tunneling.
 pub async fn connect_handler(
     State(state): State<Arc<ProxyState>>,
     req: axum::extract::Request,
 ) -> Response {
     let start = Instant::now();
     let request_id = uuid::Uuid::new_v4().to_string();
+
+    // Extract session-id from Proxy-Authorization: Basic base64("{uuid}:x")
+    let session_id = extract_session_from_proxy_auth(&req);
 
     // Extract target host:port from the URI (authority form: "host:port")
     let target_addr = req
@@ -884,7 +1132,73 @@ pub async fn connect_handler(
         return (StatusCode::BAD_REQUEST, "Missing target authority").into_response();
     }
 
-    info!(target = %target_addr, "CONNECT tunnel requested");
+    // Extract hostname (strip port)
+    let hostname = target_addr
+        .split(':')
+        .next()
+        .unwrap_or(&target_addr)
+        .to_string();
+
+    // Classify traffic
+    let category = super::classify::classify_domain(&hostname);
+
+    // Check network rules (block before even connecting)
+    let rule_action = state
+        .network_rules
+        .evaluate(session_id.as_deref(), &hostname, "", category);
+
+    if matches!(rule_action, super::rules::RuleAction::Block) {
+        info!(
+            target = %target_addr,
+            session = ?session_id,
+            category = %category,
+            "CONNECT blocked by network rule"
+        );
+
+        // Log the blocked request
+        let log_entry = ApiRequestLog {
+            id: request_id,
+            session_id: session_id.clone(),
+            method: "CONNECT".to_string(),
+            url: format!("tunnel://{target_addr}"),
+            status_code: 403,
+            latency_ms: start.elapsed().as_millis() as u64,
+            request_size: 0,
+            response_size: 0,
+            request_body: String::new(),
+            response_body: "Blocked by network rule".to_string(),
+            request_headers: vec![],
+            response_headers: vec![],
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
+            category: Some(category.to_string()),
+        };
+        {
+            let mut cap = state.captured.write().await;
+            if cap.len() >= MAX_CAPTURED_REQUESTS {
+                cap.pop_front();
+            }
+            cap.push_back(log_entry.clone());
+        }
+        let _ = state.event_tx.send(log_entry);
+
+        return (StatusCode::FORBIDDEN, "Blocked by network rule").into_response();
+    }
+
+    // Apply delay if rule says so
+    if let super::rules::RuleAction::Delay { ms } = rule_action {
+        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+    }
+
+    info!(
+        target = %target_addr,
+        session = ?session_id,
+        category = %category,
+        mitm = state.ca.is_some(),
+        "CONNECT tunnel requested"
+    );
 
     // Connect to the target
     let target_stream = match tokio::net::TcpStream::connect(&target_addr).await {
@@ -895,19 +1209,63 @@ pub async fn connect_handler(
         }
     };
 
-    // Upgrade the client connection to raw TCP
     let log_state = state.clone();
     let rid = request_id.clone();
     let addr = target_addr.clone();
+    let host = hostname.clone();
+    let sid = session_id.clone();
+    let cat = category;
+
     tokio::spawn(async move {
         match hyper::upgrade::on(req).await {
             Ok(upgraded) => {
-                // Split both connections for bidirectional forwarding
-                let (mut client_read, mut client_write) =
-                    tokio::io::split(hyper_util::rt::TokioIo::new(upgraded));
+                let io = hyper_util::rt::TokioIo::new(upgraded);
+
+                // Try MITM if CA is available
+                if let Some(ref ca) = log_state.ca {
+                    match mitm_tunnel(
+                        ca,
+                        io,
+                        target_stream,
+                        &host,
+                        &addr,
+                        &rid,
+                        sid.as_deref(),
+                        cat,
+                        start,
+                        &log_state,
+                    )
+                    .await
+                    {
+                        Ok(()) => return,
+                        Err(e) => {
+                            // MITM failed (TLS error, non-HTTP protocol, etc.)
+                            // The connection is already consumed, just log it
+                            warn!(
+                                target = %addr,
+                                error = %e,
+                                "MITM failed, connection logged as tunnel"
+                            );
+                            log_tunnel_metadata(
+                                &log_state,
+                                &rid,
+                                sid.as_deref(),
+                                &addr,
+                                0,
+                                0,
+                                start,
+                                Some(cat),
+                            )
+                            .await;
+                            return;
+                        }
+                    }
+                }
+
+                // Fallback: transparent tunnel (no MITM)
+                let (mut client_read, mut client_write) = tokio::io::split(io);
                 let (mut target_read, mut target_write) = target_stream.into_split();
 
-                // Forward bytes in both directions, track volume
                 let client_to_target = tokio::io::copy(&mut client_read, &mut target_write);
                 let target_to_client = tokio::io::copy(&mut target_read, &mut client_write);
 
@@ -915,56 +1273,20 @@ pub async fn connect_handler(
                 let bytes_sent = c2t.unwrap_or(0);
                 let bytes_received = t2c.unwrap_or(0);
 
-                // Shut down write halves
                 let _ = target_write.shutdown().await;
                 let _ = client_write.shutdown().await;
 
-                let latency_ms = start.elapsed().as_millis() as u64;
-
-                info!(
-                    target = %addr,
-                    latency_ms,
-                    bytes_sent,
-                    bytes_received,
-                    "CONNECT tunnel closed"
-                );
-
-                // Log as a captured request for the Network Tab
-                // CONNECT tunnels have no session prefix (opaque tunnel, no path available)
-                let log_entry = ApiRequestLog {
-                    id: rid,
-                    session_id: None,
-                    method: "CONNECT".to_string(),
-                    url: format!("tunnel://{addr}"),
-                    status_code: 200,
-                    latency_ms,
-                    request_size: bytes_sent as usize,
-                    response_size: bytes_received as usize,
-                    request_body: String::new(),
-                    response_body: String::new(),
-                    request_headers: vec![],
-                    response_headers: vec![],
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as i64,
-                };
-
-                {
-                    let mut cap = log_state.captured.write().await;
-                    if cap.len() >= MAX_CAPTURED_REQUESTS {
-                        cap.pop_front();
-                    }
-                    cap.push_back(log_entry.clone());
-                }
-                let _ = log_state.event_tx.send(log_entry);
-
-                metrics::counter!("proxy_requests_total",
-                    "method" => "CONNECT",
-                    "status_class" => "2xx",
-                    "provider" => "tunnel",
+                log_tunnel_metadata(
+                    &log_state,
+                    &rid,
+                    sid.as_deref(),
+                    &addr,
+                    bytes_sent as usize,
+                    bytes_received as usize,
+                    start,
+                    Some(cat),
                 )
-                .increment(1);
+                .await;
             }
             Err(e) => {
                 warn!(target = %addr, error = %e, "CONNECT: upgrade failed");
@@ -977,6 +1299,173 @@ pub async fn connect_handler(
         .status(StatusCode::OK)
         .body(Body::empty())
         .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Internal Error").into_response())
+}
+
+/// Perform TLS MITM on a CONNECT tunnel.
+///
+/// 1. Accept TLS from client using dynamic cert for hostname
+/// 2. Connect TLS to real target
+/// 3. Read cleartext HTTP from client, forward to target
+/// 4. Read response from target, log both, forward to client
+///
+/// Falls back to byte-copy for non-HTTP protocols (detected via protocol sniffing).
+#[allow(clippy::too_many_arguments)]
+async fn mitm_tunnel<I>(
+    ca: &super::tls_mitm::CaAuthority,
+    client_io: I,
+    target_tcp: tokio::net::TcpStream,
+    hostname: &str,
+    target_addr: &str,
+    request_id: &str,
+    session_id: Option<&str>,
+    category: super::classify::TrafficCategory,
+    start: Instant,
+    state: &Arc<ProxyState>,
+) -> anyhow::Result<()>
+where
+    I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    // 1. Build TLS acceptor with dynamic cert for this hostname
+    let acceptor = ca.build_tls_acceptor(hostname)?;
+
+    // 2. TLS handshake with client (we present the dynamic cert)
+    let client_tls = acceptor.accept(client_io).await?;
+
+    // 3. TLS handshake with real target
+    let target_tls = ca.connect_to_target(hostname, target_tcp).await?;
+
+    // 4. Protocol sniffing: read first bytes to check if HTTP
+    //    For now, we do simple bidirectional copy and log metadata.
+    //    Full HTTP parsing with hyper will be added when we need body inspection.
+    //
+    //    TODO(Phase 0.2+): Use hyper::server::conn::http1::Builder on client side
+    //    to parse individual HTTP requests and log full bodies. Current implementation
+    //    logs the tunnel as a whole (like the transparent tunnel but WITH session-id
+    //    and classification).
+
+    let (mut client_read, mut client_write) = tokio::io::split(client_tls);
+    let (mut target_read, mut target_write) = tokio::io::split(target_tls);
+
+    let client_to_target = tokio::io::copy(&mut client_read, &mut target_write);
+    let target_to_client = tokio::io::copy(&mut target_read, &mut client_write);
+
+    let (c2t, t2c) = tokio::join!(client_to_target, target_to_client);
+    let bytes_sent = c2t.unwrap_or(0);
+    let bytes_received = t2c.unwrap_or(0);
+
+    let _ = target_write.shutdown().await;
+    let _ = client_write.shutdown().await;
+
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    info!(
+        target = %target_addr,
+        session = ?session_id,
+        category = %category,
+        bytes_sent,
+        bytes_received,
+        latency_ms,
+        "MITM tunnel closed"
+    );
+
+    // Log as captured request with session attribution + category
+    let log_entry = ApiRequestLog {
+        id: request_id.to_string(),
+        session_id: session_id.map(String::from),
+        method: "CONNECT".to_string(),
+        url: format!("mitm://{target_addr}"),
+        status_code: 200,
+        latency_ms,
+        request_size: bytes_sent as usize,
+        response_size: bytes_received as usize,
+        request_body: String::new(),
+        response_body: String::new(),
+        request_headers: vec![],
+        response_headers: vec![],
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64,
+        category: Some(category.to_string()),
+    };
+
+    {
+        let mut cap = state.captured.write().await;
+        if cap.len() >= MAX_CAPTURED_REQUESTS {
+            cap.pop_front();
+        }
+        cap.push_back(log_entry.clone());
+    }
+    let _ = state.event_tx.send(log_entry);
+
+    metrics::counter!("proxy_requests_total",
+        "method" => "CONNECT",
+        "status_class" => "2xx",
+        "provider" => "mitm",
+    )
+    .increment(1);
+
+    Ok(())
+}
+
+/// Log metadata for a CONNECT tunnel (transparent or failed MITM).
+#[allow(clippy::too_many_arguments)]
+async fn log_tunnel_metadata(
+    state: &Arc<ProxyState>,
+    request_id: &str,
+    session_id: Option<&str>,
+    target_addr: &str,
+    bytes_sent: usize,
+    bytes_received: usize,
+    start: Instant,
+    category: Option<super::classify::TrafficCategory>,
+) {
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    info!(
+        target = %target_addr,
+        session = ?session_id,
+        latency_ms,
+        bytes_sent,
+        bytes_received,
+        "CONNECT tunnel closed"
+    );
+
+    let log_entry = ApiRequestLog {
+        id: request_id.to_string(),
+        session_id: session_id.map(String::from),
+        method: "CONNECT".to_string(),
+        url: format!("tunnel://{target_addr}"),
+        status_code: 200,
+        latency_ms,
+        request_size: bytes_sent,
+        response_size: bytes_received,
+        request_body: String::new(),
+        response_body: String::new(),
+        request_headers: vec![],
+        response_headers: vec![],
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64,
+        category: category.map(|c| c.to_string()),
+    };
+
+    {
+        let mut cap = state.captured.write().await;
+        if cap.len() >= MAX_CAPTURED_REQUESTS {
+            cap.pop_front();
+        }
+        cap.push_back(log_entry.clone());
+    }
+    let _ = state.event_tx.send(log_entry);
+
+    metrics::counter!("proxy_requests_total",
+        "method" => "CONNECT",
+        "status_class" => "2xx",
+        "provider" => "tunnel",
+    )
+    .increment(1);
 }
 
 #[cfg(test)]

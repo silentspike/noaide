@@ -2,7 +2,7 @@
 // DependencyGraph — SVG DAG with dagre auto-layout
 // ============================================================
 
-import { type Component, createMemo, For } from "solid-js";
+import { type Component, createMemo, createSignal, For, Show } from "solid-js";
 import { usePlan } from "../stores/planProvider";
 import dagre from "@dagrejs/dagre";
 
@@ -35,6 +35,61 @@ interface LayoutEdge {
 
 export const DependencyGraph: Component = () => {
   const store = usePlan();
+  const [selectedNode, setSelectedNode] = createSignal<string | null>(null);
+  const [tooltip, setTooltip] = createSignal<{ x: number; y: number; node: LayoutNode } | null>(null);
+
+  // Compute downstream (affected) nodes from a given start node
+  const downstreamNodes = createMemo(() => {
+    const sel = selectedNode();
+    if (!sel) return new Set<string>();
+    const wps = store.plan.work_packages ?? [];
+    const depGraph = store.plan.dependency_graph;
+
+    // Build adjacency list (from → to[])
+    const adj = new Map<string, string[]>();
+    if (depGraph?.edges?.length) {
+      for (const e of depGraph.edges) {
+        const list = adj.get(e.from) ?? [];
+        list.push(e.to);
+        adj.set(e.from, list);
+      }
+    } else {
+      for (const wp of wps) {
+        for (const dep of wp.dependencies) {
+          const list = adj.get(dep) ?? [];
+          list.push(wp.id);
+          adj.set(dep, list);
+        }
+      }
+    }
+
+    // BFS from selected node
+    const visited = new Set<string>([sel]);
+    const queue = [sel];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const next of adj.get(current) ?? []) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    return visited;
+  });
+
+  const isHighlighted = (nodeId: string) => {
+    const sel = selectedNode();
+    if (!sel) return true; // nothing selected → all visible
+    return downstreamNodes().has(nodeId);
+  };
+
+  const isEdgeHighlighted = (from: string, to: string) => {
+    const sel = selectedNode();
+    if (!sel) return true;
+    const ds = downstreamNodes();
+    return ds.has(from) && ds.has(to);
+  };
 
   const layout = createMemo(() => {
     const wps = store.plan.work_packages ?? [];
@@ -129,6 +184,7 @@ export const DependencyGraph: Component = () => {
       <div class="section-body">
         <div style={{ overflow: "auto", background: "var(--bg-primary)", "border-radius": "var(--radius)" }}>
           <svg
+            data-testid="dependency-graph-svg"
             viewBox={`0 0 ${layout().svgWidth} ${layout().svgHeight}`}
             width={layout().svgWidth}
             height={layout().svgHeight}
@@ -169,6 +225,8 @@ export const DependencyGraph: Component = () => {
                     stroke={edge.isCritical ? "var(--red)" : "var(--surface2)"}
                     stroke-width={edge.isCritical ? 2.5 : 1.5}
                     marker-end={edge.isCritical ? "url(#dep-arrow-critical)" : "url(#dep-arrow)"}
+                    opacity={isEdgeHighlighted(edge.from, edge.to) ? 1 : 0.15}
+                    style={{ transition: "opacity 200ms ease" }}
                   />
                 );
               }}
@@ -179,7 +237,31 @@ export const DependencyGraph: Component = () => {
               {(node) => {
                 const color = STATUS_COLORS[node.status] ?? "var(--overlay0)";
                 return (
-                  <g style={{ cursor: "pointer" }}>
+                  <g
+                    data-testid={`dep-node-${node.id}`}
+                    style={{ cursor: "pointer", transition: "opacity 200ms ease" }}
+                    opacity={isHighlighted(node.id) ? 1 : 0.2}
+                    onClick={() => {
+                      setSelectedNode((prev) => prev === node.id ? null : node.id);
+                      setTooltip(null);
+                    }}
+                    onMouseEnter={() => setTooltip({ x: node.x, y: node.y - node.height / 2 - 8, node })}
+                    onMouseLeave={() => setTooltip(null)}
+                  >
+                    {/* Selection ring */}
+                    {selectedNode() === node.id && (
+                      <rect
+                        x={node.x - node.width / 2 - 4}
+                        y={node.y - node.height / 2 - 4}
+                        width={node.width + 8}
+                        height={node.height + 8}
+                        rx="8"
+                        fill="none"
+                        stroke="var(--ctp-blue, var(--blue))"
+                        stroke-width="2.5"
+                      />
+                    )}
+
                     {/* Critical path highlight */}
                     {node.isCritical && (
                       <rect
@@ -237,6 +319,42 @@ export const DependencyGraph: Component = () => {
                 );
               }}
             </For>
+
+            {/* Tooltip */}
+            <Show when={tooltip()}>
+              {(t) => {
+                const n = t().node;
+                const deps = (store.plan.work_packages ?? [])
+                  .find((wp) => wp.id === n.id)?.dependencies ?? [];
+                return (
+                  <foreignObject
+                    x={t().x - 90}
+                    y={t().y - 60}
+                    width="180"
+                    height="56"
+                    style={{ "pointer-events": "none" }}
+                  >
+                    <div style={{
+                      background: "var(--ctp-surface0, var(--bg-card))",
+                      border: "1px solid var(--ctp-surface2, var(--surface2))",
+                      "border-radius": "6px",
+                      padding: "6px 8px",
+                      "font-size": "10px",
+                      color: "var(--ctp-text, var(--text-primary))",
+                      "box-shadow": "0 4px 12px rgba(0,0,0,0.4)",
+                      "white-space": "nowrap",
+                      overflow: "hidden",
+                      "text-overflow": "ellipsis",
+                    }}>
+                      <div style={{ "font-weight": "700" }}>{n.id}: {n.title}</div>
+                      <div style={{ color: "var(--ctp-subtext0, var(--text-muted))", "font-size": "9px" }}>
+                        {n.status.replace("_", " ")} {deps.length > 0 ? `| deps: ${deps.join(", ")}` : ""}
+                      </div>
+                    </div>
+                  </foreignObject>
+                );
+              }}
+            </Show>
           </svg>
         </div>
 

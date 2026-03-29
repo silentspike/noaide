@@ -6,6 +6,230 @@ import SessionCard from "./SessionCard";
 import SessionStatus from "./SessionStatus";
 import ThemeSlider from "./ThemeSlider";
 import FontSlider from "./FontSlider";
+import VirtualScroller from "../chat/VirtualScroller";
+
+// ── Sort/Group types ──
+type SortBy = "activity" | "name" | "messages" | "started" | "cost";
+type GroupBy = "none" | "cliType" | "status" | "project";
+
+const SORT_OPTIONS: { value: SortBy; label: string }[] = [
+  { value: "activity", label: "Activity" },
+  { value: "name", label: "Name" },
+  { value: "messages", label: "Messages" },
+  { value: "started", label: "Started" },
+  { value: "cost", label: "Cost" },
+];
+
+const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "cliType", label: "CLI Type" },
+  { value: "status", label: "Status" },
+  { value: "project", label: "Project" },
+];
+
+// ── Context Menu ──
+interface ContextMenuState {
+  sessionId: string;
+  sessionName: string;
+  x: number;
+  y: number;
+}
+
+function SessionContextMenu(props: {
+  state: ContextMenuState;
+  onClose: () => void;
+  onPin: (id: string) => void;
+  onArchive: (id: string) => void;
+  onDelete: (id: string, name: string) => void;
+  onAddTag: (id: string, tag: string) => void;
+  isPinned: boolean;
+}) {
+  let menuRef: HTMLDivElement | undefined;
+
+  const handleClickOutside = (e: MouseEvent) => {
+    if (menuRef && !menuRef.contains(e.target as Node)) props.onClose();
+  };
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === "Escape") props.onClose();
+  };
+  const handleScroll = () => props.onClose();
+
+  onMount(() => {
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("scroll", handleScroll, true);
+  });
+  onCleanup(() => {
+    document.removeEventListener("mousedown", handleClickOutside);
+    document.removeEventListener("keydown", handleEscape);
+    document.removeEventListener("scroll", handleScroll, true);
+  });
+
+  const itemStyle = {
+    display: "block",
+    width: "100%",
+    padding: "6px 14px",
+    background: "none",
+    border: "none",
+    color: "var(--ctp-text)",
+    "font-size": "12px",
+    "font-family": "var(--font-mono)",
+    cursor: "pointer",
+    "text-align": "left" as const,
+  };
+
+  return (
+    <div
+      ref={menuRef}
+      data-testid="context-menu"
+      style={{
+        position: "fixed",
+        left: `${props.state.x}px`,
+        top: `${props.state.y}px`,
+        "z-index": "9999",
+        background: "var(--ctp-surface0)",
+        "backdrop-filter": "blur(12px)",
+        "-webkit-backdrop-filter": "blur(12px)",
+        border: "1px solid var(--ctp-surface1)",
+        "border-radius": "8px",
+        "box-shadow": "0 4px 16px rgba(0,0,0,0.4)",
+        "min-width": "160px",
+        padding: "4px 0",
+        "overflow": "hidden",
+      }}
+    >
+      <button
+        data-testid="context-menu-pin"
+        style={itemStyle}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--ctp-surface1)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+        onClick={() => { props.onPin(props.state.sessionId); props.onClose(); }}
+      >
+        {props.isPinned ? "\u2605 Unpin" : "\u2606 Pin"}
+      </button>
+      <button
+        data-testid="context-menu-copy-id"
+        style={itemStyle}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--ctp-surface1)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+        onClick={() => { navigator.clipboard.writeText(props.state.sessionId); props.onClose(); }}
+      >
+        Copy Session ID
+      </button>
+      <button
+        data-testid="context-menu-archive"
+        style={itemStyle}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--ctp-surface1)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+        onClick={() => { props.onArchive(props.state.sessionId); props.onClose(); }}
+      >
+        Archive
+      </button>
+      <div style={{ padding: "4px 14px", display: "flex", gap: "4px" }}>
+        <input
+          data-testid="context-menu-tag-input"
+          type="text"
+          placeholder="Add tag..."
+          style={{
+            flex: "1",
+            padding: "3px 6px",
+            background: "var(--ctp-base)",
+            border: "1px solid var(--ctp-surface2)",
+            "border-radius": "3px",
+            color: "var(--ctp-text)",
+            "font-size": "11px",
+            "font-family": "var(--font-mono)",
+            outline: "none",
+            "min-width": "0",
+          }}
+          onKeyDown={(e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              const val = (e.currentTarget as HTMLInputElement).value.trim();
+              if (val) {
+                props.onAddTag(props.state.sessionId, val);
+                (e.currentTarget as HTMLInputElement).value = "";
+              }
+            }
+            e.stopPropagation();
+          }}
+        />
+      </div>
+      <div style={{ height: "1px", background: "var(--ctp-surface2)", margin: "4px 0" }} />
+      <button
+        data-testid="context-menu-delete"
+        style={{ ...itemStyle, color: "var(--ctp-red)" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(243,139,168,0.1)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+        onClick={() => { props.onDelete(props.state.sessionId, props.state.sessionName); props.onClose(); }}
+      >
+        Delete
+      </button>
+    </div>
+  );
+}
+
+function DeleteConfirmDialog(props: {
+  sessionName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      data-testid="delete-confirm-dialog"
+      style={{
+        position: "fixed",
+        inset: "0",
+        "z-index": "10000",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        background: "rgba(0,0,0,0.5)",
+        "backdrop-filter": "blur(4px)",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) props.onCancel(); }}
+    >
+      <div style={{
+        background: "var(--ctp-base)",
+        border: "1px solid var(--ctp-surface1)",
+        "border-radius": "12px",
+        padding: "20px",
+        "min-width": "300px",
+        "max-width": "400px",
+        "box-shadow": "0 8px 32px rgba(0,0,0,0.5)",
+      }}>
+        <h3 style={{ margin: "0 0 12px", color: "var(--ctp-red)", "font-size": "14px" }}>Delete Session</h3>
+        <p style={{ margin: "0 0 16px", color: "var(--ctp-subtext0)", "font-size": "12px", "line-height": "1.5" }}>
+          Delete session <strong style={{ color: "var(--ctp-text)" }}>{props.sessionName}</strong>?
+          This deletes all JSONL data permanently.
+        </p>
+        <div style={{ display: "flex", gap: "8px", "justify-content": "flex-end" }}>
+          <button
+            data-testid="delete-confirm-no"
+            onClick={props.onCancel}
+            style={{
+              padding: "6px 16px", background: "var(--ctp-surface0)", color: "var(--ctp-text)",
+              border: "1px solid var(--ctp-surface1)", "border-radius": "6px", cursor: "pointer",
+              "font-size": "12px",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="delete-confirm-yes"
+            onClick={props.onConfirm}
+            style={{
+              padding: "6px 16px", background: "var(--ctp-red)", color: "var(--ctp-base)",
+              border: "none", "border-radius": "6px", cursor: "pointer", "font-weight": "600",
+              "font-size": "12px",
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function orbStateForSession(session: Session): OrbState {
   switch (session.status) {
@@ -80,6 +304,85 @@ export default function SessionList() {
   const [showCliPicker, setShowCliPicker] = createSignal(false);
   const [spawning, setSpawning] = createSignal(false);
   const [memUsage, setMemUsage] = createSignal("");
+  const [workingDir, setWorkingDir] = createSignal("/work");
+  const [browseDirs, setBrowseDirs] = createSignal<{ name: string; path: string }[]>([]);
+  const [showBrowser, setShowBrowser] = createSignal(false);
+  const [browseLoading, setBrowseLoading] = createSignal(false);
+
+  // ── Sort / Group / Archive ──
+  const [sortBy, setSortBy] = createSignal<SortBy>(
+    (localStorage.getItem("noaide-sort-pref") as SortBy) || "activity"
+  );
+  const [groupBy, setGroupBy] = createSignal<GroupBy>(
+    (localStorage.getItem("noaide-group-pref") as GroupBy) || "none"
+  );
+  const [showArchived, setShowArchived] = createSignal(
+    localStorage.getItem("noaide-show-archived") === "true"
+  );
+
+  // ── Tags ──
+  const [sessionTags, setSessionTags] = createSignal<Map<string, string[]>>(
+    (() => {
+      try {
+        const raw = localStorage.getItem("noaide-session-tags");
+        if (raw) return new Map(JSON.parse(raw));
+      } catch { /* ignore */ }
+      return new Map<string, string[]>();
+    })()
+  );
+  function addTag(sessionId: string, tag: string) {
+    const next = new Map(sessionTags());
+    const tags = next.get(sessionId) || [];
+    if (!tags.includes(tag)) {
+      next.set(sessionId, [...tags, tag]);
+      setSessionTags(next);
+      localStorage.setItem("noaide-session-tags", JSON.stringify([...next]));
+    }
+  }
+  function removeTag(sessionId: string, tag: string) {
+    const next = new Map(sessionTags());
+    const tags = (next.get(sessionId) || []).filter((t: string) => t !== tag);
+    if (tags.length === 0) next.delete(sessionId); else next.set(sessionId, tags);
+    setSessionTags(next);
+    localStorage.setItem("noaide-session-tags", JSON.stringify([...next]));
+  }
+
+  // Persist preferences
+  const updateSort = (v: SortBy) => { setSortBy(v); localStorage.setItem("noaide-sort-pref", v); };
+  const updateGroup = (v: GroupBy) => { setGroupBy(v); localStorage.setItem("noaide-group-pref", v); };
+  const toggleArchived = () => {
+    const next = !showArchived();
+    setShowArchived(next);
+    localStorage.setItem("noaide-show-archived", String(next));
+  };
+
+  // ── Context Menu ──
+  const [ctxMenu, setCtxMenu] = createSignal<ContextMenuState | null>(null);
+  const [deleteTarget, setDeleteTarget] = createSignal<{ id: string; name: string } | null>(null);
+
+  function handleContextMenu(e: MouseEvent, session: Session) {
+    e.preventDefault();
+    setCtxMenu({
+      sessionId: session.id,
+      sessionName: session.path.split("/").pop() || session.path,
+      x: e.clientX,
+      y: e.clientY,
+    });
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      const base = store.state.httpApiUrl || "";
+      await fetch(`${base}/api/sessions/${id}`, { method: "DELETE" });
+      store.removeSession(id);
+      if (store.state.activeSessionId === id) {
+        store.setActiveSession(null as unknown as string);
+      }
+    } catch (err) {
+      console.warn("[session] delete failed:", err);
+    }
+    setDeleteTarget(null);
+  }
 
   // Poll browser memory usage (Chrome performance.memory API)
   onMount(() => {
@@ -100,6 +403,25 @@ export default function SessionList() {
     onCleanup(() => clearInterval(interval));
   });
 
+  async function browseDirectory(path: string) {
+    const base = store.state.httpApiUrl;
+    if (!base) return;
+    setBrowseLoading(true);
+    try {
+      const res = await fetch(`${base}/api/browse?path=${encodeURIComponent(path)}`);
+      if (res.ok) {
+        const data: { name: string; path: string }[] = await res.json();
+        setBrowseDirs(data);
+        setWorkingDir(path);
+        setShowBrowser(true);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setBrowseLoading(false);
+    }
+  }
+
   async function spawnSession(cliType: CliType) {
     const base = store.state.httpApiUrl;
     if (!base || spawning()) return;
@@ -108,7 +430,7 @@ export default function SessionList() {
       const res = await fetch(`${base}/api/sessions/managed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ working_dir: "/work/noaide", cli_type: cliType }),
+        body: JSON.stringify({ working_dir: workingDir(), cli_type: cliType }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -125,25 +447,82 @@ export default function SessionList() {
     }
   }
 
-  const sortedSessions = createMemo(() => {
-    // Read version signal to force re-sort when fetchSessions updates data.
-    // SolidJS reconcile updates properties in-place, which may not trigger
-    // array-level memo dependencies without this explicit dependency.
+  // Helper: get group key for a session
+  function getGroupKey(s: Session, group: GroupBy): string {
+    switch (group) {
+      case "cliType": return (s.cliType ?? "claude").toUpperCase();
+      case "status": return s.status;
+      case "project": return s.path.split("/").slice(0, -1).join("/") || s.path;
+      default: return "";
+    }
+  }
+
+  // Flat list item: either a session card or a group header
+  type ListItem = { kind: "session"; session: Session } | { kind: "header"; label: string };
+
+  const flatItems = createMemo((): ListItem[] => {
     store.sessionsVersion();
+    const pinned = store.pinnedIds();
     const query = filter().toLowerCase();
-    return [...store.state.sessions]
-      .filter(
-        (s) =>
-          !query ||
+    const sort = sortBy();
+    const archived = showArchived();
+    const group = groupBy();
+
+    const filtered = [...store.state.sessions]
+      .filter((s) => {
+        // Archive filter
+        if (!archived && s.status === "archived") return false;
+        // Text filter (supports #tag syntax)
+        if (!query) return true;
+        if (query.startsWith("#")) {
+          const tag = query.substring(1);
+          const tags = sessionTags().get(s.id);
+          return tags ? tags.some((t: string) => t.toLowerCase().includes(tag)) : false;
+        }
+        return (
           s.path.toLowerCase().includes(query) ||
           (s.model ?? "").toLowerCase().includes(query) ||
           s.id.toLowerCase().includes(query) ||
-          (s.cliType ?? "").toLowerCase().includes(query),
-      )
+          (s.cliType ?? "").toLowerCase().includes(query)
+        );
+      })
       .sort((a, b) => {
-        // Primary: sort by last activity (most recent first)
-        return b.lastActivityAt - a.lastActivityAt;
+        // Primary: pinned sessions first
+        const aPinned = pinned.has(a.id) ? 1 : 0;
+        const bPinned = pinned.has(b.id) ? 1 : 0;
+        if (aPinned !== bPinned) return bPinned - aPinned;
+        // Grouping: sort by group key first
+        if (group !== "none") {
+          const aGroup = getGroupKey(a, group);
+          const bGroup = getGroupKey(b, group);
+          if (aGroup !== bGroup) return aGroup.localeCompare(bGroup);
+        }
+        // Secondary: chosen sort
+        switch (sort) {
+          case "name": return a.path.localeCompare(b.path);
+          case "messages": return b.messageCount - a.messageCount;
+          case "started": return b.startedAt - a.startedAt;
+          case "cost": return (b.cost ?? 0) - (a.cost ?? 0);
+          default: return b.lastActivityAt - a.lastActivityAt;
+        }
       });
+
+    // Build flat list: interleave group headers when grouping is active
+    if (group === "none") {
+      return filtered.map((s) => ({ kind: "session" as const, session: s }));
+    }
+
+    const items: ListItem[] = [];
+    let lastGroupKey = "";
+    for (const s of filtered) {
+      const key = getGroupKey(s, group);
+      if (key !== lastGroupKey) {
+        items.push({ kind: "header" as const, label: key });
+        lastGroupKey = key;
+      }
+      items.push({ kind: "session" as const, session: s });
+    }
+    return items;
   });
 
   return (
@@ -198,9 +577,59 @@ export default function SessionList() {
         {/* Font Slider */}
         <FontSlider />
 
+        {/* Sort / Group / Archive Controls */}
+        <div style={{ display: "flex", gap: "4px", "margin-bottom": "6px", "align-items": "center" }}>
+          <select
+            data-testid="session-sort-dropdown"
+            aria-label="Sort sessions by"
+            value={sortBy()}
+            onChange={(e) => updateSort(e.currentTarget.value as SortBy)}
+            style={{
+              flex: "1", padding: "4px 6px", background: "var(--ctp-surface0)",
+              color: "var(--ctp-text)", border: "1px solid var(--ctp-surface1)",
+              "border-radius": "4px", "font-size": "10px", "font-family": "var(--font-mono)",
+              cursor: "pointer",
+            }}
+          >
+            <For each={SORT_OPTIONS}>
+              {(opt) => <option value={opt.value}>{opt.label}</option>}
+            </For>
+          </select>
+          <select
+            data-testid="session-group-dropdown"
+            aria-label="Group sessions by"
+            value={groupBy()}
+            onChange={(e) => updateGroup(e.currentTarget.value as GroupBy)}
+            style={{
+              flex: "1", padding: "4px 6px", background: "var(--ctp-surface0)",
+              color: "var(--ctp-text)", border: "1px solid var(--ctp-surface1)",
+              "border-radius": "4px", "font-size": "10px", "font-family": "var(--font-mono)",
+              cursor: "pointer",
+            }}
+          >
+            <For each={GROUP_OPTIONS}>
+              {(opt) => <option value={opt.value}>{opt.label}</option>}
+            </For>
+          </select>
+          <button
+            data-testid="archive-toggle"
+            onClick={toggleArchived}
+            title={showArchived() ? "Hide archived" : "Show archived"}
+            style={{
+              padding: "4px 8px", background: showArchived() ? "var(--ctp-surface1)" : "var(--ctp-surface0)",
+              color: showArchived() ? "var(--ctp-text)" : "var(--ctp-overlay0)",
+              border: "1px solid var(--ctp-surface1)", "border-radius": "4px",
+              "font-size": "10px", cursor: "pointer", "white-space": "nowrap",
+            }}
+          >
+            {showArchived() ? "All" : "Active"}
+          </button>
+        </div>
+
         {/* Search filter */}
         <input
           data-testid="session-filter"
+          aria-label="Filter sessions"
           type="text"
           placeholder="Filter sessions..."
           value={filter()}
@@ -229,16 +658,16 @@ export default function SessionList() {
         sessionCount={store.sessionCount()}
       />
 
-      {/* Session list */}
+      {/* Session list (virtualized — only ~15 DOM nodes for 700+ sessions) */}
       <div
         style={{
           flex: "1",
-          overflow: "auto",
-          padding: "4px 8px",
+          overflow: "hidden",
+          padding: "0 8px",
         }}
       >
         <Show
-          when={sortedSessions().length > 0}
+          when={flatItems().length > 0}
           fallback={
             <div
               style={{
@@ -252,20 +681,138 @@ export default function SessionList() {
             </div>
           }
         >
-          <For each={sortedSessions()}>
-            {(session) => (
-              <SessionCard
-                session={session}
-                isActive={store.state.activeSessionId === session.id}
-                orbState={
-                  store.state.activeSessionId === session.id
-                    ? store.state.orbState
-                    : orbStateForSession(session)
-                }
-                onClick={() => store.setActiveSession(session.id)}
-              />
-            )}
-          </For>
+          <Show when={groupBy() === "none"} fallback={
+            /* Grouped mode: For loop with content-visibility for lazy rendering */
+            <div style={{ overflow: "auto", height: "100%" }}>
+              <For each={flatItems()}>
+                {(item) => {
+                  if (item.kind === "header") {
+                    return (
+                      <div
+                        data-testid={`group-header-${item.label}`}
+                        style={{
+                          padding: "6px 8px 2px",
+                          "font-size": "9px",
+                          "font-weight": "700",
+                          "text-transform": "uppercase",
+                          "letter-spacing": "0.1em",
+                          color: "var(--ctp-overlay1)",
+                          "border-top": "1px solid var(--ctp-surface0)",
+                          "margin-top": "4px",
+                          position: "sticky",
+                          top: "0",
+                          background: "var(--ctp-mantle)",
+                          "z-index": "1",
+                        }}
+                      >
+                        {item.label}
+                      </div>
+                    );
+                  }
+                  const session = item.session;
+                  const tags = sessionTags().get(session.id) || [];
+                  return (
+                    <div
+                      onContextMenu={(e: MouseEvent) => handleContextMenu(e, session)}
+                      style={{ "content-visibility": "auto", "contain-intrinsic-height": "56px" }}
+                    >
+                      <SessionCard
+                        session={session}
+                        isActive={store.state.activeSessionId === session.id}
+                        isPinned={store.isPinned(session.id)}
+                        orbState={
+                          store.state.activeSessionId === session.id
+                            ? store.state.orbState
+                            : orbStateForSession(session)
+                        }
+                        onClick={() => {
+                          store.setActiveSession(session.id);
+                          window.dispatchEvent(new CustomEvent("noaide:navigate-tab", { detail: "chat" }));
+                        }}
+                        onTogglePin={(id: string) => store.togglePin(id)}
+                      />
+                      {tags.length > 0 && (
+                        <div data-testid={`session-tag-${session.id}`} style={{ display: "flex", gap: "3px", padding: "0 8px 4px", "flex-wrap": "wrap" }}>
+                          <For each={tags}>
+                            {(tag: string) => (
+                              <span
+                                style={{
+                                  "font-size": "9px",
+                                  padding: "1px 6px",
+                                  "border-radius": "3px",
+                                  background: "var(--ctp-surface1)",
+                                  color: "var(--ctp-subtext0)",
+                                  cursor: "pointer",
+                                }}
+                                onClick={(e: MouseEvent) => { e.stopPropagation(); removeTag(session.id, tag); }}
+                                title={`Remove tag: ${tag}`}
+                              >
+                                {tag} ×
+                              </span>
+                            )}
+                          </For>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
+              </For>
+            </div>
+          }>
+            {/* Ungrouped mode: VirtualScroller for performance */}
+            <VirtualScroller
+              items={flatItems()}
+              estimateHeight={56}
+              overscan={5}
+              getKey={(item: ListItem) => item.kind === "header" ? `hdr-${item.label}` : item.session.id}
+              renderItem={(item: ListItem) => {
+                if (item.kind !== "session") return <div />;
+                const session = item.session;
+                const tags = sessionTags().get(session.id) || [];
+                return (
+                  <div onContextMenu={(e: MouseEvent) => handleContextMenu(e, session)}>
+                    <SessionCard
+                      session={session}
+                      isActive={store.state.activeSessionId === session.id}
+                      isPinned={store.isPinned(session.id)}
+                      orbState={
+                        store.state.activeSessionId === session.id
+                          ? store.state.orbState
+                          : orbStateForSession(session)
+                      }
+                      onClick={() => {
+                        store.setActiveSession(session.id);
+                        window.dispatchEvent(new CustomEvent("noaide:navigate-tab", { detail: "chat" }));
+                      }}
+                      onTogglePin={(id: string) => store.togglePin(id)}
+                    />
+                    {tags.length > 0 && (
+                      <div data-testid={`session-tag-${session.id}`} style={{ display: "flex", gap: "3px", padding: "0 8px 4px", "flex-wrap": "wrap" }}>
+                        <For each={tags}>
+                          {(tag: string) => (
+                            <span
+                              style={{
+                                "font-size": "9px",
+                                padding: "1px 6px",
+                                "border-radius": "3px",
+                                background: "var(--ctp-surface1)",
+                                color: "var(--ctp-subtext0)",
+                                cursor: "pointer",
+                              }}
+                              onClick={(e: MouseEvent) => { e.stopPropagation(); removeTag(session.id, tag); }}
+                              title={`Remove tag: ${tag}`}
+                            >
+                              {tag} ×
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
+            />
+          </Show>
         </Show>
       </div>
 
@@ -292,6 +839,107 @@ export default function SessionList() {
               "z-index": "20",
             }}
           >
+            {/* Directory picker */}
+            <div style={{ padding: "4px 6px 6px", "border-bottom": "1px solid var(--ctp-surface0)", "margin-bottom": "2px" }}>
+              <div style={{
+                "font-size": "9px",
+                "font-family": "var(--font-mono)",
+                color: "var(--ctp-overlay0)",
+                "text-transform": "uppercase",
+                "letter-spacing": "0.08em",
+                "margin-bottom": "4px",
+              }}>
+                Working Directory
+              </div>
+              <div style={{ display: "flex", gap: "4px" }}>
+                <input
+                  type="text"
+                  value={workingDir()}
+                  onInput={(e) => setWorkingDir(e.currentTarget.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") browseDirectory(workingDir()); }}
+                  style={{
+                    flex: "1",
+                    padding: "5px 8px",
+                    background: "var(--ctp-base)",
+                    border: "1px solid var(--ctp-surface1)",
+                    "border-radius": "4px",
+                    color: "var(--ctp-text)",
+                    "font-size": "11px",
+                    "font-family": "var(--font-mono)",
+                    outline: "none",
+                    "min-width": "0",
+                  }}
+                />
+                <button
+                  onClick={() => browseDirectory(workingDir())}
+                  disabled={browseLoading()}
+                  style={{
+                    padding: "4px 8px",
+                    background: "var(--ctp-surface0)",
+                    border: "1px solid var(--ctp-surface1)",
+                    "border-radius": "4px",
+                    color: "var(--ctp-subtext0)",
+                    "font-size": "10px",
+                    "font-family": "var(--font-mono)",
+                    cursor: "pointer",
+                    "white-space": "nowrap",
+                    "flex-shrink": "0",
+                  }}
+                >
+                  {browseLoading() ? "..." : "Browse"}
+                </button>
+              </div>
+              <Show when={showBrowser()}>
+                <div style={{
+                  "max-height": "160px",
+                  overflow: "auto",
+                  "margin-top": "4px",
+                  background: "var(--ctp-base)",
+                  border: "1px solid var(--ctp-surface1)",
+                  "border-radius": "4px",
+                }}>
+                  <For each={browseDirs()}>
+                    {(dir) => (
+                      <button
+                        onClick={() => {
+                          if (dir.name === "..") {
+                            browseDirectory(dir.path);
+                          } else {
+                            setWorkingDir(dir.path);
+                            setShowBrowser(false);
+                          }
+                        }}
+                        onDblClick={() => browseDirectory(dir.path)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "4px 8px",
+                          background: "transparent",
+                          border: "none",
+                          "border-bottom": "1px solid var(--ctp-surface0)",
+                          color: dir.name === ".." ? "var(--ctp-overlay1)" : "var(--ctp-text)",
+                          "font-size": "11px",
+                          "font-family": "var(--font-mono)",
+                          "text-align": "left",
+                          cursor: "pointer",
+                          transition: "background 100ms",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--ctp-surface0)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        {dir.name === ".." ? "\u2190 .." : "\u{1F4C1} " + dir.name}
+                      </button>
+                    )}
+                  </For>
+                  <Show when={browseDirs().length === 0}>
+                    <div style={{ padding: "8px", "text-align": "center", color: "var(--ctp-overlay0)", "font-size": "10px" }}>
+                      No subdirectories
+                    </div>
+                  </Show>
+                </div>
+              </Show>
+            </div>
+
             <For each={CLI_OPTIONS}>
               {(opt) => (
                 <button
@@ -384,6 +1032,32 @@ export default function SessionList() {
           {showCliPicker() ? "- Cancel" : "+ New Session"}
         </button>
       </div>
+
+      {/* Context Menu */}
+      <Show when={ctxMenu()}>
+        {(menu) => (
+          <SessionContextMenu
+            state={menu()}
+            onClose={() => setCtxMenu(null)}
+            onPin={(id) => store.togglePin(id)}
+            onArchive={() => { /* TODO: archive endpoint */ }}
+            onDelete={(id, name) => setDeleteTarget({ id, name })}
+            onAddTag={(id, tag) => addTag(id, tag)}
+            isPinned={store.isPinned(menu().sessionId)}
+          />
+        )}
+      </Show>
+
+      {/* Delete Confirmation */}
+      <Show when={deleteTarget()}>
+        {(target) => (
+          <DeleteConfirmDialog
+            sessionName={target().name}
+            onConfirm={() => handleDelete(target().id)}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        )}
+      </Show>
     </div>
   );
 }

@@ -12,18 +12,18 @@ interface VirtualScrollerProps<T> {
   items: T[];
   estimateHeight: number;
   overscan?: number;
-  /** Stable identity key — prevents re-rendering when items array reference changes
-   *  but the item at a given index hasn't actually changed (same key). */
   getKey?: (item: T) => string;
   renderItem: (item: T, index: number) => JSX.Element;
   onScrollNearBottom?: () => void;
+  onScrollNearTop?: () => void;
+  /** Expose scroll-to-item function to parent */
+  onScrollApi?: (api: { scrollToIndex: (index: number) => void }) => void;
 }
 
 export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
   let containerRef: HTMLDivElement | undefined;
   const [scrollTop, setScrollTop] = createSignal(0);
   const [containerHeight, setContainerHeight] = createSignal(0);
-  // Bumped whenever measured heights change — forces layout recalc.
   const [heightVersion, setHeightVersion] = createSignal(0);
 
   const measuredHeights = new Map<number, number>();
@@ -33,20 +33,16 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
   }
 
   // ── Running total height (O(1) updates) ───────────────────────────
-  // Maintained incrementally: delta when a height changes, estimate for new items.
-  // Eliminates the O(n) prefix-sum recalculation that was the #1 bottleneck
-  // with 135k+ items.
   let runningTotal = 0;
   let trackedItemCount = 0;
 
   function getTotalHeight(): number {
-    heightVersion(); // track changes
+    heightVersion();
     const len = props.items.length;
     if (len !== trackedItemCount) {
       if (len > trackedItemCount) {
         runningTotal += (len - trackedItemCount) * props.estimateHeight;
       } else {
-        // Session switch / items removed — full recompute
         runningTotal = len * props.estimateHeight;
         measuredHeights.forEach((h, i) => {
           if (i < len) runningTotal += (h - props.estimateHeight);
@@ -57,42 +53,58 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
     return runningTotal;
   }
 
-  // ── Item position: estimate-based with measured corrections ────────
-  // Cost: O(measuredCount) per call — typically ~50-200, NOT O(totalItems).
-  // For 135k items with ~100 measured, this is ~1000x faster than prefix sums.
-  function getItemTop(index: number): number {
-    heightVersion(); // track
-    let top = index * props.estimateHeight;
-    measuredHeights.forEach((h, i) => {
-      if (i < index) top += h - props.estimateHeight;
-    });
-    return top;
+  // ── Prefix-sum cache for O(1) position lookups ────────────────────
+  let prefixCache: Float64Array | null = null;
+  let prefixCacheVersion = -1;
+
+  function rebuildPrefixCache() {
+    const ver = heightVersion();
+    if (prefixCacheVersion === ver && prefixCache) return;
+    prefixCacheVersion = ver;
+
+    let maxMeasured = -1;
+    measuredHeights.forEach((_, i) => { if (i > maxMeasured) maxMeasured = i; });
+    if (maxMeasured < 0) { prefixCache = null; return; }
+
+    const len = maxMeasured + 2;
+    const cache = new Float64Array(len);
+    cache[0] = 0;
+    for (let i = 1; i < len; i++) {
+      cache[i] = cache[i - 1] + (measuredHeights.get(i - 1) ?? props.estimateHeight);
+    }
+    prefixCache = cache;
   }
 
-  // ── Visible range (estimate-based, no binary search over full array) ──
+  function getItemTop(index: number): number {
+    heightVersion();
+    rebuildPrefixCache();
+
+    if (prefixCache && index < prefixCache.length) {
+      return prefixCache[index];
+    }
+    if (prefixCache && prefixCache.length > 0) {
+      const cachedEnd = prefixCache.length - 1;
+      return prefixCache[cachedEnd] + (index - cachedEnd) * props.estimateHeight;
+    }
+    return index * props.estimateHeight;
+  }
+
+  // ── Visible range ─────────────────────────────────────────────────
   const visibleRange = createMemo(
     () => {
       heightVersion();
       const top = scrollTop();
       const height = containerHeight();
-      const overscan = props.overscan ?? 5;
+      const overscan = props.overscan ?? 8;
       const len = props.items.length;
       if (len === 0) return { start: 0, end: 0 };
 
-      // Estimate start index from scroll position
-      let start = Math.min(
-        Math.floor(top / props.estimateHeight),
-        len - 1,
-      );
+      rebuildPrefixCache();
+
+      let start = Math.min(Math.floor(top / props.estimateHeight), len - 1);
       start = Math.max(0, start);
 
-      // Compute actual top of estimated start, accounting for measured items
-      let actualTop = start * props.estimateHeight;
-      measuredHeights.forEach((h, i) => {
-        if (i < start) actualTop += h - props.estimateHeight;
-      });
-
-      // Refine: scan up/down from estimate to find exact start
+      let actualTop = getItemTop(start);
       while (start > 0 && actualTop > top) {
         start--;
         actualTop -= getItemHeight(start);
@@ -102,7 +114,6 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
         start++;
       }
 
-      // Scan forward for end of visible window
       let end = start;
       let visibleH = 0;
       while (end < len && visibleH < height) {
@@ -116,12 +127,9 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
       return { start, end };
     },
     undefined,
-    // Skip downstream recomputation when range hasn't actually changed
     { equals: (a, b) => a.start === b.start && a.end === b.end },
   );
 
-  // Stable array of indices — For maps by number *value*, so unchanged
-  // indices keep their DOM nodes and callbacks.
   const visibleIndices = createMemo(() => {
     const { start, end } = visibleRange();
     const indices: number[] = new Array(end - start);
@@ -129,12 +137,43 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
     return indices;
   });
 
-  // ── Single ResizeObserver for ALL items ────────────────────────────
-  // Critical: individual ResizeObservers cause N separate setHeightVersion
-  // bumps per frame. Each bump synchronously triggers the reactive graph.
-  // Single observer batches ALL height changes into ONE bump per frame.
+  // ── Prepend anchoring ────────────────────────────────────────────
+  // When older messages are prepended, adjust scrollTop so visible
+  // content stays at the same visual position (no scroll jump).
+  let prevItemCount = 0;
+  let prevFirstKey: string | undefined;
+
+  createEffect(() => {
+    const items = props.items;
+    const len = items.length;
+    const firstKey = len > 0 && props.getKey ? props.getKey(items[0]) : undefined;
+
+    if (prevItemCount > 0 && len > prevItemCount && firstKey !== prevFirstKey && containerRef) {
+      // Items were prepended (first key changed, count grew).
+      // Adjust scroll by estimated height of new items.
+      const prependedCount = len - prevItemCount;
+      const addedHeight = prependedCount * props.estimateHeight;
+      containerRef.scrollTop += addedHeight;
+    }
+
+    prevItemCount = len;
+    prevFirstKey = firstKey;
+  });
+
+  // ── Scroll anchoring ─────────────────────────────────────────────
+  // When items ABOVE the viewport change height, adjust scrollTop to
+  // keep visible content stable. Without this, upward scrolling causes
+  // visible content to jump as newly-measured items shift positions.
+  let pendingAnchorDelta = 0;
+
+  // ── Single ResizeObserver — batched via rAF ──────────────────────
+  let resizePending = false;
   const itemObserver = new ResizeObserver((entries) => {
     let anyChanged = false;
+    const currentScroll = containerRef?.scrollTop ?? 0;
+    // First visible item index (approximate)
+    const firstVisible = visibleRange().start + (props.overscan ?? 8);
+
     for (const entry of entries) {
       const el = entry.target as HTMLDivElement;
       const idx = parseInt(el.dataset.vsIdx || "-1", 10);
@@ -142,14 +181,28 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
       const h = entry.contentRect.height;
       if (h > 0 && measuredHeights.get(idx) !== h) {
         const oldH = measuredHeights.get(idx) ?? props.estimateHeight;
+        const delta = h - oldH;
         measuredHeights.set(idx, h);
-        // Update running total incrementally (O(1))
-        runningTotal += (h - oldH);
+        runningTotal += delta;
         anyChanged = true;
+
+        // If this item is above the viewport, anchor scroll position
+        if (idx < firstVisible && currentScroll > 0) {
+          pendingAnchorDelta += delta;
+        }
       }
     }
-    if (anyChanged) {
-      setHeightVersion((v) => v + 1);
+    if (anyChanged && !resizePending) {
+      resizePending = true;
+      requestAnimationFrame(() => {
+        resizePending = false;
+        // Apply scroll anchor correction BEFORE reactive update
+        if (pendingAnchorDelta !== 0 && containerRef) {
+          containerRef.scrollTop += pendingAnchorDelta;
+          pendingAnchorDelta = 0;
+        }
+        setHeightVersion((v) => v + 1);
+      });
     }
   });
   onCleanup(() => itemObserver.disconnect());
@@ -160,22 +213,25 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
     onCleanup(() => itemObserver.unobserve(el));
   }
 
-  // ── Pinned-to-bottom state for autoscroll ─────────────────────────
-  // Tracks whether the user is at (or near) the bottom of the scroll.
-  // When pinned, ANY content change (new items, height corrections) scrolls to end.
-  // When user scrolls up, they unpin. Scrolling back to bottom re-pins.
+  // ── Pinned-to-bottom ─────────────────────────────────────────────
   const [pinnedToBottom, setPinnedToBottom] = createSignal(true);
 
-  // ── Scroll handler ────────────────────────────────────────────────
+  // ── Scroll handler — rAF throttled ──────────────────────────────
+  let scrollRafId = 0;
   function handleScroll() {
-    if (!containerRef) return;
-    setScrollTop(containerRef.scrollTop);
-    const distFromBottom =
-      containerRef.scrollHeight - containerRef.scrollTop - containerRef.clientHeight;
-    // Unpin when user scrolls away, re-pin when they scroll back
-    setPinnedToBottom(distFromBottom < 50);
-    if (distFromBottom < 100) props.onScrollNearBottom?.();
+    if (scrollRafId) return;
+    scrollRafId = requestAnimationFrame(() => {
+      scrollRafId = 0;
+      if (!containerRef) return;
+      setScrollTop(containerRef.scrollTop);
+      const distFromBottom =
+        containerRef.scrollHeight - containerRef.scrollTop - containerRef.clientHeight;
+      setPinnedToBottom(distFromBottom < 50);
+      if (distFromBottom < 100) props.onScrollNearBottom?.();
+      if (containerRef.scrollTop < 150) props.onScrollNearTop?.();
+    });
   }
+  onCleanup(() => { if (scrollRafId) cancelAnimationFrame(scrollRafId); });
 
   // Container resize tracking
   createEffect(() => {
@@ -187,17 +243,14 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
     onCleanup(() => ro.disconnect());
   });
 
-  // Single unified auto-scroll effect.
-  // Uses pinnedToBottom flag (updated in scroll handler) to decide whether to
-  // stay pinned. No threshold guessing — if pinned, always scroll to end.
+  // Auto-scroll effect
   createEffect(() => {
-    props.items.length;  // new items appended
-    heightVersion();     // measured heights changed
-    containerHeight();   // container resized
+    props.items.length;
+    heightVersion();
+    containerHeight();
 
     if (!containerRef) return;
 
-    // Force scroll to bottom on session switch (items loaded fresh).
     if (needsScrollToEnd && props.items.length > 0) {
       containerRef.scrollTop = containerRef.scrollHeight;
       needsScrollToEnd = false;
@@ -205,43 +258,51 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
       return;
     }
 
-    // Stay pinned: scroll to end on ANY content change (smooth for calm UX)
     if (pinnedToBottom()) {
       containerRef.scrollTo({ top: containerRef.scrollHeight, behavior: "smooth" });
     }
   });
 
-  // Track the "frontier" index: items at or beyond this index are new and should animate.
-  // Starts at 0 (everything animates on first load — which is fine, they stagger naturally).
-  // Increases when the scroller is near bottom and new items arrive.
   let animateFrontier = 0;
-
-  // When true, next items load will force-scroll to bottom (session switch).
-  // One-shot flag: set on session switch, cleared after first scroll.
   let needsScrollToEnd = true;
 
-  // Reset state on full item replacement (session switch)
+  // Track first key to detect major list changes (grouping toggled, filter changed)
+  let resetPrevLen = 0;
+  let resetPrevKey: string | null = null;
+
   createEffect(() => {
     const len = props.items.length;
+    const fk = len > 0 && props.getKey ? props.getKey(props.items[0]) : null;
+
     if (len === 0) {
       measuredHeights.clear();
       runningTotal = 0;
       trackedItemCount = 0;
       animateFrontier = 0;
       needsScrollToEnd = true;
+      prefixCache = null;
+      prefixCacheVersion = -1;
+    } else if (resetPrevLen > 0 && (Math.abs(len - resetPrevLen) > resetPrevLen * 0.01 + 2 || fk !== resetPrevKey)) {
+      // Major change (items added/removed beyond natural polling, or first item changed)
+      // Reset measured heights since indices shifted
+      measuredHeights.clear();
+      runningTotal = len * props.estimateHeight;
+      trackedItemCount = len;
+      prefixCache = null;
+      prefixCacheVersion = -1;
+      setHeightVersion((v) => v + 1);
     }
+
+    resetPrevLen = len;
+    resetPrevKey = fk;
   });
 
-  // When new items are appended and user is pinned to bottom, animate them.
-  // Otherwise (user scrolled up), skip animation to avoid distracting motion.
   createEffect(() => {
     const len = props.items.length;
-    if (len <= animateFrontier) return; // no new items
+    if (len <= animateFrontier) return;
     if (!pinnedToBottom()) {
-      // User scrolled up — skip animation for these items
       animateFrontier = len;
     }
-    // else: user pinned to bottom — animateFrontier stays, new items animate
   });
 
   function scrollToBottom() {
@@ -250,7 +311,16 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
     setPinnedToBottom(true);
   }
 
-  // ── Render ────────────────────────────────────────────────────────
+  function scrollToIndex(index: number) {
+    if (!containerRef || index < 0 || index >= props.items.length) return;
+    const top = getItemTop(index);
+    containerRef.scrollTo({ top: Math.max(0, top - 50), behavior: "smooth" });
+    setPinnedToBottom(false);
+  }
+
+  // Expose scroll API to parent
+  props.onScrollApi?.({ scrollToIndex });
+
   return (
     <div
       style={{
@@ -265,21 +335,20 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
           overflow: "auto",
           height: "100%",
           position: "relative",
-          "will-change": "scroll-position",
+          "-webkit-overflow-scrolling": "touch",
+          "overscroll-behavior-y": "contain",
         }}
       >
         <div
           style={{
             height: `${getTotalHeight()}px`,
             position: "relative",
+            contain: "layout style",
           }}
         >
         <For each={visibleIndices()}>
           {(index) => {
-            // Key-based memoization: item "unchanged" if its key is the same.
-            // Prevents re-rendering when items array is replaced but the
-            // actual item at this index hasn't changed.
-            /* eslint-disable solid/reactivity -- intentional: inside For callback, index is stable per-iteration */
+            /* eslint-disable solid/reactivity */
             const stableItem = props.getKey
               ? createMemo(() => props.items[index], undefined, {
                   equals: (a, b) =>
@@ -294,7 +363,6 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
               <div
                 ref={(el) => {
                   measureItem(index, el);
-                  // After animation ends, bump frontier so re-entering items don't re-animate
                   if (shouldAnimate) {
                     el.addEventListener("animationend", () => {
                       if (index >= animateFrontier) animateFrontier = index + 1;
@@ -306,10 +374,9 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
                   top: `${getItemTop(index)}px`,
                   left: "0",
                   right: "0",
+                  contain: "layout style",
                   ...(shouldAnimate
-                    ? {
-                        animation: "chat-enter 420ms ease-out both",
-                      }
+                    ? { animation: "chat-enter 420ms ease-out both" }
                     : {}),
                 }}
               >
@@ -321,7 +388,6 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
         </div>
       </div>
 
-      {/* Scroll-to-bottom button — appears when user scrolls up */}
       <Show when={!pinnedToBottom() && props.items.length > 0}>
         <button
           onClick={scrollToBottom}
@@ -344,14 +410,6 @@ export default function VirtualScroller<T>(props: VirtualScrollerProps<T>) {
             transition: "all 200ms ease",
             "font-size": "16px",
             "line-height": "1",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--neon-blue)";
-            e.currentTarget.style.color = "var(--ctp-crust)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "var(--ctp-surface1)";
-            e.currentTarget.style.color = "var(--ctp-text)";
           }}
           title="Scroll to bottom"
         >
