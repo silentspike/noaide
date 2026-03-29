@@ -44,6 +44,10 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
 
     let (event_tx, event_rx) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
 
+    // Ensure rustls CryptoProvider is installed (needed for TLS MITM + native-certs).
+    // Both ring and aws-lc-rs may be compiled in — explicitly pick ring.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // Load CA for CONNECT MITM (optional — graceful degradation)
     let ca = match tls_mitm::CaAuthority::load_from_disk() {
         Ok(ca) => {
