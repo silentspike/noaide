@@ -52,6 +52,12 @@ pub struct NetworkRulesEngine {
     rules: DashMap<String, Vec<NetworkRule>>,
 }
 
+impl Default for NetworkRulesEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NetworkRulesEngine {
     pub fn new() -> Self {
         Self {

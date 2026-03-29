@@ -201,8 +201,6 @@ const MAX_DIR_WALK: usize = 50_000;
 fn compute_dir_stats(dir_path: &Path, project_root: &Path) -> (u64, u64) {
     let mut file_count: u64 = 0;
     let mut total_size: u64 = 0;
-    let mut walked: usize = 0;
-
     let walker = WalkBuilder::new(dir_path)
         .hidden(false) // show dotfiles (except .gitignored)
         .git_ignore(true)
@@ -212,11 +210,10 @@ fn compute_dir_stats(dir_path: &Path, project_root: &Path) -> (u64, u64) {
         .add_custom_ignore_filename(".gitignore")
         .build();
 
-    for entry in walker {
+    for (walked, entry) in walker.enumerate() {
         if walked >= MAX_DIR_WALK {
             break;
         }
-        walked += 1;
 
         let entry = match entry {
             Ok(e) => e,
@@ -235,12 +232,12 @@ fn compute_dir_stats(dir_path: &Path, project_root: &Path) -> (u64, u64) {
             continue;
         }
 
-        if let Some(ft) = entry.file_type() {
-            if ft.is_file() {
-                file_count += 1;
-                if let Ok(meta) = entry.metadata() {
-                    total_size += meta.len();
-                }
+        if let Some(ft) = entry.file_type()
+            && ft.is_file()
+        {
+            file_count += 1;
+            if let Ok(meta) = entry.metadata() {
+                total_size += meta.len();
             }
         }
     }
@@ -278,17 +275,17 @@ pub fn should_ignore_path(path: &Path, project_root: &Path) -> bool {
     }
 
     // Check hard-exclude files
-    if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
-        if HARD_EXCLUDE_FILES.contains(&file_name) {
-            return true;
-        }
+    if let Some(file_name) = path.file_name().and_then(|f| f.to_str())
+        && HARD_EXCLUDE_FILES.contains(&file_name)
+    {
+        return true;
     }
 
     // Check hard-exclude extensions (prevents watcher feedback loops with log files)
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        if HARD_EXCLUDE_EXTENSIONS.contains(&ext) {
-            return true;
-        }
+    if let Some(ext) = path.extension().and_then(|e| e.to_str())
+        && HARD_EXCLUDE_EXTENSIONS.contains(&ext)
+    {
+        return true;
     }
 
     false

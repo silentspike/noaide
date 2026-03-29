@@ -276,7 +276,7 @@ pub fn diff_hunks(repo_path: &Path, file_path: &str) -> Result<Vec<DiffHunk>, Gi
         if let Some(hunk) = maybe_hunk {
             // Check if this is a new hunk (different header from last)
             let header = String::from_utf8_lossy(hunk.header()).trim().to_string();
-            if hunks.last().map_or(true, |h: &DiffHunk| h.header != header) {
+            if hunks.last().is_none_or(|h: &DiffHunk| h.header != header) {
                 hunks.push(DiffHunk {
                     header,
                     old_start: hunk.old_start(),

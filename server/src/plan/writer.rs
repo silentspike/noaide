@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 
 // ── WP Status ─────────────────────────────────────────────────
 
-static WP_BLOCK_RE: LazyLock<Regex> =
+static _WP_BLOCK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^###\s+WP-(\d+):").unwrap());
 
 static KANBAN_LINE_RE: LazyLock<Regex> =
@@ -68,7 +68,7 @@ pub fn update_section_status(md: &str, section_id: &str, checked: bool) -> Strin
     };
 
     let mark = if checked { "x" } else { " " };
-    let mut result = md.to_string();
+    let _result = md.to_string();
     let mut in_checklist = false;
 
     // Find the checklist section first
@@ -87,12 +87,12 @@ pub fn update_section_status(md: &str, section_id: &str, checked: bool) -> Strin
         if in_checklist {
             // Look for the specific section ID in checkbox lines
             let section_dot = format!("{}.{}", &search_id[..1], &search_id[1..]);
-            if line.contains(&section_dot) || line.contains(&search_id) {
-                if let Some(caps) = re.captures(line) {
-                    let replaced = format!("{}[{}] {}", &caps[1], mark, &caps[2]);
-                    new_lines.push(replaced);
-                    continue;
-                }
+            if (line.contains(&section_dot) || line.contains(&search_id))
+                && let Some(caps) = re.captures(line)
+            {
+                let replaced = format!("{}[{}] {}", &caps[1], mark, &caps[2]);
+                new_lines.push(replaced);
+                continue;
             }
         }
 
@@ -122,13 +122,13 @@ pub fn update_gate_status(md: &str, gate: u8, status: &str) -> String {
     let gate_str = gate.to_string();
 
     for line in md.lines() {
-        if let Some(caps) = GATE_PASS_RE.captures(line) {
-            if &caps[1] == gate_str {
-                let replaced = line.replace(&caps[2], status_text);
-                result.push_str(&replaced);
-                result.push('\n');
-                continue;
-            }
+        if let Some(caps) = GATE_PASS_RE.captures(line)
+            && caps[1] == gate_str
+        {
+            let replaced = line.replace(&caps[2], status_text);
+            result.push_str(&replaced);
+            result.push('\n');
+            continue;
         }
         result.push_str(line);
         result.push('\n');
