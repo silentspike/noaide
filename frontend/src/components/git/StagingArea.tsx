@@ -1,10 +1,11 @@
-import { createSignal, createResource, For, Show } from "solid-js";
+import { createSignal, createResource, For, Show, createEffect } from "solid-js";
 import { useSession } from "../../App";
 
 interface FileEntry {
   path: string;
   status: string;
   staged: boolean;
+  hunks?: number; // number of diff hunks (for hunk-level staging hint)
 }
 
 const statusColors: Record<string, string> = {
@@ -44,7 +45,10 @@ export default function StagingArea() {
     return resp.json();
   };
 
-  const [files, { refetch }] = createResource(() => apiUrl(), fetchStatus);
+  const [files, { refetch }] = createResource(
+    () => [apiUrl(), sessionId()] as const,
+    fetchStatus,
+  );
 
   const stagedFiles = () => (files() ?? []).filter((f) => f.staged);
   const unstagedFiles = () => (files() ?? []).filter((f) => !f.staged);
@@ -54,6 +58,18 @@ export default function StagingArea() {
     if (!base) return;
     const sid = sessionId();
     await fetch(`${base}/api/git/stage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sid ?? undefined, paths }),
+    });
+    refetch();
+  };
+
+  const doUnstage = async (paths: string[]) => {
+    const base = apiUrl();
+    if (!base) return;
+    const sid = sessionId();
+    await fetch(`${base}/api/git/unstage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sid ?? undefined, paths }),
@@ -102,9 +118,35 @@ export default function StagingArea() {
           }}
         >
           <span>Staged ({stagedFiles().length})</span>
+          <Show when={stagedFiles().length > 0}>
+            <button
+              onClick={() =>
+                doUnstage(stagedFiles().map((f) => f.path))
+              }
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--ctp-overlay0)",
+                "font-size": "10px",
+                cursor: "pointer",
+                padding: "0 4px",
+              }}
+            >
+              Unstage all
+            </button>
+          </Show>
         </div>
         <For each={stagedFiles()}>
-          {(file) => <FileRow file={file} actionLabel="−" onAction={() => {}} />}
+          {(file) => (
+            <FileRow
+              file={file}
+              actionLabel="−"
+              onAction={() => doUnstage([file.path])}
+              apiUrl={apiUrl() ?? undefined}
+              sessionId={sessionId() ?? undefined}
+              onRefetch={refetch}
+            />
+          )}
         </For>
       </div>
 
@@ -153,6 +195,9 @@ export default function StagingArea() {
               file={file}
               actionLabel="+"
               onAction={() => doStage([file.path])}
+              apiUrl={apiUrl() ?? undefined}
+              sessionId={sessionId() ?? undefined}
+              onRefetch={refetch}
             />
           )}
         </For>
@@ -168,7 +213,11 @@ export default function StagingArea() {
       >
         <textarea
           value={commitMsg()}
-          onInput={(e) => setCommitMsg(e.currentTarget.value)}
+          onInput={(e) => {
+            setCommitMsg(e.currentTarget.value);
+            e.currentTarget.style.height = "auto";
+            e.currentTarget.style.height = e.currentTarget.scrollHeight + "px";
+          }}
           placeholder="Commit message..."
           rows={3}
           style={{
@@ -180,11 +229,22 @@ export default function StagingArea() {
             color: "var(--ctp-text)",
             "font-size": "12px",
             "font-family": "inherit",
-            resize: "vertical",
+            resize: "none",
+            overflow: "hidden",
             outline: "none",
             "box-sizing": "border-box",
           }}
         />
+        <div
+          style={{
+            "font-size": "10px",
+            color: "var(--ctp-overlay0)",
+            "text-align": "right",
+            padding: "2px 0",
+          }}
+        >
+          {commitMsg().length}
+        </div>
         <button
           disabled={stagedFiles().length === 0 || !commitMsg()}
           onClick={doCommit}
@@ -216,11 +276,46 @@ export default function StagingArea() {
   );
 }
 
+interface HunkData {
+  header: string;
+  old_start: number;
+  new_start: number;
+  lines: { origin: string; content: string }[];
+}
+
 function FileRow(props: {
   file: FileEntry;
   actionLabel: string;
   onAction: () => void;
+  apiUrl?: string;
+  sessionId?: string;
+  onRefetch?: () => void;
 }) {
+  const [expanded, setExpanded] = createSignal(false);
+  const [hunks, setHunks] = createSignal<HunkData[]>([]);
+
+  async function loadHunks() {
+    if (!props.apiUrl || expanded()) { setExpanded(!expanded()); return; }
+    try {
+      const sid = props.sessionId ? `&session_id=${props.sessionId}` : "";
+      const res = await fetch(`${props.apiUrl}/api/git/diff-hunks?path=${encodeURIComponent(props.file.path)}${sid}`);
+      if (res.ok) setHunks(await res.json());
+    } catch { /* ignore */ }
+    setExpanded(true);
+  }
+
+  async function stageHunk(index: number) {
+    if (!props.apiUrl) return;
+    try {
+      await fetch(`${props.apiUrl}/api/git/stage-hunk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: props.file.path, hunk_index: index, session_id: props.sessionId }),
+      });
+      props.onRefetch?.();
+      setExpanded(false);
+    } catch { /* ignore */ }
+  }
   const fileName = () => props.file.path.split("/").pop() ?? props.file.path;
   const dirPath = () => {
     const parts = props.file.path.split("/");
@@ -228,6 +323,7 @@ function FileRow(props: {
   };
 
   return (
+    <>
     <div
       style={{
         display: "flex",
@@ -262,27 +358,75 @@ function FileRow(props: {
         <span style={{ color: "var(--ctp-overlay0)" }}>{dirPath()}</span>
         <span>{fileName()}</span>
       </span>
+      {/* Expand hunks button (only for modified unstaged files) */}
+      <Show when={!props.file.staged && props.file.status === "modified"}>
+        <button
+          data-testid={`hunk-expand-${props.file.path}`}
+          onClick={loadHunks}
+          title="Show diff hunks"
+          style={{
+            width: "18px", height: "18px", "border-radius": "3px",
+            border: "1px solid var(--ctp-surface2)", background: "transparent",
+            color: "var(--ctp-overlay0)", "font-size": "10px", cursor: "pointer",
+            display: "flex", "align-items": "center", "justify-content": "center",
+            "flex-shrink": "0", padding: "0",
+          }}
+        >
+          {expanded() ? "\u25BC" : "\u25B6"}
+        </button>
+      </Show>
       <button
         onClick={() => props.onAction()}
         style={{
-          width: "18px",
-          height: "18px",
-          "border-radius": "3px",
-          border: "1px solid var(--ctp-surface2)",
-          background: "transparent",
-          color: "var(--ctp-overlay0)",
-          "font-size": "12px",
-          "line-height": "1",
-          cursor: "pointer",
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "center",
-          "flex-shrink": "0",
-          padding: "0",
+          width: "18px", height: "18px", "border-radius": "3px",
+          border: "1px solid var(--ctp-surface2)", background: "transparent",
+          color: "var(--ctp-overlay0)", "font-size": "12px", "line-height": "1",
+          cursor: "pointer", display: "flex", "align-items": "center",
+          "justify-content": "center", "flex-shrink": "0", padding: "0",
         }}
       >
         {props.actionLabel}
       </button>
     </div>
+    {/* Hunk diff view */}
+    <Show when={expanded() && hunks().length > 0}>
+      <div style={{ padding: "0 8px 4px 28px", "font-size": "10px", "font-family": "var(--font-mono)" }}>
+        <For each={hunks()}>
+          {(hunk, i) => (
+            <div style={{ "margin-bottom": "4px", border: "1px solid var(--ctp-surface0)", "border-radius": "3px", overflow: "hidden" }}>
+              <div style={{
+                display: "flex", "justify-content": "space-between", "align-items": "center",
+                padding: "2px 6px", background: "var(--ctp-surface0)", color: "var(--ctp-overlay0)",
+              }}>
+                <span>{hunk.header}</span>
+                <button
+                  data-testid={`stage-hunk-${i()}`}
+                  onClick={() => stageHunk(i())}
+                  style={{
+                    padding: "1px 6px", "font-size": "9px", background: "var(--ctp-green)",
+                    color: "var(--ctp-base)", border: "none", "border-radius": "2px", cursor: "pointer",
+                  }}
+                >
+                  Stage Hunk
+                </button>
+              </div>
+              <For each={hunk.lines}>
+                {(line) => (
+                  <div style={{
+                    padding: "0 6px",
+                    background: line.origin === '+' ? "rgba(166,227,161,0.08)" : line.origin === '-' ? "rgba(243,139,168,0.08)" : "transparent",
+                    color: line.origin === '+' ? "var(--ctp-green)" : line.origin === '-' ? "var(--ctp-red)" : "var(--ctp-subtext0)",
+                    "white-space": "pre",
+                  }}>
+                    {line.origin}{line.content}
+                  </div>
+                )}
+              </For>
+            </div>
+          )}
+        </For>
+      </div>
+    </Show>
+    </>
   );
 }

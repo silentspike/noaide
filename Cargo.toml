@@ -17,7 +17,7 @@ exclude = ["crates/noaide-ebpf"]
 tokio = { version = "1", features = ["full"] }
 
 # Web framework
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors", "set-header"] }
 hyper = { version = "1", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
@@ -49,6 +49,7 @@ nix = { version = "0.30", features = ["term", "process", "fs", "signal"] }
 
 # File watching
 notify = "8"
+ignore = "0.4"
 aya = { version = "0.13", features = ["async_tokio"] }
 aya-log = "0.2"
 async-trait = "0.1"
@@ -74,6 +75,17 @@ uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
 anyhow = "1"
 zstd = "0.13"
+
+# WebSocket client (for whisper proxy)
+tokio-tungstenite = "0.26"
+
+# TLS MITM (CONNECT proxy)
+rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
+pem = "3"
+time = "0.3"
+dashmap = "6"
+tokio-rustls = "0.26"
+rustls-native-certs = "0.8"
 
 # Git integration
 git2 = "0.20"

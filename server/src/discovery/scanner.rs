@@ -189,21 +189,22 @@ impl SessionScanner {
                         Err(_) => continue,
                     };
 
-                    // Derive project label from Codex path structure:
-                    // ~/.codex/sessions/YYYY/MM/DD/rollout-....jsonl
-                    let codex_label = entry.path().parent().map(|p| {
-                        // Extract YYYY/MM/DD components
-                        let components: Vec<_> = p
-                            .components()
-                            .rev()
-                            .take(3)
-                            .map(|c| c.as_os_str().to_string_lossy().to_string())
-                            .collect();
-                        if components.len() == 3 {
-                            format!("{}/{}/{}", components[2], components[1], components[0])
-                        } else {
-                            "codex".to_string()
-                        }
+                    // Derive project path from Codex session_meta CWD field.
+                    // Falls back to date label (YYYY/MM/DD) if extraction fails.
+                    let codex_label = extract_codex_cwd(&entry.path()).await.or_else(|| {
+                        entry.path().parent().map(|p| {
+                            let components: Vec<_> = p
+                                .components()
+                                .rev()
+                                .take(3)
+                                .map(|c| c.as_os_str().to_string_lossy().to_string())
+                                .collect();
+                            if components.len() == 3 {
+                                format!("{}/{}/{}", components[2], components[1], components[0])
+                            } else {
+                                "codex".to_string()
+                            }
+                        })
                     });
 
                     let line_count = estimate_line_count(&entry.path()).await;
@@ -432,13 +433,20 @@ pub async fn extract_first_timestamp(path: &Path) -> i64 {
     }
 
     let text = String::from_utf8_lossy(&buf[..bytes_read]);
-    let needle = "\"timestamp\":\"";
-    if let Some(pos) = text.find(needle) {
-        let abs_pos = pos + needle.len();
-        if let Some(end) = text[abs_pos..].find('"') {
-            let ts_str = &text[abs_pos..abs_pos + end];
-            if let Some(epoch) = parse_iso_to_epoch_secs(ts_str) {
-                return epoch;
+    // Try both compact ("timestamp":"...") and pretty-printed ("timestamp": "...") formats
+    for needle in &[
+        "\"timestamp\":\"",
+        "\"timestamp\": \"",
+        "\"startTime\":\"",
+        "\"startTime\": \"",
+    ] {
+        if let Some(pos) = text.find(needle) {
+            let abs_pos = pos + needle.len();
+            if let Some(end) = text[abs_pos..].find('"') {
+                let ts_str = &text[abs_pos..abs_pos + end];
+                if let Some(epoch) = parse_iso_to_epoch_secs(ts_str) {
+                    return epoch;
+                }
             }
         }
     }
@@ -482,20 +490,28 @@ pub async fn extract_last_timestamp(path: &Path) -> i64 {
 
     let text = String::from_utf8_lossy(&buf[..bytes_read]);
 
-    // Find the LAST occurrence of "timestamp":" in the tail
-    // This works for both JSONL (one JSON per line) and JSON arrays (Gemini)
+    // Find the LAST occurrence of timestamp patterns in the tail.
+    // Supports both compact and pretty-printed JSON (Gemini uses spaces after colon).
     let mut last_ts: i64 = 0;
-    let needle = "\"timestamp\":\"";
-    let mut search_from = 0;
-    while let Some(pos) = text[search_from..].find(needle) {
-        let abs_pos = search_from + pos + needle.len();
-        if let Some(end) = text[abs_pos..].find('"') {
-            let ts_str = &text[abs_pos..abs_pos + end];
-            if let Some(epoch) = parse_iso_to_epoch_secs(ts_str) {
-                last_ts = epoch;
+    for needle in &[
+        "\"timestamp\":\"",
+        "\"timestamp\": \"",
+        "\"lastUpdated\":\"",
+        "\"lastUpdated\": \"",
+    ] {
+        let mut search_from = 0;
+        while let Some(pos) = text[search_from..].find(needle) {
+            let abs_pos = search_from + pos + needle.len();
+            if let Some(end) = text[abs_pos..].find('"') {
+                let ts_str = &text[abs_pos..abs_pos + end];
+                if let Some(epoch) = parse_iso_to_epoch_secs(ts_str)
+                    && epoch > last_ts
+                {
+                    last_ts = epoch;
+                }
             }
+            search_from = abs_pos;
         }
-        search_from = abs_pos;
     }
 
     last_ts
@@ -562,8 +578,37 @@ async fn estimate_gemini_message_count(path: &Path) -> usize {
     }
 }
 
+/// Extract CWD from Codex JSONL session_meta (first line).
+///
+/// Codex JSONL files start with a `session_meta` event containing `"cwd":"/path/to/project"`.
+/// Reads only the first 4KB — cheap even for large files.
+async fn extract_codex_cwd(path: &Path) -> Option<String> {
+    use tokio::io::AsyncReadExt;
+    let mut file = tokio::fs::File::open(path).await.ok()?;
+    let mut buf = vec![0u8; 4096];
+    let n = file.read(&mut buf).await.ok()?;
+    if n == 0 {
+        return None;
+    }
+    let text = std::str::from_utf8(&buf[..n]).ok()?;
+    // Quick check: must be session_meta with cwd
+    if !text.contains("\"session_meta\"") {
+        return None;
+    }
+    // Extract "cwd":"..." value
+    let needle = "\"cwd\":\"";
+    let pos = text.find(needle)?;
+    let start = pos + needle.len();
+    let end = text[start..].find('"')?;
+    let cwd = &text[start..start + end];
+    if cwd.is_empty() {
+        return None;
+    }
+    Some(cwd.to_string())
+}
+
 /// Extract UUID from Codex filename: `rollout-2025-10-26T12-54-26-UUID.jsonl`
-fn extract_codex_uuid(filename: &str) -> Option<String> {
+pub fn extract_codex_uuid(filename: &str) -> Option<String> {
     // The UUID is the last segment before .jsonl
     let name = filename.trim_end_matches(".jsonl");
     // Format: rollout-YYYY-MM-DDThh-mm-ss-UUID
@@ -584,7 +629,7 @@ fn extract_codex_uuid(filename: &str) -> Option<String> {
 }
 
 /// Extract UUID from Gemini filename: `session-2025-11-19T06-14-UUID.json`
-fn extract_gemini_uuid(filename: &str) -> Option<String> {
+pub fn extract_gemini_uuid(filename: &str) -> Option<String> {
     // The last segment (after last `-`) is a short hex ID
     let name = filename.trim_end_matches(".json");
     let last_dash = name.rfind('-')?;

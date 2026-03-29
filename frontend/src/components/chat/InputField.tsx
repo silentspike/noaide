@@ -1,5 +1,6 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, Show, onMount, onCleanup } from "solid-js";
 import type { ImageSource } from "../../types/messages";
+import { useVoiceInput } from "../../hooks/useVoiceInput";
 
 interface PendingImage {
   id: string;
@@ -11,6 +12,8 @@ interface PendingImage {
 interface InputFieldProps {
   disabled: boolean;
   onSubmit: (content: { text: string; images: ImageSource[] }) => void;
+  /** WebSocket URL for whisper transcription. If set, mic button is shown. */
+  whisperUrl?: string;
 }
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -21,6 +24,48 @@ export default function InputField(props: InputFieldProps) {
   const [dragOver, setDragOver] = createSignal(false);
   let textareaRef: HTMLTextAreaElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
+
+  // Text typed/present before recording started — used to preserve user input
+  let textBeforeRecording = "";
+
+  // Voice input hook — only active when whisperUrl is provided
+  const voice = useVoiceInput({
+    get wsUrl() {
+      return props.whisperUrl || "";
+    },
+    onPartialText: (partial) => {
+      // Write partial text live into textarea (after any pre-existing text)
+      const prefix = textBeforeRecording;
+      const separator = prefix && !prefix.endsWith(" ") ? " " : "";
+      setText(prefix + separator + partial);
+      if (textareaRef) {
+        textareaRef.style.height = "auto";
+        textareaRef.style.height = Math.min(textareaRef.scrollHeight, 200) + "px";
+      }
+    },
+    onFinalText: (final) => {
+      console.warn("[input] voice finalText:", final.slice(0, 120));
+      // Replace partial with final text
+      const prefix = textBeforeRecording;
+      const separator = prefix && !prefix.endsWith(" ") ? " " : "";
+      setText(prefix + separator + final);
+      if (textareaRef) {
+        textareaRef.style.height = "auto";
+        textareaRef.style.height = Math.min(textareaRef.scrollHeight, 200) + "px";
+      }
+    },
+  });
+
+  function toggleMic() {
+    console.warn("[input] toggleMic — recording:", voice.isRecording(), "connecting:", voice.isConnecting(), "url:", props.whisperUrl);
+    if (voice.isRecording()) {
+      voice.stopRecording();
+    } else {
+      // Save current text so partial/final text gets appended after it
+      textBeforeRecording = text();
+      voice.startRecording();
+    }
+  }
 
   function openFilePicker() {
     fileInputRef?.click();
@@ -60,6 +105,7 @@ export default function InputField(props: InputFieldProps) {
   }
 
   function handlePaste(e: ClipboardEvent) {
+    if (props.disabled) return;
     const items = e.clipboardData?.items;
     if (!items) return;
     for (let i = 0; i < items.length; i++) {
@@ -68,9 +114,17 @@ export default function InputField(props: InputFieldProps) {
         e.preventDefault();
         const file = item.getAsFile();
         if (file) addImageFile(file);
+        // Focus the textarea so user can immediately type a message
+        textareaRef?.focus();
       }
     }
   }
+
+  // Global paste listener — catches Ctrl+V from anywhere in the page,
+  // not just when textarea has focus. Essential UX: users expect paste
+  // to work regardless of where they clicked.
+  onMount(() => document.addEventListener("paste", handlePaste as EventListener));
+  onCleanup(() => document.removeEventListener("paste", handlePaste as EventListener));
 
   function handleDragOver(e: DragEvent) {
     e.preventDefault();
@@ -133,6 +187,7 @@ export default function InputField(props: InputFieldProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       style={{
+        position: "relative",
         display: "flex",
         "flex-direction": "column",
         gap: "0",
@@ -258,13 +313,93 @@ export default function InputField(props: InputFieldProps) {
         >
           +
         </button>
+
+        {/* Mic button — only shown when whisper is available */}
+        <Show when={props.whisperUrl && voice.isSupported()}>
+          <button
+            data-testid="chat-mic"
+            onClick={toggleMic}
+            disabled={props.disabled || voice.isConnecting()}
+            title={
+              voice.isRecording()
+                ? "Stop recording"
+                : voice.isConnecting()
+                  ? "Connecting..."
+                  : "Voice input"
+            }
+            class={voice.isRecording() ? "mic-pulse" : ""}
+            style={{
+              width: "36px",
+              height: "36px",
+              "min-width": "36px",
+              background: voice.isRecording()
+                ? "var(--ctp-red)"
+                : voice.isConnecting()
+                  ? "var(--ctp-yellow)"
+                  : props.disabled
+                    ? "var(--ctp-surface0)"
+                    : "var(--ctp-surface1)",
+              color: voice.isRecording() || voice.isConnecting()
+                ? "var(--ctp-base)"
+                : props.disabled
+                  ? "var(--ctp-overlay0)"
+                  : "var(--ctp-blue)",
+              border: voice.isRecording()
+                ? "1px solid var(--ctp-red)"
+                : "1px solid var(--ctp-surface2)",
+              "border-radius": "6px",
+              cursor: props.disabled ? "not-allowed" : "pointer",
+              "font-size": "16px",
+              "line-height": "1",
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              padding: "0",
+              "flex-shrink": "0",
+              transition: "all 200ms ease",
+            }}
+          >
+            {/* SVG Mic icon */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="22" />
+            </svg>
+          </button>
+        </Show>
+
+        {/* Partial transcription preview */}
+        <Show when={voice.isRecording() && voice.partialText()}>
+          <div
+            style={{
+              position: "absolute",
+              bottom: "100%",
+              left: "16px",
+              right: "16px",
+              padding: "6px 10px",
+              background: "var(--ctp-surface0)",
+              "border-radius": "6px 6px 0 0",
+              "border": "1px solid var(--ctp-surface1)",
+              "border-bottom": "none",
+              "font-size": "12px",
+              color: "var(--ctp-subtext0)",
+              "font-style": "italic",
+              "max-height": "60px",
+              overflow: "hidden",
+              "text-overflow": "ellipsis",
+              "white-space": "nowrap",
+            }}
+          >
+            {voice.partialText()}
+          </div>
+        </Show>
+
         <textarea
           data-testid="chat-input"
           ref={textareaRef}
           value={text()}
           onInput={handleInput}
           onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
           disabled={props.disabled}
           placeholder={
             props.disabled
