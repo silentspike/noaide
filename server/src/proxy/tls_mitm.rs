@@ -181,12 +181,17 @@ impl CaAuthority {
     pub fn build_tls_acceptor(&self, hostname: &str) -> anyhow::Result<TlsAcceptor> {
         let (cert_der, key_der) = self.get_or_create_cert(hostname)?;
 
-        let server_config = rustls::ServerConfig::builder()
+        let mut server_config = rustls::ServerConfig::builder()
             .with_no_client_auth()
             .with_single_cert(
                 vec![cert_der, self.ca_cert_der.clone()],
                 rustls::pki_types::PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key_der)),
             )?;
+
+        // Advertise both HTTP/1.1 and h2 — prefer HTTP/1.1.
+        // If client negotiates h2, the CONNECT handler falls back to byte-copy
+        // (full HTTP/2 MITM requires the h2 crate, planned for Phase 0.6).
+        server_config.alpn_protocols = vec![b"http/1.1".to_vec(), b"h2".to_vec()];
 
         Ok(TlsAcceptor::from(Arc::new(server_config)))
     }
