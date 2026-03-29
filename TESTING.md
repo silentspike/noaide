@@ -14,12 +14,12 @@
 | Level | Command | Environment | Evidence Path |
 |-------|---------|-------------|---------------|
 | Static (Rust) | `cargo clippy -- -D warnings && cargo fmt -- --check` | CI | `artifacts/clippy.log` |
-| Static (Frontend) | `cd frontend && npm run lint` | CI | `artifacts/eslint.log` |
+| Static (Frontend) | `cd frontend && pnpm lint` | CI | `artifacts/eslint.log` |
 | Unit (Rust) | `cargo test --all-features` | CI | `artifacts/cargo-test.xml` |
-| Unit (Frontend) | `cd frontend && npm test -- --coverage` | CI | `artifacts/coverage/` |
+| Unit (Frontend) | `cd frontend && pnpm test -- --coverage` | CI | `artifacts/coverage/` |
 | Integration | `cargo test --test integration` | CI | `artifacts/integration.xml` |
 | Security (Rust) | `cargo audit` | CI | `artifacts/cargo-audit.json` |
-| Security (Frontend) | `npm audit --audit-level=high` | CI | `artifacts/npm-audit.json` |
+| Security (Frontend) | `pnpm audit` | CI | `artifacts/npm-audit.json` |
 | Security (SAST) | CodeQL Analysis | CI | GitHub Security tab |
 | System/Artifact | `./target/release/noaide-server --version` | Release binary | `artifacts/system.log` |
 | E2E/Smoke | Playwright via Docker | Ephemeral | `artifacts/e2e/` |
@@ -44,7 +44,7 @@ The protocol ensures consistent quality across all changes.
 1. **Tests**: Run all relevant test commands, document command + output.
 2. **Lint**: Confirm zero warnings from `cargo clippy` and `eslint`.
 3. **Type Check**: Confirm zero errors from `tsc --noEmit`.
-4. **Build**: Confirm successful `cargo build --release` and `npm run build`.
+4. **Build**: Confirm successful `cargo build --release` and `pnpm build`.
 5. **Observability**: Check that new code has appropriate logging (tracing crate for Rust, console.warn/error for frontend).
 6. **Lessons**: Document any unexpected issues as rules in project config to prevent recurrence.
 
@@ -56,7 +56,7 @@ The protocol ensures consistent quality across all changes.
 ### Tests Performed
 - Command: `cargo test -p noaide-server -- <module>`
   Output: <N> tests passed, 0 failed
-- Command: `cd frontend && npm test`
+- Command: `cd frontend && pnpm test`
   Output: <N> tests passed
 
 ### Tests NOT Performed
@@ -69,7 +69,7 @@ The protocol ensures consistent quality across all changes.
 
 ### Build
 - `cargo build --release`: OK (<duration>)
-- `npm run build`: OK (<bundle size>)
+- `pnpm build`: OK (<bundle size>)
 
 ### Confidence: <N>%
 <One sentence justification>
@@ -93,16 +93,16 @@ The protocol ensures consistent quality across all changes.
 
 ```bash
 # Frontend unit tests
-cd frontend && npm test
+cd frontend && pnpm test
 
 # Frontend tests with coverage
-cd frontend && npm test -- --coverage
+cd frontend && pnpm test -- --coverage
 
 # Frontend lint
-cd frontend && npm run lint
+cd frontend && pnpm lint
 
 # Frontend type check
-cd frontend && npm run typecheck
+cd frontend && pnpm typecheck
 
 # Rust tests (remote build server)
 cargo test
@@ -111,7 +111,7 @@ cargo test
 cargo clippy
 
 # All CI checks locally
-cd frontend && npm run lint && npm run typecheck && npm test
+cd frontend && pnpm lint && pnpm typecheck && npm test
 ```
 
 ## Performance Benchmarks

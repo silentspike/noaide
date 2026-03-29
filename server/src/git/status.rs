@@ -35,6 +35,8 @@ pub enum GitError {
     NotRepo(String),
     #[error("branch not found: {0}")]
     BranchNotFound(String),
+    #[error("{0}")]
+    Other(String),
 }
 
 pub fn status(repo_path: &Path) -> Result<Vec<FileStatus>, GitError> {
@@ -140,12 +142,55 @@ pub fn checkout(repo_path: &Path, branch_name: &str) -> Result<(), GitError> {
     Ok(())
 }
 
+/// Create a new branch from HEAD and check it out.
+pub fn create_branch(repo_path: &Path, branch_name: &str) -> Result<(), GitError> {
+    let repo = Repository::open(repo_path)?;
+    let head = repo.head()?.peel_to_commit()?;
+    repo.branch(branch_name, &head, false)?;
+    checkout(repo_path, branch_name)?;
+    Ok(())
+}
+
 pub fn stage(repo_path: &Path, paths: &[&str]) -> Result<(), GitError> {
     let repo = Repository::open(repo_path)?;
     let mut index = repo.index()?;
 
     for path in paths {
         index.add_path(Path::new(path))?;
+    }
+
+    index.write()?;
+    Ok(())
+}
+
+pub fn unstage(repo_path: &Path, paths: &[&str]) -> Result<(), GitError> {
+    let repo = Repository::open(repo_path)?;
+    let head = repo.head()?.peel_to_commit()?;
+    let head_tree = head.tree()?;
+    let mut index = repo.index()?;
+
+    for path in paths {
+        match head_tree.get_path(Path::new(path)) {
+            Ok(entry) => {
+                index.add(&git2::IndexEntry {
+                    ctime: git2::IndexTime::new(0, 0),
+                    mtime: git2::IndexTime::new(0, 0),
+                    dev: 0,
+                    ino: 0,
+                    mode: entry.filemode() as u32,
+                    uid: 0,
+                    gid: 0,
+                    file_size: 0,
+                    id: entry.id(),
+                    flags: 0,
+                    flags_extended: 0,
+                    path: path.as_bytes().to_vec(),
+                })?;
+            }
+            Err(_) => {
+                index.remove_path(Path::new(path))?;
+            }
+        }
     }
 
     index.write()?;
@@ -198,6 +243,110 @@ pub fn log(repo_path: &Path, max_count: usize) -> Result<Vec<CommitInfo>, GitErr
     }
 
     Ok(commits)
+}
+
+/// A single diff hunk for a file.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DiffHunk {
+    pub header: String,
+    pub old_start: u32,
+    pub old_lines: u32,
+    pub new_start: u32,
+    pub new_lines: u32,
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DiffLine {
+    pub origin: char, // '+', '-', ' '
+    pub content: String,
+}
+
+/// Get diff hunks for a single file (unstaged changes).
+pub fn diff_hunks(repo_path: &Path, file_path: &str) -> Result<Vec<DiffHunk>, GitError> {
+    let repo = Repository::open(repo_path)?;
+    let mut diff_opts = git2::DiffOptions::new();
+    diff_opts.pathspec(file_path);
+
+    let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
+    let mut hunks = Vec::new();
+
+    // Collect all diff data in a single pass using print callback
+    diff.print(git2::DiffFormat::Patch, |_delta, maybe_hunk, line| {
+        if let Some(hunk) = maybe_hunk {
+            // Check if this is a new hunk (different header from last)
+            let header = String::from_utf8_lossy(hunk.header()).trim().to_string();
+            if hunks.last().is_none_or(|h: &DiffHunk| h.header != header) {
+                hunks.push(DiffHunk {
+                    header,
+                    old_start: hunk.old_start(),
+                    old_lines: hunk.old_lines(),
+                    new_start: hunk.new_start(),
+                    new_lines: hunk.new_lines(),
+                    lines: Vec::new(),
+                });
+            }
+        }
+        match line.origin() {
+            '+' | '-' | ' ' => {
+                if let Some(last) = hunks.last_mut() {
+                    last.lines.push(DiffLine {
+                        origin: line.origin(),
+                        content: String::from_utf8_lossy(line.content()).to_string(),
+                    });
+                }
+            }
+            _ => {}
+        }
+        true
+    })?;
+
+    Ok(hunks)
+}
+
+/// Stage a specific hunk by applying a patch via `git apply --cached`.
+/// This uses git CLI because libgit2 doesn't support partial staging natively.
+pub fn stage_hunk(repo_path: &Path, file_path: &str, hunk_index: usize) -> Result<(), GitError> {
+    let hunks = diff_hunks(repo_path, file_path)?;
+    let hunk = hunks.get(hunk_index).ok_or_else(|| {
+        GitError::Other(format!(
+            "hunk index {} out of range ({})",
+            hunk_index,
+            hunks.len()
+        ))
+    })?;
+
+    // Build a unified diff patch for this single hunk
+    let mut patch = format!("--- a/{file_path}\n+++ b/{file_path}\n{}\n", hunk.header);
+    for line in &hunk.lines {
+        patch.push(line.origin);
+        patch.push_str(&line.content);
+        if !line.content.ends_with('\n') {
+            patch.push('\n');
+        }
+    }
+
+    // Apply via git CLI (git apply --cached)
+    let output = std::process::Command::new("git")
+        .args(["apply", "--cached", "--unidiff-zero", "-"])
+        .current_dir(repo_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(patch.as_bytes())?;
+            child.wait_with_output()
+        })
+        .map_err(|e| GitError::Other(format!("git apply failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(GitError::Other(format!("git apply failed: {stderr}")));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -318,6 +467,25 @@ mod tests {
         let staged_file = files.iter().find(|f| f.path == "staged.txt");
         assert!(staged_file.is_some(), "staged.txt should appear in status");
         assert!(staged_file.unwrap().staged, "staged.txt should be staged");
+    }
+
+    #[test]
+    fn unstage_removes_files_from_index() {
+        let dir = create_test_repo();
+        std::fs::write(dir.path().join("staged.txt"), "content\n").unwrap();
+        stage(dir.path(), &["staged.txt"]).unwrap();
+
+        let files = status(dir.path()).unwrap();
+        assert!(
+            files.iter().any(|f| f.path == "staged.txt" && f.staged),
+            "staged.txt should be staged"
+        );
+
+        unstage(dir.path(), &["staged.txt"]).unwrap();
+
+        let files = status(dir.path()).unwrap();
+        let f = files.iter().find(|f| f.path == "staged.txt").unwrap();
+        assert!(!f.staged, "staged.txt should be unstaged after unstage()");
     }
 
     #[test]

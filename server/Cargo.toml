@@ -23,6 +23,7 @@ hecs.workspace = true
 limbo.workspace = true
 nix.workspace = true
 notify.workspace = true
+ignore.workspace = true
 aya.workspace = true
 aya-log.workspace = true
 async-trait.workspace = true
@@ -45,7 +46,14 @@ hyper-util.workspace = true
 futures-util.workspace = true
 tokio-stream.workspace = true
 git2.workspace = true
+tokio-tungstenite.workspace = true
+rcgen.workspace = true
+pem.workspace = true
+time.workspace = true
+dashmap.workspace = true
+tokio-rustls.workspace = true
+rustls-native-certs.workspace = true
+togaf-parser = { path = "../crates/togaf-parser" }
 
 [dev-dependencies]
 tempfile = "3"
-rcgen = "0.14"

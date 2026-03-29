@@ -298,6 +298,44 @@ export default function NetworkPanel() {
           </button>
         </Show>
 
+        {/* HAR Export */}
+        <button
+          data-testid="har-export-btn"
+          onClick={() => {
+            const har = {
+              log: {
+                version: "1.2",
+                creator: { name: "noaide", version: "0.1.0" },
+                entries: filteredRequests().map((r) => ({
+                  startedDateTime: new Date(r.timestamp).toISOString(),
+                  time: r.latencyMs,
+                  request: { method: r.method, url: r.url, httpVersion: "HTTP/2", headers: [], queryString: [], bodySize: r.requestSize ?? -1 },
+                  response: { status: r.statusCode, statusText: "", httpVersion: "HTTP/2", headers: [], content: { size: r.responseSize ?? -1, mimeType: "application/json" }, bodySize: r.responseSize ?? -1 },
+                  timings: { send: 0, wait: r.latencyMs, receive: 0 },
+                })),
+              },
+            };
+            const blob = new Blob([JSON.stringify(har, null, 2)], { type: "application/json" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `noaide-${new Date().toISOString().slice(0, 10)}.har`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+          }}
+          style={{
+            padding: "3px 8px",
+            "font-size": "10px",
+            background: "var(--ctp-surface0)",
+            border: "1px solid var(--ctp-surface1)",
+            "border-radius": "4px",
+            color: "var(--ctp-subtext0)",
+            cursor: "pointer",
+            "white-space": "nowrap",
+          }}
+        >
+          HAR
+        </button>
+
         <span
           data-testid="request-count"
           style={{
@@ -309,6 +347,33 @@ export default function NetworkPanel() {
           {filteredRequests().length} requests
         </span>
       </div>
+
+      {/* Latency Sparkline */}
+      <Show when={filteredRequests().length > 1}>
+        <div
+          data-testid="latency-sparkline"
+          style={{
+            height: "32px",
+            padding: "2px 12px",
+            "border-bottom": "1px solid var(--ctp-surface0)",
+            background: "var(--ctp-mantle)",
+          }}
+        >
+          <svg width="100%" height="28" preserveAspectRatio="none" viewBox={`0 0 ${Math.min(filteredRequests().length, 100)} 28`}>
+            {(() => {
+              const items = filteredRequests().slice(-100);
+              const maxLat = Math.max(...items.map((r) => r.latencyMs), 1);
+              const points = items.map((r, i) => `${i},${28 - (r.latencyMs / maxLat) * 26}`).join(" ");
+              return (
+                <>
+                  <polyline points={points} fill="none" stroke="var(--ctp-blue)" stroke-width="1.5" />
+                  <text x="0" y="10" font-size="8" fill="var(--ctp-overlay0)">{maxLat}ms</text>
+                </>
+              );
+            })()}
+          </svg>
+        </div>
+      </Show>
 
       {/* Column headers */}
       <div

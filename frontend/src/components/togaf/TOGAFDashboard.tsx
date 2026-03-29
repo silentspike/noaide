@@ -7,6 +7,8 @@
 import {
   type Component,
   createSignal,
+  onMount,
+  onCleanup,
   Show,
   For,
 } from "solid-js";
@@ -67,6 +69,21 @@ const TOGAFDashboard: Component = () => {
   const [activeView, setActiveView] = createSignal<ViewId>("adm");
   const [filterQuery, setFilterQuery] = createSignal("");
 
+  // Keyboard shortcuts: Ctrl+Z = Undo, Ctrl+Shift+Z = Redo
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      if (e.shiftKey) {
+        e.preventDefault();
+        store.redo();
+      } else {
+        e.preventDefault();
+        store.undo();
+      }
+    }
+  };
+  onMount(() => document.addEventListener("keydown", handleKeyDown));
+  onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
+
   return (
     <div class="togaf-layout">
       {/* ═══ HEADER ═══ */}
@@ -92,6 +109,45 @@ const TOGAFDashboard: Component = () => {
             <span class="confidence-label">{store.plan.meta.confidence}%</span>
           </div>
           <SearchFilter placeholder="Filter sections..." onFilter={setFilterQuery} />
+          {/* Undo/Redo buttons */}
+          <button
+            data-testid="undo-btn"
+            onClick={() => store.undo()}
+            disabled={!store.canUndo()}
+            title="Undo last edit (Ctrl+Z)"
+            style={{
+              padding: "2px 8px",
+              background: store.canUndo() ? "var(--surface1)" : "var(--bg-card)",
+              border: "1px solid var(--surface2)",
+              "border-radius": "4px",
+              color: store.canUndo() ? "var(--text-primary)" : "var(--overlay0)",
+              cursor: store.canUndo() ? "pointer" : "default",
+              "font-size": "14px",
+              "line-height": "1",
+              opacity: store.canUndo() ? "1" : "0.4",
+            }}
+          >
+            &#x21A9;
+          </button>
+          <button
+            data-testid="redo-btn"
+            onClick={() => store.redo()}
+            disabled={!store.canRedo()}
+            title="Redo (Ctrl+Shift+Z)"
+            style={{
+              padding: "2px 8px",
+              background: store.canRedo() ? "var(--surface1)" : "var(--bg-card)",
+              border: "1px solid var(--surface2)",
+              "border-radius": "4px",
+              color: store.canRedo() ? "var(--text-primary)" : "var(--overlay0)",
+              cursor: store.canRedo() ? "pointer" : "default",
+              "font-size": "14px",
+              "line-height": "1",
+              opacity: store.canRedo() ? "1" : "0.4",
+            }}
+          >
+            &#x21AA;
+          </button>
           <LiveIndicator status={store.status()} />
           <ThemeToggle />
         </div>
@@ -106,6 +162,7 @@ const TOGAFDashboard: Component = () => {
             {(view) => (
               <button
                 class={`sidebar-link ${activeView() === view.id ? "active" : ""}`}
+                data-testid={`sidebar-view-${view.id}`}
                 onClick={() => setActiveView(view.id)}
               >
                 <span class="nav-icon">{view.icon}</span>
@@ -171,6 +228,27 @@ const TOGAFDashboard: Component = () => {
 
       {/* ═══ MAIN CONTENT ═══ */}
       <main class="togaf-main">
+        {/* Error overlay for offline/corrupt plan */}
+        <Show when={(store.status() === "offline" || store.status() === "stale") && store.error()}>
+          <div
+            data-testid="plan-error-overlay"
+            style={{
+              padding: "24px",
+              margin: "16px",
+              background: "rgba(243,139,168,0.08)",
+              border: "1px solid var(--red)",
+              "border-radius": "8px",
+              color: "var(--red)",
+              "text-align": "center",
+            }}
+          >
+            <div style={{ "font-size": "20px", "margin-bottom": "8px" }}>&#x26A0;</div>
+            <div style={{ "font-weight": "700", "margin-bottom": "4px" }}>Plan unavailable</div>
+            <div style={{ "font-size": "11px", color: "var(--text-muted)", "word-break": "break-all" }}>
+              {store.error()}
+            </div>
+          </div>
+        </Show>
         <Show when={activeView() === "adm"}>
           <ADMCycleView />
         </Show>

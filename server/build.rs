@@ -21,10 +21,7 @@ fn main() {
     for candidate in &candidates {
         if candidate.exists() {
             fs::copy(candidate, &ebpf_target).expect("failed to copy eBPF binary");
-            println!(
-                "cargo:warning=Using eBPF binary from {}",
-                candidate.display()
-            );
+            eprintln!("note: using eBPF binary from {}", candidate.display());
             found = true;
             break;
         }
@@ -32,11 +29,8 @@ fn main() {
 
     if !found {
         // Create empty placeholder so include_bytes! doesn't fail at compile time.
-        // Ebpf::load() will return an error at runtime when loading empty bytecode.
+        // At runtime the watcher factory will fall back to fanotify/inotify.
         fs::write(&ebpf_target, b"").expect("failed to create eBPF placeholder");
-        println!(
-            "cargo:warning=eBPF binary not found. Run `cargo xtask build-ebpf` first for eBPF support."
-        );
     }
 
     println!("cargo:rerun-if-changed=build.rs");

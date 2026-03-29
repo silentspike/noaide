@@ -163,4 +163,57 @@ describe("createSessionStore", () => {
     store.updateQualityTier("Batched");
     expect(store.state.qualityTier).toBe("Batched");
   });
+
+  it("deduplicates optimistic user messages against parser-delivered ones", () => {
+    const store = createSessionStore();
+
+    // Simulate optimistic message from ChatPanel (crypto.randomUUID())
+    const optimistic = makeMessage({
+      uuid: "optimistic-uuid-1",
+      role: "user",
+      messageType: "user",
+      content: [{ type: "text", text: "Was ist 7+7? Nur die Zahl." }],
+    });
+    store.addOptimisticUserMessage(optimistic);
+    expect(store.state.messages.length).toBe(1);
+
+    // Parser delivers the same message with a different UUID (from Gemini JSON)
+    const parsed = makeMessage({
+      uuid: "gemini-parsed-uuid-abc",
+      role: "user",
+      messageType: "user",
+      content: [{ type: "text", text: "Was ist 7+7 Nur die Zahl." }], // Gemini strips '?'
+    });
+    store.addMessage(parsed);
+
+    // Should still be 1 message — the optimistic version stays
+    expect(store.state.messages.length).toBe(1);
+    expect(store.state.messages[0].uuid).toBe("optimistic-uuid-1");
+  });
+
+  it("does not deduplicate non-optimistic user messages", () => {
+    const store = createSessionStore();
+
+    // Two different user messages from the parser (no optimistic tracking)
+    store.addMessage(makeMessage({ uuid: "u1", role: "user", messageType: "user" }));
+    store.addMessage(makeMessage({ uuid: "u2", role: "user", messageType: "user" }));
+    expect(store.state.messages.length).toBe(2);
+  });
+
+  it("prevents re-adding parsed UUID after optimistic dedup", () => {
+    const store = createSessionStore();
+
+    store.addOptimisticUserMessage(
+      makeMessage({ uuid: "opt-1", role: "user", messageType: "user" }),
+    );
+    // Parser delivers with different UUID
+    store.addMessage(
+      makeMessage({ uuid: "parsed-1", role: "user", messageType: "user" }),
+    );
+    // Re-parse (e.g., file re-read) tries to add same parsed UUID again
+    store.addMessage(
+      makeMessage({ uuid: "parsed-1", role: "user", messageType: "user" }),
+    );
+    expect(store.state.messages.length).toBe(1);
+  });
 });

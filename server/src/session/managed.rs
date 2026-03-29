@@ -84,6 +84,7 @@ impl ManagedSession {
         working_dir: &Path,
         anthropic_base_url: Option<&str>,
         cli_type: &str,
+        auto_approve: bool,
     ) -> Result<Arc<Self>, SessionError> {
         // Generate session ID FIRST — needed for per-session proxy URL prefix
         let session_id = SessionId(Uuid::new_v4());
@@ -130,22 +131,73 @@ impl ManagedSession {
                 format!("{base}/s/{sid}/backend-api/codex"),
             ));
             // Gemini CLI: per-session proxy URL for Code Assist backend
+            // CODE_ASSIST_ENDPOINT covers control-plane calls (v1internal:*)
+            // GOOGLE_GEMINI_BASE_URL covers the actual LLM/generative calls
+            // (generativelanguage.googleapis.com) — without this, chat API
+            // calls bypass the proxy entirely.
             env_vars.push((
                 "CODE_ASSIST_ENDPOINT".to_string(),
                 format!("{base}/s/{sid}"),
             ));
-            // DO NOT set HTTPS_PROXY/HTTP_PROXY for managed sessions!
-            // When both ANTHROPIC_BASE_URL and HTTPS_PROXY are set, CLIs prefer
-            // the CONNECT tunnel (HTTPS_PROXY), bypassing ANTHROPIC_BASE_URL entirely.
-            // CONNECT tunnels are opaque TLS tunnels — no session prefix extraction,
-            // no request/response inspection, no interception possible.
-            // By only setting the *_BASE_URL vars, CLIs are forced to use our
-            // per-session reverse proxy URLs where we have full cleartext visibility.
+            env_vars.push((
+                "GOOGLE_GEMINI_BASE_URL".to_string(),
+                format!("{base}/s/{sid}"),
+            ));
+            // Hybrid Proxy Architecture (Reverse + CONNECT MITM):
+            //
+            // API calls (api.anthropic.com, chatgpt.com, etc.) are in NO_PROXY →
+            // forced through per-session *_BASE_URL reverse proxy → full cleartext.
+            //
+            // Everything else (telemetry, auth, updates, git) → routed through
+            // HTTPS_PROXY CONNECT tunnel → TLS MITM → classified + logged.
+            //
+            // The session UUID is embedded in Proxy-Authorization: Basic for
+            // per-session attribution in the CONNECT handler.
+
+            // Extract proxy port from base URL (e.g. "http://localhost:4434" → 4434)
+            let proxy_port = base
+                .rsplit(':')
+                .next()
+                .and_then(|p| p.parse::<u16>().ok())
+                .unwrap_or(4434);
+
+            env_vars.push((
+                "HTTPS_PROXY".to_string(),
+                format!("http://{sid}:x@localhost:{proxy_port}"),
+            ));
+            env_vars.push((
+                "HTTP_PROXY".to_string(),
+                format!("http://{sid}:x@localhost:{proxy_port}"),
+            ));
+            // NO_PROXY: API domains go through BASE_URL reverse proxy, NOT CONNECT.
+            // Without this, CLIs would route API calls through HTTPS_PROXY CONNECT
+            // tunnel instead of BASE_URL, losing per-session prefix and visibility.
+            env_vars.push((
+                "NO_PROXY".to_string(),
+                "localhost,127.0.0.1,api.anthropic.com,api.openai.com,chatgpt.com,\
+                 generativelanguage.googleapis.com,cloudcode-pa.googleapis.com"
+                    .to_string(),
+            ));
+
+            // CA Trust: tell CLIs to trust the mkcert root CA for MITM TLS
+            if let Some(ca_path) = crate::proxy::tls_mitm::find_ca_cert_path() {
+                // Node.js (Claude CLI, Gemini CLI)
+                env_vars.push(("NODE_EXTRA_CA_CERTS".to_string(), ca_path.clone()));
+                // OpenSSL-based tools (fallback)
+                env_vars.push(("SSL_CERT_FILE".to_string(), ca_path.clone()));
+                // Codex CLI (native Rust binary, respects this env var)
+                env_vars.push(("CODEX_CA_CERTIFICATE".to_string(), ca_path));
+            }
         }
 
         // Prepare CStrings for exec (must be done before fork — no allocations after fork)
         let c_binary = CString::new(binary).map_err(|e| SessionError::PtySpawn(e.to_string()))?;
-        let c_args = [c_binary.clone()];
+        let c_args: Vec<CString> = if auto_approve && binary == "claude" {
+            let flag = CString::new("--dangerously-skip-permissions").unwrap();
+            vec![c_binary.clone(), flag]
+        } else {
+            vec![c_binary.clone()]
+        };
 
         let working_dir_owned = working_dir.to_path_buf();
 

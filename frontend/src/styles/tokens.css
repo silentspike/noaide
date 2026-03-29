@@ -470,6 +470,14 @@ pre code { background: none; padding: 0; }
 .kanban-card.size-m { border-left-color: var(--blue); }
 .kanban-card.size-l { border-left-color: var(--peach); }
 .kanban-card.dragging { opacity: 0.5; }
+.kanban-card.wp-working {
+  animation: wp-pulse 1.5s ease-in-out infinite;
+  border-left-color: var(--yellow);
+}
+@keyframes wp-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 226, 175, 0.4); }
+  50% { box-shadow: 0 0 8px 2px rgba(249, 226, 175, 0.6); }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    RISK MATRIX
@@ -645,6 +653,35 @@ pre code { background: none; padding: 0; }
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
   .togaf-layout { grid-template-columns: 1fr; }
-  .togaf-sidebar { display: none; }
-  .togaf-main { padding: 1rem; }
+  .togaf-sidebar {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 0;
+    padding: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--surface0);
+    max-height: 40px;
+  }
+  .togaf-sidebar .sidebar-section { display: none; }
+  .togaf-sidebar .sidebar-section:first-child {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+  }
+  .togaf-sidebar .sidebar-section:first-child h3 { display: none; }
+  .togaf-sidebar .sidebar-link {
+    white-space: nowrap;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    border-bottom: 2px solid transparent;
+  }
+  .togaf-sidebar .sidebar-link.active {
+    border-bottom-color: var(--blue);
+    background: transparent;
+  }
+  .togaf-main { padding: 0.5rem; }
+  .kanban-board { overflow-x: auto; }
+  .kanban-col { min-width: 140px; }
+  .section-body table { font-size: 0.75rem; }
 }

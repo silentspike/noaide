@@ -11,6 +11,7 @@
 import {
   createContext,
   useContext,
+  createEffect,
   onMount,
   onCleanup,
   type ParentProps,
@@ -36,6 +37,8 @@ export function usePlan(): PlanStore {
 interface StandaloneProps extends ParentProps {
   /** URL to plan.json (relative or absolute) */
   planUrl: string;
+  /** Plan name (directory name in /work/plan/) — used for write-back */
+  planName?: string;
   /** Polling interval in ms (default: 2000) */
   pollIntervalMs?: number;
 }
@@ -71,6 +74,42 @@ export function StandalonePlanProvider(props: StandaloneProps) {
     }
   }
 
+  // Set up write-back API reactively — re-binds when planName changes
+  createEffect(() => {
+    const planName = props.planName;
+    if (planName) {
+      store.setPatchApi(async (path: string, body: Record<string, unknown>) => {
+        try {
+          let editType = "unknown";
+          let editId = "";
+          if (path.includes("/work-packages/")) {
+            editType = "wp_status";
+            editId = path.split("/work-packages/")[1] ?? "";
+          } else if (path.includes("/sections/")) {
+            editType = "section_status";
+            editId = path.split("/sections/")[1] ?? "";
+          } else if (path.includes("/gates/")) {
+            editType = "gate_status";
+            editId = path.split("/gates/")[1] ?? "";
+          }
+
+          const edit = { type: editType, id: editId, ...body, timestamp: new Date().toISOString() };
+
+          const resp = await fetch(`/api/plans/${planName}/edits`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ edits: [edit] }),
+          });
+          if (!resp.ok) {
+            console.warn(`[plan] write-back failed: ${resp.status}`);
+          }
+        } catch (err) {
+          console.warn("[plan] write-back failed:", err);
+        }
+      });
+    }
+  });
+
   onMount(() => {
     // Initial fetch
     fetchPlan();
@@ -78,6 +117,9 @@ export function StandalonePlanProvider(props: StandaloneProps) {
     // Start polling
     const interval = props.pollIntervalMs ?? 2000;
     intervalId = setInterval(fetchPlan, interval);
+
+    // Expose store for E2E testing (dev only)
+    (window as any).__PLAN_STORE__ = store;
   });
 
   onCleanup(() => {
@@ -108,11 +150,44 @@ export function IntegrationPlanProvider(props: IntegrationProps) {
   const store = createPlanStore();
 
   onMount(() => {
-    // Phase C: Connect to WebTransport endpoint
-    // const wt = new WebTransport(`https://localhost:4433/plan/${props.sessionId}`);
-    // wt.datagrams.readable → reconcile updates
-    store.setStatus("offline");
-    store.setError("WebTransport provider not yet implemented (Phase C)");
+    // Phase C: WebTransport push for plan updates
+    // Subscribe to QUIC datagrams on topic "plan.updates"
+    // When server pushes new plan.json content, reconcile into store
+    try {
+      const certHash = (window as any).__NOAIDE_CERT_HASH__;
+      if (certHash && typeof WebTransport !== "undefined") {
+        const wt = new WebTransport(`https://localhost:4433`, {
+          serverCertificateHashes: [{ algorithm: "sha-256", value: Uint8Array.from(atob(certHash), c => c.charCodeAt(0)) }],
+        });
+        wt.ready.then(() => {
+          store.setStatus("live");
+          // Read datagrams for plan updates
+          const reader = wt.datagrams.readable.getReader();
+          (async function readLoop() {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              try {
+                const text = new TextDecoder().decode(value);
+                const data = JSON.parse(text);
+                if (data.$schema === "togaf-plan/1.0") {
+                  store.updatePlan(data);
+                }
+              } catch { /* skip malformed datagrams */ }
+            }
+          })();
+        }).catch(() => {
+          store.setStatus("offline");
+          store.setError("WebTransport connection failed — falling back to polling");
+        });
+      } else {
+        store.setStatus("offline");
+        store.setError("WebTransport not available — use StandalonePlanProvider for HTTP polling");
+      }
+    } catch {
+      store.setStatus("offline");
+      store.setError("WebTransport initialization failed");
+    }
   });
 
   return (

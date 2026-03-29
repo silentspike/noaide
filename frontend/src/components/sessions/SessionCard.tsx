@@ -18,7 +18,9 @@ interface SessionCardProps {
   session: Session;
   isActive: boolean;
   orbState: OrbState;
+  isPinned?: boolean;
   onClick: () => void;
+  onTogglePin?: (id: string) => void;
 }
 
 function relativeTime(timestamp: number, _tick?: number): string {
@@ -102,11 +104,14 @@ export default function SessionCard(props: SessionCardProps) {
   const label = () => cliLabel(props.session.cliType);
 
   return (
-    <button
+    <div
       data-testid={`session-card-${props.session.id}`}
       data-session-id={props.session.id}
       data-cli-type={props.session.cliType ?? "claude"}
       onClick={() => props.onClick()}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") props.onClick(); }}
       style={{
         display: "flex",
         "align-items": "stretch",
@@ -125,6 +130,7 @@ export default function SessionCard(props: SessionCardProps) {
         transition: "all 200ms ease",
         opacity: props.session.status === "archived" ? "0.4" : "1",
         overflow: "hidden",
+        "user-select": "text",
       }}
     >
       {/* Left accent bar — CLI type color */}
@@ -161,6 +167,7 @@ export default function SessionCard(props: SessionCardProps) {
             gap: "3px",
           }}
         >
+
           {/* Row 1: CLI badge + project name */}
           <div
             style={{
@@ -238,7 +245,38 @@ export default function SessionCard(props: SessionCardProps) {
             </Show>
           </div>
         </div>
+
+        {/* Pin/Star button */}
+        <Show when={props.onTogglePin}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onTogglePin?.(props.session.id);
+            }}
+            title={props.isPinned ? "Unpin session" : "Pin session"}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "4px",
+              "flex-shrink": "0",
+              color: props.isPinned ? "var(--accent-gold, #f59e0b)" : "var(--ctp-overlay0)",
+              "font-size": "14px",
+              transition: "all 150ms ease",
+              transform: "scale(1)",
+              "line-height": "1",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.2)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)";
+            }}
+          >
+            {props.isPinned ? "\u2605" : "\u2606"}
+          </button>
+        </Show>
       </div>
-    </button>
+    </div>
   );
 }

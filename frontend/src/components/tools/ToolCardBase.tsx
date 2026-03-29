@@ -17,13 +17,14 @@ function toolColor(name: string): string {
     Edit: "var(--neon-green, #00ff9d)",
     Bash: "var(--ctp-peach)",
     Read: "var(--neon-blue, #00b8ff)",
-    Grep: "var(--accent-gold, #f59e0b)",
+    Grep: "var(--ctp-yellow)",
     Glob: "var(--accent-cyan, #06b6d4)",
     Write: "var(--neon-green, #00ff9d)",
     WebSearch: "var(--neon-blue, #00b8ff)",
     WebFetch: "var(--neon-blue, #00b8ff)",
-    LSP: "var(--neon-purple, #a855f7)",
-    NotebookEdit: "var(--ctp-pink)",
+    LSP: "var(--ctp-mauve)",
+    NotebookEdit: "var(--ctp-blue)",
+    Permission: "var(--ctp-red)",
     AskUserQuestion: "var(--ctp-flamingo)",
   };
   return colors[name] ?? "var(--ctp-peach)";

@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import solidPlugin from "vite-plugin-solid";
 import { resolve } from "path";
+import fs from "fs";
 
 export default defineConfig({
   base: "/noaide/",
@@ -13,9 +14,40 @@ export default defineConfig({
   server: {
     port: 9999,
     strictPort: true,
+    host: "0.0.0.0",
+    https: (() => {
+      const keyPath = resolve(__dirname, "../certs/key.pem");
+      const certPath = resolve(__dirname, "../certs/cert.pem");
+      if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+        return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+      }
+      return false; // no TLS certs available (CI, fresh clone)
+    })(),
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
+    },
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        ws: true,
+        // Prevent Vite from crashing when backend is temporarily unavailable.
+        // Without this handler, ECONNREFUSED from the proxy kills the process.
+        configure: (proxy) => {
+          proxy.on("error", (err, _req, res) => {
+            console.warn(`[proxy] backend unavailable: ${err.message}`);
+            if (res && "writeHead" in res && !res.headersSent) {
+              (res as import("http").ServerResponse).writeHead(502, {
+                "Content-Type": "application/json",
+              });
+              (res as import("http").ServerResponse).end(
+                JSON.stringify({ error: "Backend unavailable", detail: err.message }),
+              );
+            }
+          });
+        },
+      },
     },
   },
   build: {
