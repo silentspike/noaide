@@ -283,9 +283,10 @@ pub fn component_to_api_json(m: &MessageComponent) -> serde_json::Value {
 
     // Include parsed content blocks if available
     if let Some(ref blocks_json) = m.content_blocks_json
-        && let Ok(blocks) = serde_json::from_str::<serde_json::Value>(blocks_json) {
-            obj["contentBlocks"] = blocks;
-        }
+        && let Ok(blocks) = serde_json::from_str::<serde_json::Value>(blocks_json)
+    {
+        obj["contentBlocks"] = blocks;
+    }
 
     obj
 }

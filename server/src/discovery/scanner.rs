@@ -505,9 +505,10 @@ pub async fn extract_last_timestamp(path: &Path) -> i64 {
             if let Some(end) = text[abs_pos..].find('"') {
                 let ts_str = &text[abs_pos..abs_pos + end];
                 if let Some(epoch) = parse_iso_to_epoch_secs(ts_str)
-                    && epoch > last_ts {
-                        last_ts = epoch;
-                    }
+                    && epoch > last_ts
+                {
+                    last_ts = epoch;
+                }
             }
             search_from = abs_pos;
         }

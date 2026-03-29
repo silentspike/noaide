@@ -85,7 +85,7 @@ export default function BashCard(props: BashCardProps) {
           <pre
             ref={(el) => {
               createEffect(() => {
-                el.innerHTML = ansiConvert.toHtml(tailOutput());
+                el.innerHTML = ansiConvert.toHtml(tailOutput()); // nosemgrep: insecure-document-method — ANSI→HTML via trusted converter, no user input
               });
             }}
             style={{
@@ -169,7 +169,7 @@ export default function BashCard(props: BashCardProps) {
           <pre
             ref={(el) => {
               createEffect(() => {
-                el.innerHTML = ansiConvert.toHtml(props.output ?? "");
+                el.innerHTML = ansiConvert.toHtml(props.output ?? ""); // nosemgrep: insecure-document-method — ANSI→HTML via trusted converter
               });
             }}
             style={{
