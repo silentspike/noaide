@@ -1308,7 +1308,7 @@ pub async fn connect_handler(
 /// 3. Read cleartext HTTP from client, forward to target
 /// 4. Read response from target, log both, forward to client
 ///
-/// Falls back to byte-copy for non-HTTP protocols (detected via protocol sniffing).
+/// Falls back to byte-copy for h2 or non-HTTP protocols.
 #[allow(clippy::too_many_arguments)]
 async fn mitm_tunnel<I>(
     ca: &super::tls_mitm::CaAuthority,
@@ -1325,33 +1325,295 @@ async fn mitm_tunnel<I>(
 where
     I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
+    use tokio::io::AsyncReadExt;
+
     // 1. Build TLS acceptor with dynamic cert for this hostname
     let acceptor = ca.build_tls_acceptor(hostname)?;
 
     // 2. TLS handshake with client (we present the dynamic cert)
     let client_tls = acceptor.accept(client_io).await?;
 
-    // 3. TLS handshake with real target
+    // 3. Check negotiated ALPN — if h2, fall back to byte-copy (no h2 MITM yet)
+    let is_h2 = client_tls
+        .get_ref()
+        .1
+        .alpn_protocol()
+        .is_some_and(|p| p == b"h2");
+
+    // 4. TLS handshake with real target
     let target_tls = ca.connect_to_target(hostname, target_tcp).await?;
 
-    // 4. Protocol sniffing: read first bytes to check if HTTP
-    //    For now, we do simple bidirectional copy and log metadata.
-    //    Full HTTP parsing with hyper will be added when we need body inspection.
-    //
-    //    TODO(Phase 0.2+): Use hyper::server::conn::http1::Builder on client side
-    //    to parse individual HTTP requests and log full bodies. Current implementation
-    //    logs the tunnel as a whole (like the transparent tunnel but WITH session-id
-    //    and classification).
+    if is_h2 {
+        info!(
+            target = %target_addr,
+            session = ?session_id,
+            "h2 negotiated — falling back to byte-copy (h2 MITM not implemented)"
+        );
+        return mitm_byte_copy(
+            client_tls,
+            target_tls,
+            target_addr,
+            request_id,
+            session_id,
+            category,
+            "h2-passthrough",
+            start,
+            state,
+        )
+        .await;
+    }
 
-    let (mut client_read, mut client_write) = tokio::io::split(client_tls);
-    let (mut target_read, mut target_write) = tokio::io::split(target_tls);
+    // 5. Protocol sniffing: read first bytes with 2s timeout to detect HTTP
+    let mut peek_buf = [0u8; 8];
+    let mut client_tls = client_tls; // need owned for split later
+    let peek_result = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        client_tls.read(&mut peek_buf).await
+    })
+    .await;
 
-    let client_to_target = tokio::io::copy(&mut client_read, &mut target_write);
-    let target_to_client = tokio::io::copy(&mut target_read, &mut client_write);
+    let peek_len = match peek_result {
+        Ok(Ok(n)) => n,
+        Ok(Err(_)) | Err(_) => {
+            // Read error or timeout — fall back to byte-copy
+            info!(
+                target = %target_addr,
+                "protocol sniffing timeout/error — byte-copy fallback"
+            );
+            return mitm_byte_copy(
+                client_tls,
+                target_tls,
+                target_addr,
+                request_id,
+                session_id,
+                category,
+                "tunnel+tls",
+                start,
+                state,
+            )
+            .await;
+        }
+    };
 
-    let (c2t, t2c) = tokio::join!(client_to_target, target_to_client);
-    let bytes_sent = c2t.unwrap_or(0);
-    let bytes_received = t2c.unwrap_or(0);
+    let is_http = peek_len >= 3
+        && (peek_buf.starts_with(b"GET ")
+            || peek_buf.starts_with(b"POST")
+            || peek_buf.starts_with(b"PUT ")
+            || peek_buf.starts_with(b"HEAD")
+            || peek_buf.starts_with(b"DELE")
+            || peek_buf.starts_with(b"PATC")
+            || peek_buf.starts_with(b"OPTI")
+            || peek_buf.starts_with(b"CONN"));
+
+    if !is_http {
+        info!(
+            target = %target_addr,
+            first_bytes = ?&peek_buf[..peek_len],
+            "non-HTTP protocol detected — byte-copy fallback"
+        );
+        // Prepend peeked bytes before byte-copy
+        let prefix = bytes::Bytes::copy_from_slice(&peek_buf[..peek_len]);
+        let prefixed_client = tokio::io::join(std::io::Cursor::new(prefix), client_tls);
+        return mitm_byte_copy(
+            prefixed_client,
+            target_tls,
+            target_addr,
+            request_id,
+            session_id,
+            category,
+            "tunnel+tls",
+            start,
+            state,
+        )
+        .await;
+    }
+
+    // 6. HTTP/1.1 proxy loop: parse individual requests, forward, log bodies
+    info!(
+        target = %target_addr,
+        session = ?session_id,
+        category = %category,
+        "HTTP/1.1 MITM active"
+    );
+
+    // Prepend peeked bytes back into the stream for hyper to parse
+    let prefix = bytes::Bytes::copy_from_slice(&peek_buf[..peek_len]);
+    let prefixed_client =
+        hyper_util::rt::TokioIo::new(tokio::io::join(std::io::Cursor::new(prefix), client_tls));
+    let target_io = hyper_util::rt::TokioIo::new(target_tls);
+
+    // Establish hyper HTTP/1.1 client connection to real target
+    let (target_sender, target_conn) =
+        hyper::client::conn::http1::handshake::<_, http_body_util::Full<bytes::Bytes>>(target_io)
+            .await?;
+
+    // Drive the target connection in the background
+    tokio::spawn(async move {
+        if let Err(e) = target_conn.await {
+            debug!(error = %e, "MITM target connection closed");
+        }
+    });
+
+    // Wrap sender in Arc<Mutex> — http1::SendRequest is not Clone,
+    // but serve_connection calls the service sequentially (no parallelism in h1)
+    let target_sender = Arc::new(tokio::sync::Mutex::new(target_sender));
+
+    // Serve HTTP/1.1 from client side, forwarding each request to target
+    let state_clone = state.clone();
+    let sid = session_id.map(String::from);
+    let addr = target_addr.to_string();
+    let cat = category;
+    let rid_base = request_id.to_string();
+    let start_time = start;
+
+    let service = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+        let sender = target_sender.clone();
+        let state = state_clone.clone();
+        let sid = sid.clone();
+        let addr = addr.clone();
+        let rid = format!("{}-{}", rid_base, uuid::Uuid::new_v4().simple());
+
+        async move {
+            let req_start = Instant::now();
+            let method = req.method().clone();
+            let uri = req.uri().clone();
+            let req_headers: Vec<(String, String)> = req
+                .headers()
+                .iter()
+                .map(|(k, v)| (k.to_string(), mitm::redact(v.to_str().unwrap_or_default())))
+                .collect();
+
+            // Read full request body (infallible — collect errors become empty)
+            let (parts, body) = req.into_parts();
+            let req_body_bytes = body
+                .collect()
+                .await
+                .map(|c| c.to_bytes().to_vec())
+                .unwrap_or_default();
+            let req_body_str = mitm::redact(&String::from_utf8_lossy(&req_body_bytes));
+
+            // Rebuild request for forwarding to target
+            let fwd_body = http_body_util::Full::new(bytes::Bytes::from(req_body_bytes));
+            let fwd_req = hyper::Request::from_parts(parts, fwd_body);
+
+            // Forward to target
+            let mut sender_guard = sender.lock().await;
+            let response = sender_guard.send_request(fwd_req).await?;
+            drop(sender_guard);
+
+            let status = response.status();
+            let resp_headers: Vec<(String, String)> = response
+                .headers()
+                .iter()
+                .map(|(k, v)| (k.to_string(), mitm::redact(v.to_str().unwrap_or_default())))
+                .collect();
+
+            // Read full response body
+            let (resp_parts, resp_body) = response.into_parts();
+            let resp_body_bytes = resp_body
+                .collect()
+                .await
+                .map(|c| c.to_bytes().to_vec())
+                .unwrap_or_default();
+            let resp_body_str = mitm::redact(&String::from_utf8_lossy(&resp_body_bytes));
+
+            // Log the request+response
+            let log_entry = ApiRequestLog {
+                id: rid,
+                session_id: sid,
+                method: method.to_string(),
+                url: mitm::redact(&format!("https://{addr}{uri}")),
+                status_code: status.as_u16(),
+                latency_ms: req_start.elapsed().as_millis() as u64,
+                request_size: req_body_str.len(),
+                response_size: resp_body_str.len(),
+                request_body: req_body_str,
+                response_body: resp_body_str,
+                request_headers: req_headers,
+                response_headers: resp_headers,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64,
+                category: Some(cat.to_string()),
+            };
+
+            {
+                let mut cap = state.captured.write().await;
+                if cap.len() >= MAX_CAPTURED_REQUESTS {
+                    cap.pop_front();
+                }
+                cap.push_back(log_entry.clone());
+            }
+            let _ = state.event_tx.send(log_entry);
+
+            metrics::counter!("proxy_requests_total",
+                "method" => method.to_string(),
+                "status_class" => format!("{}xx", status.as_u16() / 100),
+                "provider" => "mitm",
+            )
+            .increment(1);
+
+            // Rebuild response with buffered body for the client
+            let client_resp = hyper::Response::from_parts(
+                resp_parts,
+                http_body_util::Full::new(bytes::Bytes::from(resp_body_bytes)),
+            );
+
+            Ok::<_, hyper::Error>(client_resp)
+        }
+    });
+
+    // Serve the client connection (handles keep-alive internally)
+    if let Err(e) = hyper::server::conn::http1::Builder::new()
+        .serve_connection(prefixed_client, service)
+        .await
+    {
+        debug!(
+            target = %target_addr,
+            error = %e,
+            "MITM HTTP/1.1 connection closed"
+        );
+    }
+
+    let latency_ms = start_time.elapsed().as_millis() as u64;
+    info!(
+        target = %target_addr,
+        session = ?session_id,
+        category = %category,
+        latency_ms,
+        "MITM HTTP/1.1 session ended"
+    );
+
+    Ok(())
+}
+
+/// Bidirectional byte-copy for non-HTTP or h2 MITM tunnels.
+/// TLS is terminated (we can see metadata) but content is not parsed.
+#[allow(clippy::too_many_arguments)]
+async fn mitm_byte_copy<C, T>(
+    client: C,
+    target: T,
+    target_addr: &str,
+    request_id: &str,
+    session_id: Option<&str>,
+    category: super::classify::TrafficCategory,
+    url_scheme: &str,
+    start: Instant,
+    state: &Arc<ProxyState>,
+) -> anyhow::Result<()>
+where
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    let (mut client_read, mut client_write) = tokio::io::split(client);
+    let (mut target_read, mut target_write) = tokio::io::split(target);
+
+    let c2t = tokio::io::copy(&mut client_read, &mut target_write);
+    let t2c = tokio::io::copy(&mut target_read, &mut client_write);
+
+    let (sent, received) = tokio::join!(c2t, t2c);
+    let bytes_sent = sent.unwrap_or(0);
+    let bytes_received = received.unwrap_or(0);
 
     let _ = target_write.shutdown().await;
     let _ = client_write.shutdown().await;
@@ -1365,15 +1627,14 @@ where
         bytes_sent,
         bytes_received,
         latency_ms,
-        "MITM tunnel closed"
+        "MITM byte-copy tunnel closed"
     );
 
-    // Log as captured request with session attribution + category
     let log_entry = ApiRequestLog {
         id: request_id.to_string(),
         session_id: session_id.map(String::from),
         method: "CONNECT".to_string(),
-        url: format!("mitm://{target_addr}"),
+        url: format!("{url_scheme}://{target_addr}"),
         status_code: 200,
         latency_ms,
         request_size: bytes_sent as usize,
@@ -1401,7 +1662,7 @@ where
     metrics::counter!("proxy_requests_total",
         "method" => "CONNECT",
         "status_class" => "2xx",
-        "provider" => "mitm",
+        "provider" => "mitm-bytecopy",
     )
     .increment(1);
 
