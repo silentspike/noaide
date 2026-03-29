@@ -107,13 +107,11 @@ impl TopologyBuilder {
                     .values()
                     .find(|n| n.is_leader)
                     .map(|n| n.name.clone());
-                if let Some(leader) = leader_name {
-                    if let Some(leader_node) = self.nodes.get_mut(&leader) {
-                        if !leader_node.children.contains(&agent_name.to_string()) {
+                if let Some(leader) = leader_name
+                    && let Some(leader_node) = self.nodes.get_mut(&leader)
+                        && !leader_node.children.contains(&agent_name.to_string()) {
                             leader_node.children.push(agent_name.to_string());
                         }
-                    }
-                }
             }
         }
 

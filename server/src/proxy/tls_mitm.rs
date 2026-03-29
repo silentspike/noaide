@@ -135,11 +135,10 @@ impl CaAuthority {
         hostname: &str,
     ) -> anyhow::Result<(CertificateDer<'static>, Vec<u8>)> {
         // Check cache
-        if let Some(cached) = self.cert_cache.get(hostname) {
-            if cached.created_at.elapsed() < CERT_TTL {
+        if let Some(cached) = self.cert_cache.get(hostname)
+            && cached.created_at.elapsed() < CERT_TTL {
                 return Ok((cached.cert_der.clone(), cached.key_der.clone()));
             }
-        }
 
         // Generate new leaf cert signed by our CA
         let leaf_key = KeyPair::generate()?;
@@ -207,11 +206,10 @@ impl CaAuthority {
 /// Search for a file: env var -> explicit paths -> mkcert default location.
 fn find_file(env_var: &str, explicit_paths: &[&str], mkcert_filename: &str) -> Option<Vec<u8>> {
     // 1. Environment variable
-    if let Ok(path) = std::env::var(env_var) {
-        if let Ok(data) = std::fs::read(&path) {
+    if let Ok(path) = std::env::var(env_var)
+        && let Ok(data) = std::fs::read(&path) {
             return Some(data);
         }
-    }
 
     // 2. Explicit paths (e.g. ./certs/rootCA.pem)
     for path in explicit_paths {
@@ -237,11 +235,10 @@ fn find_file(env_var: &str, explicit_paths: &[&str], mkcert_filename: &str) -> O
 ///
 /// Search order: `NOAIDE_CA_CERT` env -> `./certs/rootCA.pem` -> `~/.local/share/mkcert/rootCA.pem`
 pub fn find_ca_cert_path() -> Option<String> {
-    if let Ok(path) = std::env::var("NOAIDE_CA_CERT") {
-        if std::fs::metadata(&path).is_ok() {
+    if let Ok(path) = std::env::var("NOAIDE_CA_CERT")
+        && std::fs::metadata(&path).is_ok() {
             return Some(path);
         }
-    }
 
     let certs_path = "./certs/rootCA.pem";
     if std::fs::metadata(certs_path).is_ok() {

@@ -7,7 +7,7 @@ use axum::Router;
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode};
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, post};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -170,27 +170,26 @@ async fn main() -> anyhow::Result<()> {
     if !persist_dir.exists() {
         let _ = tokio::fs::create_dir_all(persist_dir).await;
     }
-    if let Ok(data) = tokio::fs::read_to_string("/data/noaide/managed-sessions.json").await {
-        if let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&data) {
-            let mut mapping = session_plan_mapping.write().await;
-            for entry in &entries {
-                if let (Some(sid), Some(plan)) = (
-                    entry["session_id"]
-                        .as_str()
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    entry["plan"].as_str(),
-                ) {
-                    if !plan.is_empty() {
-                        mapping.insert(sid, plan.to_string());
-                    }
-                }
+    if let Ok(data) = tokio::fs::read_to_string("/data/noaide/managed-sessions.json").await
+        && let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&data)
+    {
+        let mut mapping = session_plan_mapping.write().await;
+        for entry in &entries {
+            if let (Some(sid), Some(plan)) = (
+                entry["session_id"]
+                    .as_str()
+                    .and_then(|s| Uuid::parse_str(s).ok()),
+                entry["plan"].as_str(),
+            ) && !plan.is_empty()
+            {
+                mapping.insert(sid, plan.to_string());
             }
-            info!(
-                restored = mapping.len(),
-                "restored session→plan mappings from previous run"
-            );
-            drop(mapping);
         }
+        info!(
+            restored = mapping.len(),
+            "restored session→plan mappings from previous run"
+        );
+        drop(mapping);
     }
 
     let app_state = AppState {
@@ -530,23 +529,21 @@ async fn main() -> anyhow::Result<()> {
                     Err(_) => continue,
                 };
                 let root = project_path.clone();
-                if !watched_roots.contains(&root) {
-                    if root.exists() {
-                        if let Err(e) = watcher.watch(&root).await {
-                            tracing::warn!(
-                                root = %root.display(),
-                                error = %e,
-                                "failed to watch project root"
-                            );
-                        } else {
-                            tracing::info!(
-                                root = %root.display(),
-                                session = %session_id,
-                                "watching project root for file changes"
-                            );
-                        }
-                        watched_roots.insert(root.clone());
+                if !watched_roots.contains(&root) && root.exists() {
+                    if let Err(e) = watcher.watch(&root).await {
+                        tracing::warn!(
+                            root = %root.display(),
+                            error = %e,
+                            "failed to watch project root"
+                        );
+                    } else {
+                        tracing::info!(
+                            root = %root.display(),
+                            session = %session_id,
+                            "watching project root for file changes"
+                        );
                     }
+                    watched_roots.insert(root.clone());
                 }
                 watches.entry(session_id).or_insert(root);
             }
@@ -659,12 +656,11 @@ async fn main() -> anyhow::Result<()> {
                             let now = std::time::Instant::now();
                             {
                                 let mut debounce = file_change_debounce.lock().await;
-                                if let Some(last) = debounce.get(path) {
-                                    if now.duration_since(*last)
+                                if let Some(last) = debounce.get(path)
+                                    && now.duration_since(*last)
                                         < std::time::Duration::from_millis(50)
-                                    {
-                                        continue;
-                                    }
+                                {
+                                    continue;
                                 }
                                 debounce.insert(path.clone(), now);
                                 // Evict old entries (>10s) to prevent unbounded growth
@@ -744,11 +740,11 @@ async fn main() -> anyhow::Result<()> {
                             }
 
                             // eBPF PID → Claude-Editing detection (ADR-5 KERN-Feature)
-                            if let Some(pid) = event.pid {
-                                if is_claude_pid(&ecs_handle, pid).await {
-                                    let mut world = ecs_handle.write().await;
-                                    world.set_claude_editing(session_id, &relative, pid);
-                                }
+                            if let Some(pid) = event.pid
+                                && is_claude_pid(&ecs_handle, pid).await
+                            {
+                                let mut world = ecs_handle.write().await;
+                                world.set_claude_editing(session_id, &relative, pid);
                             }
 
                             let _ = bus_handle.publish(bus::FILE_CHANGES, envelope).await;
@@ -1726,7 +1722,7 @@ async fn api_get_messages(
                 let (messages, total, has_more) = world.query_messages_range(uuid, offset, limit);
                 let json: Vec<serde_json::Value> = messages
                     .iter()
-                    .map(|m| noaide_server::cache::component_to_api_json(m))
+                    .map(noaide_server::cache::component_to_api_json)
                     .collect();
                 return axum::Json(serde_json::json!({
                     "messages": json,
@@ -1810,7 +1806,7 @@ async fn api_get_messages(
     let (messages, total, has_more) = world.query_messages_range(uuid, offset, limit);
     let json: Vec<serde_json::Value> = messages
         .iter()
-        .map(|m| noaide_server::cache::component_to_api_json(m))
+        .map(noaide_server::cache::component_to_api_json)
         .collect();
     axum::Json(serde_json::json!({
         "messages": json,
@@ -1904,10 +1900,10 @@ async fn api_get_session_stats(
     // Estimate cost from token counts (Claude pricing ~$15/MTok input, ~$75/MTok output for Opus)
     // This is a rough estimate — actual cost comes from API responses
     let session = world.query_session_by_id(uuid);
-    if let Some(ref s) = session {
-        if let Some(c) = s.cost {
-            total_cost = c;
-        }
+    if let Some(ref s) = session
+        && let Some(c) = s.cost
+    {
+        total_cost = c;
     }
 
     let duration_secs = match (first_ts, last_ts) {
@@ -1947,24 +1943,24 @@ async fn api_list_plans(State(state): State<AppState>) -> axum::Json<serde_json:
 
     if let Ok(mut entries) = tokio::fs::read_dir(base).await {
         while let Ok(Some(entry)) = entries.next_entry().await {
-            if let Ok(ft) = entry.file_type().await {
-                if ft.is_dir() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    // Validate name (alphanumeric + dash + underscore only)
-                    if name
-                        .chars()
-                        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-                    {
-                        let plan_json = base.join(&name).join("plan.json");
-                        let has_plan = tokio::fs::metadata(&plan_json).await.is_ok();
-                        let edits_json = base.join(&name).join("plan-edits.json");
-                        let has_edits = tokio::fs::metadata(&edits_json).await.is_ok();
-                        plans.push(serde_json::json!({
-                            "name": name,
-                            "has_plan_json": has_plan,
-                            "has_edits": has_edits,
-                        }));
-                    }
+            if let Ok(ft) = entry.file_type().await
+                && ft.is_dir()
+            {
+                let name = entry.file_name().to_string_lossy().to_string();
+                // Validate name (alphanumeric + dash + underscore only)
+                if name
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+                {
+                    let plan_json = base.join(&name).join("plan.json");
+                    let has_plan = tokio::fs::metadata(&plan_json).await.is_ok();
+                    let edits_json = base.join(&name).join("plan-edits.json");
+                    let has_edits = tokio::fs::metadata(&edits_json).await.is_ok();
+                    plans.push(serde_json::json!({
+                        "name": name,
+                        "has_plan_json": has_plan,
+                        "has_edits": has_edits,
+                    }));
                 }
             }
         }
@@ -2044,11 +2040,11 @@ async fn api_post_plan_edits(
     let edits_path = state.plan_base_dir.join(&name).join("plan-edits.json");
 
     // Ensure directory exists
-    if let Some(parent) = edits_path.parent() {
-        if let Err(e) = tokio::fs::create_dir_all(parent).await {
-            tracing::warn!(error = %e, "failed to create plan directory");
-            return axum::Json(serde_json::json!({"error": "failed to create directory"}));
-        }
+    if let Some(parent) = edits_path.parent()
+        && let Err(e) = tokio::fs::create_dir_all(parent).await
+    {
+        tracing::warn!(error = %e, "failed to create plan directory");
+        return axum::Json(serde_json::json!({"error": "failed to create directory"}));
     }
 
     match serde_json::to_string_pretty(&edits) {
@@ -2333,31 +2329,31 @@ async fn api_create_managed_session(
                 let base = &*state.plan_base_dir;
                 if let Ok(mut entries) = tokio::fs::read_dir(base).await {
                     while let Ok(Some(entry)) = entries.next_entry().await {
-                        if let Ok(ft) = entry.file_type().await {
-                            if ft.is_dir() {
-                                let name = entry.file_name().to_string_lossy().to_string();
-                                let impl_plan = entry.path().join("IMPL-PLAN.md");
-                                let plan_json = entry.path().join("plan.json");
-                                // Check if this plan dir has an IMPL-PLAN.md and the session
-                                // working dir contains an IMPL-PLAN.md too
-                                if plan_json.exists() {
-                                    let session_impl =
-                                        PathBuf::from(&body.working_dir).join("IMPL-PLAN.md");
-                                    // Match by: plan dir has symlink to session dir, or
-                                    // session dir name matches plan name
-                                    let working_dir_name = PathBuf::from(&body.working_dir)
-                                        .file_name()
-                                        .map(|n| n.to_string_lossy().to_string())
-                                        .unwrap_or_default();
-                                    if impl_plan.exists()
-                                        || name == working_dir_name
-                                        || name.contains(&working_dir_name)
-                                    {
-                                        let mut mapping = state.session_plan_mapping.write().await;
-                                        mapping.insert(sid, name.clone());
-                                        info!(session = %sid, plan = %name, "auto-bound session to plan");
-                                        break;
-                                    }
+                        if let Ok(ft) = entry.file_type().await
+                            && ft.is_dir()
+                        {
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            let impl_plan = entry.path().join("IMPL-PLAN.md");
+                            let plan_json = entry.path().join("plan.json");
+                            // Check if this plan dir has an IMPL-PLAN.md and the session
+                            // working dir contains an IMPL-PLAN.md too
+                            if plan_json.exists() {
+                                let _session_impl =
+                                    PathBuf::from(&body.working_dir).join("IMPL-PLAN.md");
+                                // Match by: plan dir has symlink to session dir, or
+                                // session dir name matches plan name
+                                let working_dir_name = PathBuf::from(&body.working_dir)
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+                                if impl_plan.exists()
+                                    || name == working_dir_name
+                                    || name.contains(&working_dir_name)
+                                {
+                                    let mut mapping = state.session_plan_mapping.write().await;
+                                    mapping.insert(sid, name.clone());
+                                    info!(session = %sid, plan = %name, "auto-bound session to plan");
+                                    break;
                                 }
                             }
                         }
@@ -3312,14 +3308,15 @@ async fn api_browse_directories(
     let mut entries: Vec<serde_json::Value> = Vec::new();
 
     // Add parent entry unless at root allowed path
-    if base != "/work" && base != "/home" {
-        if let Some(parent) = base_path.parent() {
-            entries.push(serde_json::json!({
-                "name": "..",
-                "path": parent.to_string_lossy(),
-                "isDir": true,
-            }));
-        }
+    if base != "/work"
+        && base != "/home"
+        && let Some(parent) = base_path.parent()
+    {
+        entries.push(serde_json::json!({
+            "name": "..",
+            "path": parent.to_string_lossy(),
+            "isDir": true,
+        }));
     }
 
     let mut dir_entries = match tokio::fs::read_dir(base_path).await {
@@ -3343,14 +3340,14 @@ async fn api_browse_directories(
         {
             continue;
         }
-        if let Ok(ft) = entry.file_type().await {
-            if ft.is_dir() {
-                dirs.push(serde_json::json!({
-                    "name": name,
-                    "path": entry.path().to_string_lossy(),
-                    "isDir": true,
-                }));
-            }
+        if let Ok(ft) = entry.file_type().await
+            && ft.is_dir()
+        {
+            dirs.push(serde_json::json!({
+                "name": name,
+                "path": entry.path().to_string_lossy(),
+                "isDir": true,
+            }));
         }
     }
 
@@ -4129,7 +4126,7 @@ async fn api_serve_file(
             if let Some(jsonl_path) = paths.get(&uuid).cloned() {
                 drop(paths);
                 if let Some(cwd) = resolve_session_cwd(&jsonl_path) {
-                    canonical_str.starts_with(&cwd.to_string_lossy().as_ref())
+                    canonical_str.starts_with(cwd.to_string_lossy().as_ref())
                 } else {
                     false
                 }
@@ -4142,7 +4139,7 @@ async fn api_serve_file(
                     if let Some(jsonl_path) = paths.get(&jsonl_id).cloned() {
                         drop(paths);
                         if let Some(cwd) = resolve_session_cwd(&jsonl_path) {
-                            canonical_str.starts_with(&cwd.to_string_lossy().as_ref())
+                            canonical_str.starts_with(cwd.to_string_lossy().as_ref())
                         } else {
                             false
                         }
@@ -4407,18 +4404,19 @@ async fn api_server_info(State(state): State<AppState>) -> axum::Json<serde_json
         for line in text.lines() {
             // Format: "2: wlp6s0    inet 10.0.0.57/8 ..."
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 4 && parts[2] == "inet" {
-                if let Some(ip) = parts[3].split('/').next() {
-                    if !ip.starts_with("127.") && !ip.starts_with("172.") {
-                        let iface = parts[1].trim_end_matches(':');
-                        let is_wifi = iface.starts_with("wl");
-                        addresses.push(serde_json::json!({
-                            "ip": ip,
-                            "iface": iface,
-                            "wifi": is_wifi,
-                        }));
-                    }
-                }
+            if parts.len() >= 4
+                && parts[2] == "inet"
+                && let Some(ip) = parts[3].split('/').next()
+                && !ip.starts_with("127.")
+                && !ip.starts_with("172.")
+            {
+                let iface = parts[1].trim_end_matches(':');
+                let is_wifi = iface.starts_with("wl");
+                addresses.push(serde_json::json!({
+                    "ip": ip,
+                    "iface": iface,
+                    "wifi": is_wifi,
+                }));
             }
         }
     }
