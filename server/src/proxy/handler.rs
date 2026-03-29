@@ -359,111 +359,105 @@ pub async fn proxy_handler(
     // corrupts the request and the images get consumed before the real conversation call.
     let skip_image_injection = provider == ApiProvider::GoogleCodeAssist
         && !effective_path.contains("streamGenerateContent");
-    if !skip_image_injection
-        && let Some(ref sid) = session_id {
-            let mut pending = state.pending_images.write().await;
-            if let Some(images) = pending.remove(sid)
-                && !images.is_empty() && !request_bytes.is_empty()
-                    && let Ok(mut body_json) =
-                        serde_json::from_slice::<serde_json::Value>(&request_bytes)
-                    {
-                        let mut injected = false;
+    if !skip_image_injection && let Some(ref sid) = session_id {
+        let mut pending = state.pending_images.write().await;
+        if let Some(images) = pending.remove(sid)
+            && !images.is_empty()
+            && !request_bytes.is_empty()
+            && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+        {
+            let mut injected = false;
 
-                        // Anthropic format: "messages" array with {role, content} objects
-                        if let Some(messages) =
-                            body_json.get_mut("messages").and_then(|m| m.as_array_mut())
-                            && let Some(last_user) = messages
-                                .iter_mut()
-                                .rev()
-                                .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
-                            {
-                                let content = last_user.get_mut("content");
-                                match content {
-                                    Some(c) if c.is_array() => {
-                                        if let Some(arr) = c.as_array_mut() {
-                                            for img in &images {
-                                                arr.push(img.clone());
-                                            }
-                                            injected = true;
-                                        }
-                                    }
-                                    Some(c) if c.is_string() => {
-                                        let text_val = c.clone();
-                                        let mut blocks = vec![serde_json::json!({
-                                            "type": "text",
-                                            "text": text_val.as_str().unwrap_or("")
-                                        })];
-                                        for img in &images {
-                                            blocks.push(img.clone());
-                                        }
-                                        *c = serde_json::Value::Array(blocks);
-                                        injected = true;
-                                    }
-                                    _ => {}
-                                }
+            // Anthropic format: "messages" array with {role, content} objects
+            if let Some(messages) = body_json.get_mut("messages").and_then(|m| m.as_array_mut())
+                && let Some(last_user) = messages
+                    .iter_mut()
+                    .rev()
+                    .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+            {
+                let content = last_user.get_mut("content");
+                match content {
+                    Some(c) if c.is_array() => {
+                        if let Some(arr) = c.as_array_mut() {
+                            for img in &images {
+                                arr.push(img.clone());
                             }
-
-                        // Google Gemini format: "contents" array with {role, parts} objects
-                        // Image parts use: {"inlineData": {"mimeType": "image/png", "data": "base64..."}}
-                        // Supports both top-level "contents" (public API) and nested
-                        // "request.contents" (code_assist v1internal API).
-                        if !injected {
-                            // Check top-level first, then nested under "request"
-                            let has_nested = body_json.get("contents").is_none()
-                                && body_json
-                                    .get("request")
-                                    .and_then(|r| r.get("contents"))
-                                    .is_some();
-                            let contents = if has_nested {
-                                body_json
-                                    .get_mut("request")
-                                    .and_then(|r| r.get_mut("contents"))
-                                    .and_then(|c| c.as_array_mut())
-                            } else {
-                                body_json.get_mut("contents").and_then(|c| c.as_array_mut())
-                            };
-                            if let Some(contents) = contents
-                                && let Some(last_user) = contents.iter_mut().rev().find(|c| {
-                                    c.get("role").and_then(|r| r.as_str()) == Some("user")
-                                })
-                                    && let Some(parts) =
-                                        last_user.get_mut("parts").and_then(|p| p.as_array_mut())
-                                    {
-                                        for img in &images {
-                                            // Convert from Anthropic image format to Google format
-                                            if let Some(source) = img.get("source") {
-                                                let mime = source
-                                                    .get("media_type")
-                                                    .and_then(|m| m.as_str())
-                                                    .unwrap_or("image/png");
-                                                let data = source
-                                                    .get("data")
-                                                    .and_then(|d| d.as_str())
-                                                    .unwrap_or("");
-                                                parts.push(serde_json::json!({
-                                                    "inlineData": {
-                                                        "mimeType": mime,
-                                                        "data": data,
-                                                    }
-                                                }));
-                                            }
-                                        }
-                                        injected = true;
-                                    }
+                            injected = true;
                         }
-
-                        if injected
-                            && let Ok(modified) = serde_json::to_vec(&body_json) {
-                                info!(
-                                    session = %sid,
-                                    image_count = images.len(),
-                                    provider = %provider.label(),
-                                    "injected pending images into API request"
-                                );
-                                request_bytes = Bytes::from(modified);
-                            }
                     }
-        } // skip_image_injection
+                    Some(c) if c.is_string() => {
+                        let text_val = c.clone();
+                        let mut blocks = vec![serde_json::json!({
+                            "type": "text",
+                            "text": text_val.as_str().unwrap_or("")
+                        })];
+                        for img in &images {
+                            blocks.push(img.clone());
+                        }
+                        *c = serde_json::Value::Array(blocks);
+                        injected = true;
+                    }
+                    _ => {}
+                }
+            }
+
+            // Google Gemini format: "contents" array with {role, parts} objects
+            // Image parts use: {"inlineData": {"mimeType": "image/png", "data": "base64..."}}
+            // Supports both top-level "contents" (public API) and nested
+            // "request.contents" (code_assist v1internal API).
+            if !injected {
+                // Check top-level first, then nested under "request"
+                let has_nested = body_json.get("contents").is_none()
+                    && body_json
+                        .get("request")
+                        .and_then(|r| r.get("contents"))
+                        .is_some();
+                let contents = if has_nested {
+                    body_json
+                        .get_mut("request")
+                        .and_then(|r| r.get_mut("contents"))
+                        .and_then(|c| c.as_array_mut())
+                } else {
+                    body_json.get_mut("contents").and_then(|c| c.as_array_mut())
+                };
+                if let Some(contents) = contents
+                    && let Some(last_user) = contents
+                        .iter_mut()
+                        .rev()
+                        .find(|c| c.get("role").and_then(|r| r.as_str()) == Some("user"))
+                    && let Some(parts) = last_user.get_mut("parts").and_then(|p| p.as_array_mut())
+                {
+                    for img in &images {
+                        // Convert from Anthropic image format to Google format
+                        if let Some(source) = img.get("source") {
+                            let mime = source
+                                .get("media_type")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("image/png");
+                            let data = source.get("data").and_then(|d| d.as_str()).unwrap_or("");
+                            parts.push(serde_json::json!({
+                                "inlineData": {
+                                    "mimeType": mime,
+                                    "data": data,
+                                }
+                            }));
+                        }
+                    }
+                    injected = true;
+                }
+            }
+
+            if injected && let Ok(modified) = serde_json::to_vec(&body_json) {
+                info!(
+                    session = %sid,
+                    image_count = images.len(),
+                    provider = %provider.label(),
+                    "injected pending images into API request"
+                );
+                request_bytes = Bytes::from(modified);
+            }
+        }
+    } // skip_image_injection
 
     // ── System Prompt Injection ──────────────────────────────────────────
     // Inform the LLM that it runs inside a browser-based IDE so it can
@@ -471,98 +465,96 @@ pub async fn proxy_handler(
     // Same skip logic as image injection (only conversation endpoints).
     let skip_system_injection = provider == ApiProvider::GoogleCodeAssist
         && !effective_path.contains("streamGenerateContent");
-    if !skip_system_injection && !request_bytes.is_empty()
-        && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes) {
-            let noaide_context = "[noaide] You are running inside noaide, a browser-based IDE. \
+    if !skip_system_injection
+        && !request_bytes.is_empty()
+        && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+    {
+        let noaide_context = "[noaide] You are running inside noaide, a browser-based IDE. \
                 Media files you create (images, GIFs, SVGs, audio, video) via Bash or Write tools \
                 are rendered inline in the chat. The user sees them directly. \
                 Supported: PNG, JPG, GIF, SVG, WEBP, MP4, WEBM, MP3, WAV, OGG. \
                 To show an image, just create the file (e.g. python3, ImageMagick, ffmpeg, \
                 or write SVG directly).";
 
-            let mut injected_system = false;
+        let mut injected_system = false;
 
-            match provider {
-                ApiProvider::Anthropic => {
-                    // Anthropic: body_json["system"] — string or array of content blocks
-                    match body_json.get("system") {
-                        Some(serde_json::Value::String(s)) => {
-                            body_json["system"] =
-                                serde_json::Value::String(format!("{s}\n\n{noaide_context}"));
-                            injected_system = true;
-                        }
-                        Some(serde_json::Value::Array(_)) => {
-                            if let Some(arr) = body_json["system"].as_array_mut() {
-                                arr.push(serde_json::json!({
-                                    "type": "text",
-                                    "text": noaide_context,
-                                }));
-                                injected_system = true;
-                            }
-                        }
-                        _ => {
-                            // No system field — create it
-                            body_json["system"] =
-                                serde_json::Value::String(noaide_context.to_string());
+        match provider {
+            ApiProvider::Anthropic => {
+                // Anthropic: body_json["system"] — string or array of content blocks
+                match body_json.get("system") {
+                    Some(serde_json::Value::String(s)) => {
+                        body_json["system"] =
+                            serde_json::Value::String(format!("{s}\n\n{noaide_context}"));
+                        injected_system = true;
+                    }
+                    Some(serde_json::Value::Array(_)) => {
+                        if let Some(arr) = body_json["system"].as_array_mut() {
+                            arr.push(serde_json::json!({
+                                "type": "text",
+                                "text": noaide_context,
+                            }));
                             injected_system = true;
                         }
                     }
-                }
-                ApiProvider::GoogleCodeAssist | ApiProvider::Google => {
-                    // Google: body_json["system_instruction"]["parts"] or
-                    // body_json["request"]["system_instruction"]["parts"]
-                    let targets = [
-                        vec!["system_instruction", "parts"],
-                        vec!["request", "system_instruction", "parts"],
-                    ];
-                    for target in &targets {
-                        let mut cursor = &mut body_json;
-                        let mut found = true;
-                        for (i, key) in target.iter().enumerate() {
-                            if i == target.len() - 1 {
-                                // Last key — should be "parts" array
-                                if let Some(arr) =
-                                    cursor.get_mut(*key).and_then(|v| v.as_array_mut())
-                                {
-                                    arr.push(serde_json::json!({"text": noaide_context}));
-                                    injected_system = true;
-                                } else {
-                                    found = false;
-                                }
-                            } else if cursor.get(*key).is_some() {
-                                cursor = &mut cursor[*key];
-                            } else {
-                                found = false;
-                                break;
-                            }
-                        }
-                        if found && injected_system {
-                            break;
-                        }
-                    }
-                    // If no system_instruction exists, create it
-                    if !injected_system {
-                        body_json["system_instruction"] = serde_json::json!({
-                            "parts": [{"text": noaide_context}]
-                        });
+                    _ => {
+                        // No system field — create it
+                        body_json["system"] = serde_json::Value::String(noaide_context.to_string());
                         injected_system = true;
                     }
                 }
-                _ => {
-                    // OpenAI/ChatGPT: No system prompt injection for now
-                    // (Codex uses a different format)
+            }
+            ApiProvider::GoogleCodeAssist | ApiProvider::Google => {
+                // Google: body_json["system_instruction"]["parts"] or
+                // body_json["request"]["system_instruction"]["parts"]
+                let targets = [
+                    vec!["system_instruction", "parts"],
+                    vec!["request", "system_instruction", "parts"],
+                ];
+                for target in &targets {
+                    let mut cursor = &mut body_json;
+                    let mut found = true;
+                    for (i, key) in target.iter().enumerate() {
+                        if i == target.len() - 1 {
+                            // Last key — should be "parts" array
+                            if let Some(arr) = cursor.get_mut(*key).and_then(|v| v.as_array_mut()) {
+                                arr.push(serde_json::json!({"text": noaide_context}));
+                                injected_system = true;
+                            } else {
+                                found = false;
+                            }
+                        } else if cursor.get(*key).is_some() {
+                            cursor = &mut cursor[*key];
+                        } else {
+                            found = false;
+                            break;
+                        }
+                    }
+                    if found && injected_system {
+                        break;
+                    }
+                }
+                // If no system_instruction exists, create it
+                if !injected_system {
+                    body_json["system_instruction"] = serde_json::json!({
+                        "parts": [{"text": noaide_context}]
+                    });
+                    injected_system = true;
                 }
             }
-
-            if injected_system
-                && let Ok(modified) = serde_json::to_vec(&body_json) {
-                    debug!(
-                        provider = %provider.label(),
-                        "injected noaide system context into API request"
-                    );
-                    request_bytes = Bytes::from(modified);
-                }
+            _ => {
+                // OpenAI/ChatGPT: No system prompt injection for now
+                // (Codex uses a different format)
+            }
         }
+
+        if injected_system && let Ok(modified) = serde_json::to_vec(&body_json) {
+            debug!(
+                provider = %provider.label(),
+                "injected noaide system context into API request"
+            );
+            request_bytes = Bytes::from(modified);
+        }
+    }
 
     // ── Build forwarding request ────────────────────────────────────────
 

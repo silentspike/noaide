@@ -263,11 +263,12 @@ impl EcsWorld {
         if let Some(entities) = self.file_index.get(&session_id) {
             for &entity in entities {
                 if let Ok(mut file) = self.world.get::<&mut FileComponent>(entity)
-                    && file.path == path {
-                        file.modified = timestamp;
-                        file.size = size;
-                        return;
-                    }
+                    && file.path == path
+                {
+                    file.modified = timestamp;
+                    file.size = size;
+                    return;
+                }
             }
         }
 
@@ -289,10 +290,11 @@ impl EcsWorld {
             let mut to_remove = None;
             for (idx, &entity) in entities.iter().enumerate() {
                 if let Ok(file) = self.world.get::<&FileComponent>(entity)
-                    && file.path == path {
-                        to_remove = Some((idx, entity));
-                        break;
-                    }
+                    && file.path == path
+                {
+                    to_remove = Some((idx, entity));
+                    break;
+                }
             }
             if let Some((idx, entity)) = to_remove {
                 entities.remove(idx);
@@ -339,9 +341,11 @@ impl EcsWorld {
         let mut to_despawn = Vec::new();
         for entity_ref in self.world.iter() {
             if let Some(editing) = entity_ref.get::<&ClaudeEditingComponent>()
-                && editing.session_id == session_id && editing.file_path == path {
-                    to_despawn.push(entity_ref.entity());
-                }
+                && editing.session_id == session_id
+                && editing.file_path == path
+            {
+                to_despawn.push(entity_ref.entity());
+            }
         }
         for entity in to_despawn {
             let _ = self.world.despawn(entity);
@@ -367,14 +371,15 @@ impl EcsWorld {
     pub fn upsert_cache_meta(&mut self, meta: CacheMetaComponent) {
         let session_id = meta.session_id;
         if let Some(&entity) = self.cache_meta_index.get(&session_id)
-            && let Ok(mut existing) = self.world.get::<&mut CacheMetaComponent>(entity) {
-                existing.file_offset = meta.file_offset;
-                existing.file_size = meta.file_size;
-                existing.last_refreshed = meta.last_refreshed;
-                existing.message_count = meta.message_count;
-                existing.is_warm = meta.is_warm;
-                return;
-            }
+            && let Ok(mut existing) = self.world.get::<&mut CacheMetaComponent>(entity)
+        {
+            existing.file_offset = meta.file_offset;
+            existing.file_size = meta.file_size;
+            existing.last_refreshed = meta.last_refreshed;
+            existing.message_count = meta.message_count;
+            existing.is_warm = meta.is_warm;
+            return;
+        }
         let entity = self.world.spawn((meta,));
         self.cache_meta_index.insert(session_id, entity);
     }
@@ -390,8 +395,7 @@ impl EcsWorld {
 
     /// Check if a session's cache is warm.
     pub fn is_cache_warm(&self, session_id: Uuid) -> bool {
-        self.query_cache_meta(session_id)
-            .is_some_and(|m| m.is_warm)
+        self.query_cache_meta(session_id).is_some_and(|m| m.is_warm)
     }
 
     /// Invalidate cache for a session (clear all messages and meta).

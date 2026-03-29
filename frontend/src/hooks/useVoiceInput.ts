@@ -132,7 +132,8 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
       socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          console.warn("[voice] WS msg:", msg.type, msg.text ? `"${msg.text.slice(0, 80)}"` : "");
+          // nosemgrep: unsafe-formatstring — debug logging, no user-facing output
+          console.warn("[voice] WS msg:", msg.type, msg.text ? String(msg.text).slice(0, 80) : "");
           if (msg.type === "partial") {
             setPartialText(msg.text || "");
             options.onPartialText?.(msg.text || "");
