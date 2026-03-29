@@ -4456,6 +4456,7 @@ async fn api_ws_transcribe(
 async fn ws_transcribe_proxy(browser_ws: WebSocket, whisper_port: u16) {
     use tokio_tungstenite::tungstenite::Message as TungMsg;
 
+    // nosemgrep: detect-insecure-websocket — localhost sidecar, TLS not needed
     let sidecar_url = format!("ws://127.0.0.1:{whisper_port}/ws/transcribe");
     let connect_result = tokio_tungstenite::connect_async(&sidecar_url).await;
 

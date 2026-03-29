@@ -15,10 +15,14 @@ export default defineConfig({
     port: 9999,
     strictPort: true,
     host: "0.0.0.0",
-    https: {
-      key: fs.readFileSync(resolve(__dirname, "../certs/key.pem")),
-      cert: fs.readFileSync(resolve(__dirname, "../certs/cert.pem")),
-    },
+    https: (() => {
+      const keyPath = resolve(__dirname, "../certs/key.pem");
+      const certPath = resolve(__dirname, "../certs/cert.pem");
+      if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+        return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+      }
+      return false; // no TLS certs available (CI, fresh clone)
+    })(),
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
