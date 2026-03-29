@@ -359,12 +359,12 @@ pub async fn proxy_handler(
     // corrupts the request and the images get consumed before the real conversation call.
     let skip_image_injection = provider == ApiProvider::GoogleCodeAssist
         && !effective_path.contains("streamGenerateContent");
-    if !skip_image_injection {
-        if let Some(ref sid) = session_id {
+    if !skip_image_injection
+        && let Some(ref sid) = session_id {
             let mut pending = state.pending_images.write().await;
-            if let Some(images) = pending.remove(sid) {
-                if !images.is_empty() && !request_bytes.is_empty() {
-                    if let Ok(mut body_json) =
+            if let Some(images) = pending.remove(sid)
+                && !images.is_empty() && !request_bytes.is_empty()
+                    && let Ok(mut body_json) =
                         serde_json::from_slice::<serde_json::Value>(&request_bytes)
                     {
                         let mut injected = false;
@@ -372,8 +372,7 @@ pub async fn proxy_handler(
                         // Anthropic format: "messages" array with {role, content} objects
                         if let Some(messages) =
                             body_json.get_mut("messages").and_then(|m| m.as_array_mut())
-                        {
-                            if let Some(last_user) = messages
+                            && let Some(last_user) = messages
                                 .iter_mut()
                                 .rev()
                                 .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
@@ -403,7 +402,6 @@ pub async fn proxy_handler(
                                     _ => {}
                                 }
                             }
-                        }
 
                         // Google Gemini format: "contents" array with {role, parts} objects
                         // Image parts use: {"inlineData": {"mimeType": "image/png", "data": "base64..."}}
@@ -424,11 +422,11 @@ pub async fn proxy_handler(
                             } else {
                                 body_json.get_mut("contents").and_then(|c| c.as_array_mut())
                             };
-                            if let Some(contents) = contents {
-                                if let Some(last_user) = contents.iter_mut().rev().find(|c| {
+                            if let Some(contents) = contents
+                                && let Some(last_user) = contents.iter_mut().rev().find(|c| {
                                     c.get("role").and_then(|r| r.as_str()) == Some("user")
-                                }) {
-                                    if let Some(parts) =
+                                })
+                                    && let Some(parts) =
                                         last_user.get_mut("parts").and_then(|p| p.as_array_mut())
                                     {
                                         for img in &images {
@@ -452,12 +450,10 @@ pub async fn proxy_handler(
                                         }
                                         injected = true;
                                     }
-                                }
-                            }
                         }
 
-                        if injected {
-                            if let Ok(modified) = serde_json::to_vec(&body_json) {
+                        if injected
+                            && let Ok(modified) = serde_json::to_vec(&body_json) {
                                 info!(
                                     session = %sid,
                                     image_count = images.len(),
@@ -466,12 +462,8 @@ pub async fn proxy_handler(
                                 );
                                 request_bytes = Bytes::from(modified);
                             }
-                        }
                     }
-                }
-            }
-        }
-    } // skip_image_injection
+        } // skip_image_injection
 
     // ── System Prompt Injection ──────────────────────────────────────────
     // Inform the LLM that it runs inside a browser-based IDE so it can
@@ -479,8 +471,8 @@ pub async fn proxy_handler(
     // Same skip logic as image injection (only conversation endpoints).
     let skip_system_injection = provider == ApiProvider::GoogleCodeAssist
         && !effective_path.contains("streamGenerateContent");
-    if !skip_system_injection && !request_bytes.is_empty() {
-        if let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes) {
+    if !skip_system_injection && !request_bytes.is_empty()
+        && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes) {
             let noaide_context = "[noaide] You are running inside noaide, a browser-based IDE. \
                 Media files you create (images, GIFs, SVGs, audio, video) via Bash or Write tools \
                 are rendered inline in the chat. The user sees them directly. \
@@ -562,17 +554,15 @@ pub async fn proxy_handler(
                 }
             }
 
-            if injected_system {
-                if let Ok(modified) = serde_json::to_vec(&body_json) {
+            if injected_system
+                && let Ok(modified) = serde_json::to_vec(&body_json) {
                     debug!(
                         provider = %provider.label(),
                         "injected noaide system context into API request"
                     );
                     request_bytes = Bytes::from(modified);
                 }
-            }
         }
-    }
 
     // ── Build forwarding request ────────────────────────────────────────
 
@@ -1327,6 +1317,7 @@ pub async fn connect_handler(
 /// 4. Read response from target, log both, forward to client
 ///
 /// Falls back to byte-copy for non-HTTP protocols (detected via protocol sniffing).
+#[allow(clippy::too_many_arguments)]
 async fn mitm_tunnel<I>(
     ca: &super::tls_mitm::CaAuthority,
     client_io: I,
@@ -1426,6 +1417,7 @@ where
 }
 
 /// Log metadata for a CONNECT tunnel (transparent or failed MITM).
+#[allow(clippy::too_many_arguments)]
 async fn log_tunnel_metadata(
     state: &Arc<ProxyState>,
     request_id: &str,
