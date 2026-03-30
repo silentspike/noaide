@@ -699,7 +699,7 @@ mod tests {
             response_headers: None,
             request_size: None,
             response_size: None,
-            category: None,
+            traffic_category: None,
         });
 
         assert_eq!(world.query_files_by_session(sid).len(), 1);

@@ -16,6 +16,69 @@ use tracing::{debug, info, warn};
 
 use super::mitm::{self, ApiRequestLog};
 
+/// A stream that prepends buffered bytes before delegating to the inner stream.
+/// Reads: first returns prefix bytes, then reads from inner.
+/// Writes: always writes to inner (the prefix is read-only).
+struct PrefixedIo<S> {
+    prefix: bytes::Bytes,
+    prefix_pos: usize,
+    inner: S,
+}
+
+impl<S> PrefixedIo<S> {
+    fn new(prefix: bytes::Bytes, inner: S) -> Self {
+        Self {
+            prefix,
+            prefix_pos: 0,
+            inner,
+        }
+    }
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for PrefixedIo<S> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        // Serve prefix bytes first
+        if this.prefix_pos < this.prefix.len() {
+            let remaining = &this.prefix[this.prefix_pos..];
+            let to_copy = remaining.len().min(buf.remaining());
+            buf.put_slice(&remaining[..to_copy]);
+            this.prefix_pos += to_copy;
+            return std::task::Poll::Ready(Ok(()));
+        }
+        // Then delegate to inner stream
+        std::pin::Pin::new(&mut this.inner).poll_read(cx, buf)
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for PrefixedIo<S> {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
+    }
+}
+
 /// Try to decompress a zstd-encoded request body for logging.
 /// Codex CLI sends `content-encoding: zstd` on request bodies.
 /// Original compressed bytes are still forwarded to upstream unchanged.
@@ -1438,7 +1501,7 @@ where
     // Prepend peeked bytes back into the stream for hyper to parse
     let prefix = bytes::Bytes::copy_from_slice(&peek_buf[..peek_len]);
     let prefixed_client =
-        hyper_util::rt::TokioIo::new(tokio::io::join(std::io::Cursor::new(prefix), client_tls));
+        hyper_util::rt::TokioIo::new(PrefixedIo::new(prefix, client_tls));
     let target_io = hyper_util::rt::TokioIo::new(target_tls);
 
     // Establish hyper HTTP/1.1 client connection to real target

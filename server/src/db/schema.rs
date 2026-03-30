@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS api_requests (
     response_headers TEXT,
     request_size INTEGER,
     response_size INTEGER,
-    category TEXT
+    traffic_category TEXT
 )";
 
 // Standalone FTS5 table (no content= since Limbo lacks triggers)
@@ -155,6 +155,10 @@ pub async fn migrate(conn: &Connection) -> Result<bool, limbo::Error> {
             Err(e) => return Err(e),
         }
     }
+
+    // No additional column migrations needed — new DBs include `category` in CREATE TABLE.
+    // If an old DB is missing the column, the proxy requests SELECT will fail gracefully
+    // (row_to_api_request uses .ok() for column 13) and old data won't have categories.
 
     // FTS5 is optional — Limbo may not support it in all versions
     let fts5_available = match conn.execute(CREATE_MESSAGES_FTS, ()).await {

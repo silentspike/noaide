@@ -334,7 +334,7 @@ impl Db {
     pub async fn insert_api_request(&self, r: &ApiRequestComponent) -> DbResult<()> {
         self.conn
             .execute(
-                "INSERT INTO api_requests (id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size, category) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                "INSERT INTO api_requests (id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size, traffic_category) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 limbo::params!(
                     r.id.to_string(),
                     r.session_id.to_string(),
@@ -349,7 +349,7 @@ impl Db {
                     option_to_value(&r.response_headers),
                     option_u64_to_value(r.request_size),
                     option_u64_to_value(r.response_size),
-                    option_to_value(&r.category)
+                    option_to_value(&r.traffic_category)
                 ),
             )
             .await?;
@@ -363,7 +363,7 @@ impl Db {
         let mut rows = self
             .conn
             .query(
-                "SELECT id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size, category FROM api_requests WHERE session_id = ?1 ORDER BY timestamp",
+                "SELECT id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size, traffic_category FROM api_requests WHERE session_id = ?1 ORDER BY timestamp",
                 limbo::params!(session_id.to_string()),
             )
             .await?;
@@ -380,7 +380,7 @@ impl Db {
         let mut rows = self
             .conn
             .query(
-                "SELECT id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size, category FROM api_requests ORDER BY timestamp",
+                "SELECT id, session_id, method, url, request_body, response_body, status_code, latency_ms, timestamp, request_headers, response_headers, request_size, response_size, traffic_category FROM api_requests ORDER BY timestamp",
                 (),
             )
             .await?;
@@ -580,7 +580,7 @@ fn row_to_api_request(row: &limbo::Row) -> DbResult<ApiRequestComponent> {
         response_size: optional_int(&row.get_value(12)?).map(|v| v as u64),
         // category column may not exist in older databases (added in CONNECT MITM phase).
         // Gracefully default to None if column is missing.
-        category: row.get_value(13).ok().and_then(|v| optional_text(&v)),
+        traffic_category: row.get_value(13).ok().and_then(|v| optional_text(&v)),
     })
 }
 
