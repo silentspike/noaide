@@ -3589,10 +3589,17 @@ async fn api_quick_block_domain(
     axum::extract::Path(session_id): axum::extract::Path<String>,
     axum::Json(body): axum::Json<QuickBlockRequest>,
 ) -> (StatusCode, axum::Json<serde_json::Value>) {
+    // Auto-glob: "datadoghq.com" → "*.datadoghq.com" so subdomains are also blocked.
+    // If user already specified a glob pattern, keep it as-is.
+    let pattern = if body.domain.starts_with("*.") {
+        body.domain
+    } else {
+        format!("*.{}", body.domain)
+    };
     let rule = noaide_server::proxy::NetworkRule {
         id: String::new(),
         session_id: session_id.clone(),
-        domain_pattern: Some(body.domain),
+        domain_pattern: Some(pattern),
         category_filter: None,
         action: noaide_server::proxy::RuleAction::Block,
         enabled: true,
