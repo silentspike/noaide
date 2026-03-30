@@ -2692,7 +2692,7 @@ fn proxy_log_to_component(log: &noaide_server::proxy::ApiRequestLog) -> ApiReque
         response_headers: Some(serde_json::to_string(&log.response_headers).unwrap_or_default()),
         request_size: Some(log.request_size as u64),
         response_size: Some(log.response_size as u64),
-        category: log.category.clone(),
+        traffic_category: log.category.clone(),
     }
 }
 
@@ -2724,7 +2724,7 @@ fn component_to_proxy_log(c: &ApiRequestComponent) -> noaide_server::proxy::ApiR
         timestamp: c.timestamp,
         request_size: c.request_size.unwrap_or(0) as usize,
         response_size: c.response_size.unwrap_or(0) as usize,
-        category: c.category.clone(),
+        category: c.traffic_category.clone(),
     }
 }
 
@@ -2764,6 +2764,7 @@ async fn api_get_proxy_requests(
                 "timestamp": r.timestamp,
                 "requestPreview": req_preview,
                 "responsePreview": res_preview,
+                "category": r.category,
             })
         })
         .collect();
