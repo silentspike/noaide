@@ -302,6 +302,11 @@ async fn main() -> anyhow::Result<()> {
             "/api/proxy/rewrite/{session_id}",
             get(api_get_rewrite_config).put(api_set_rewrite_config),
         )
+        .route(
+            "/api/proxy/config/{session_id}",
+            get(api_get_proxy_config).put(api_set_proxy_config),
+        )
+        .route("/api/proxy/presets", get(api_list_presets))
         .route("/api/plans", get(api_list_plans))
         .route(
             "/api/plans/for-session/{session_id}",
@@ -3664,6 +3669,65 @@ async fn api_set_inject_config(
 ) -> axum::Json<serde_json::Value> {
     state.proxy.inject_store.set(session_id, config);
     axum::Json(serde_json::json!({ "ok": true }))
+}
+
+// ── Proxy Config Endpoints (combined persistence) ──────────────────────────
+
+async fn api_get_proxy_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<noaide_server::proxy::persist::ProxyConfig> {
+    // Build config from current in-memory state
+    let config = noaide_server::proxy::persist::ProxyConfig {
+        mode: state.proxy.proxy_modes.get(&session_id),
+        inject: state.proxy.inject_store.get(&session_id),
+        rewrite: state.proxy.rewrite_store.get(&session_id),
+    };
+    axum::Json(config)
+}
+
+async fn api_set_proxy_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(config): axum::Json<noaide_server::proxy::persist::ProxyConfig>,
+) -> axum::Json<serde_json::Value> {
+    state
+        .proxy
+        .proxy_modes
+        .set(session_id.clone(), config.mode);
+    state
+        .proxy
+        .inject_store
+        .set(session_id.clone(), config.inject.clone());
+    state
+        .proxy
+        .rewrite_store
+        .set(session_id.clone(), config.rewrite.clone());
+    // Persist to disk (debounced)
+    noaide_server::proxy::persist::schedule_save(session_id, config);
+    axum::Json(serde_json::json!({ "ok": true }))
+}
+
+async fn api_list_presets() -> axum::Json<serde_json::Value> {
+    use noaide_server::proxy::inject::Preset;
+    let presets: Vec<serde_json::Value> = [
+        Preset::NoaideContext,
+        Preset::AntiLaziness,
+        Preset::VerifyEvidence,
+        Preset::Speed,
+        Preset::Verbose,
+        Preset::GermanOnly,
+    ]
+    .iter()
+    .map(|p| {
+        serde_json::json!({
+            "id": p,
+            "label": p.label(),
+            "text": p.text(),
+        })
+    })
+    .collect();
+    axum::Json(serde_json::json!({ "presets": presets }))
 }
 
 // ── Rewrite Config Endpoints ────────────────────────────────────────────────
