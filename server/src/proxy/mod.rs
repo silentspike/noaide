@@ -1,8 +1,15 @@
+pub mod audit;
 pub mod classify;
 pub mod handler;
+pub mod inject;
+pub mod keys;
 pub mod mitm;
+pub mod modes;
+pub mod persist;
+pub mod rewrite;
 pub mod rules;
 pub mod tls_mitm;
+pub mod websocket;
 
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
@@ -72,6 +79,10 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
         pending_images: RwLock::new(HashMap::new()),
         ca,
         network_rules: Arc::new(rules::NetworkRulesEngine::new()),
+        proxy_modes: modes::ProxyModeStore::new(),
+        inject_store: inject::InjectStore::new(),
+        rewrite_store: rewrite::RewriteStore::new(),
+        key_store: keys::KeyStore::new(),
     });
 
     (state, event_rx)

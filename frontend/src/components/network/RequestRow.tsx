@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, onCleanup } from "solid-js";
 
 interface ApiRequest {
   id: string;
@@ -11,6 +11,7 @@ interface ApiRequest {
   timestamp: number;
   requestPreview?: string;
   responsePreview?: string;
+  category?: string;
 }
 
 interface RequestRowProps {
@@ -21,6 +22,10 @@ interface RequestRowProps {
   timelineStart: number;
   /** Total timeline duration (ms) */
   timelineDuration: number;
+  /** Called when user selects "Block this domain" from context menu */
+  onQuickBlock?: (domain: string) => void;
+  /** Called when user selects "Block all [category]" from context menu */
+  onBlockCategory?: (category: string) => void;
 }
 
 function statusColor(code: number): string {
@@ -53,6 +58,18 @@ function formatTime(timestamp: number): string {
   return `${h}:${m}:${s}`;
 }
 
+/** Map traffic category to Catppuccin Mocha color */
+function categoryColor(category?: string): string {
+  switch (category) {
+    case "Api": return "#89b4fa"; // ctp-blue
+    case "Telemetry": return "#f9e2af"; // ctp-yellow
+    case "Auth": return "#cba6f7"; // ctp-mauve
+    case "Update": return "#fab387"; // ctp-peach
+    case "Git": return "#a6e3a1"; // ctp-green
+    default: return "#6c7086"; // ctp-overlay0
+  }
+}
+
 function shortUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -65,10 +82,31 @@ function shortUrl(url: string): string {
 }
 
 export type { ApiRequest };
-export { statusColor, statusColorDark, formatSize, formatTime, shortUrl };
+export { statusColor, statusColorDark, formatSize, formatTime, shortUrl, categoryColor };
 
 export default function RequestRow(props: RequestRowProps) {
   const [hovered, setHovered] = createSignal(false);
+  const [contextMenu, setContextMenu] = createSignal<{ x: number; y: number } | null>(null);
+
+  function getDomain(): string {
+    try {
+      return new URL(props.request.url).hostname;
+    } catch {
+      return props.request.url;
+    }
+  }
+
+  function handleContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+
+    const dismiss = () => {
+      setContextMenu(null);
+      document.removeEventListener("click", dismiss);
+    };
+    document.addEventListener("click", dismiss);
+    onCleanup(() => document.removeEventListener("click", dismiss));
+  }
 
   const barOffset = () => {
     if (props.timelineDuration <= 0) return 0;
@@ -95,6 +133,7 @@ export default function RequestRow(props: RequestRowProps) {
     <button
       data-testid={`request-row-${props.request.id}`}
       onClick={() => props.onClick()}
+      onContextMenu={handleContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -116,17 +155,28 @@ export default function RequestRow(props: RequestRowProps) {
         transition: "background 150ms ease",
       }}
     >
-      {/* Primary row: method, url, status, size, time, waterfall */}
+      {/* Primary row: category dot, method, url, status, size, time, waterfall */}
       <div
         style={{
           display: "grid",
-          "grid-template-columns": "60px 58px 1fr 50px 60px 60px 160px",
+          "grid-template-columns": "12px 60px 58px 1fr 50px 60px 60px 160px",
           gap: "8px",
           "align-items": "center",
           padding: "6px 12px 2px 12px",
           "font-size": "12px",
         }}
       >
+        {/* Category dot */}
+        <span
+          title={props.request.category || "Unknown"}
+          style={{
+            width: "8px",
+            height: "8px",
+            "border-radius": "50%",
+            background: categoryColor(props.request.category),
+            "flex-shrink": "0",
+          }}
+        />
         <span style={{ "font-weight": "600", color: "var(--ctp-blue)" }}>
           {props.request.method}
         </span>
@@ -275,6 +325,70 @@ export default function RequestRow(props: RequestRowProps) {
               </span>
               {props.request.responsePreview}
             </span>
+          </Show>
+        </div>
+      </Show>
+
+      {/* Context Menu */}
+      <Show when={contextMenu()}>
+        <div
+          data-testid="request-context-menu"
+          style={{
+            position: "fixed",
+            left: `${contextMenu()!.x}px`,
+            top: `${contextMenu()!.y}px`,
+            "z-index": "1000",
+            background: "var(--ctp-surface0)",
+            border: "1px solid var(--ctp-surface1)",
+            "border-radius": "6px",
+            "box-shadow": "0 4px 12px rgba(0,0,0,0.4)",
+            padding: "4px 0",
+            "min-width": "180px",
+          }}
+        >
+          <Show when={props.onQuickBlock}>
+            <button
+              data-testid="ctx-block-domain"
+              onClick={() => {
+                props.onQuickBlock?.(getDomain());
+                setContextMenu(null);
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "6px 12px",
+                "font-size": "11px",
+                background: "transparent",
+                border: "none",
+                color: "var(--ctp-red)",
+                cursor: "pointer",
+                "text-align": "left",
+              }}
+            >
+              Block {getDomain()}
+            </button>
+          </Show>
+          <Show when={props.onBlockCategory && props.request.category}>
+            <button
+              data-testid="ctx-block-category"
+              onClick={() => {
+                props.onBlockCategory?.(props.request.category!);
+                setContextMenu(null);
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "6px 12px",
+                "font-size": "11px",
+                background: "transparent",
+                border: "none",
+                color: "var(--ctp-yellow)",
+                cursor: "pointer",
+                "text-align": "left",
+              }}
+            >
+              Block all {props.request.category}
+            </button>
           </Show>
         </div>
       </Show>

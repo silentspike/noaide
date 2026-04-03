@@ -3,6 +3,7 @@ import { useSession } from "../../App";
 import RequestRow from "./RequestRow";
 import RequestDetail, { type RequestDetailFull } from "./RequestDetail";
 import InterceptQueue from "./InterceptQueue";
+import RuleEditor from "./RuleEditor";
 
 export default function NetworkPanel() {
   const store = useSession();
@@ -13,6 +14,36 @@ export default function NetworkPanel() {
   const [statusFilter, setStatusFilter] = createSignal<string>("all");
   const [interceptMode, setInterceptMode] = createSignal<"auto" | "manual">("auto");
   const [pendingCount, setPendingCount] = createSignal(0);
+  const [categoryFilter, setCategoryFilter] = createSignal<string>("all");
+  const [showRules, setShowRules] = createSignal(false);
+  const [proxyMode, setProxyModeSignal] = createSignal("auto");
+
+  async function fetchProxyMode() {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      const res = await fetch(`${base}/api/proxy/mode/${sid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProxyModeSignal(data.mode || "auto");
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function setProxyMode(mode: string) {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      await fetch(`${base}/api/proxy/mode/${sid}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      setProxyModeSignal(mode);
+    } catch { /* ignore */ }
+  }
 
   async function fetchInterceptStatus() {
     const base = store.state.httpApiUrl;
@@ -102,6 +133,7 @@ export default function NetworkPanel() {
   onMount(() => {
     fetchRequests();
     fetchInterceptStatus();
+    void fetchProxyMode();
     const interval = setInterval(() => {
       fetchRequests();
       fetchInterceptStatus();
@@ -114,6 +146,7 @@ export default function NetworkPanel() {
     const query = filter().toLowerCase();
     const method = methodFilter();
     const status = statusFilter();
+    const cat = categoryFilter();
 
     if (query) {
       items = items.filter(
@@ -133,6 +166,10 @@ export default function NetworkPanel() {
       items = items.filter((r) => r.statusCode >= 400 && r.statusCode < 500);
     } else if (status === "5xx") {
       items = items.filter((r) => r.statusCode >= 500);
+    }
+
+    if (cat !== "all") {
+      items = items.filter((r) => (r.category || "Unknown") === cat);
     }
 
     return items;
@@ -159,6 +196,37 @@ export default function NetworkPanel() {
     if (!id) return null;
     return requests().find((r) => r.id === id) ?? null;
   });
+
+  async function quickBlockDomain(domain: string) {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      await fetch(`${base}/api/proxy/quick-block`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sid, domain }),
+      });
+    } catch { /* ignore */ }
+  }
+
+  async function blockCategory(category: string) {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      await fetch(`${base}/api/proxy/network-rules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sid,
+          category_filter: category,
+          action: "block",
+          priority: 50,
+        }),
+      });
+    } catch { /* ignore */ }
+  }
 
   return (
     <div
@@ -298,6 +366,105 @@ export default function NetworkPanel() {
           </button>
         </Show>
 
+        {/* Quick-Block selected domain */}
+        <Show when={selectedRequest()}>
+          <button
+            data-testid="quick-block-btn"
+            onClick={async () => {
+              const base = store.state.httpApiUrl;
+              const sid = store.state.activeSessionId;
+              const req = selectedRequest();
+              if (!base || !sid || !req) return;
+              try {
+                const domain = new URL(req.url).hostname;
+                await fetch(`${base}/api/proxy/quick-block`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ session_id: sid, domain }),
+                });
+              } catch { /* ignore */ }
+            }}
+            style={{
+              padding: "3px 8px",
+              "font-size": "10px",
+              background: "var(--ctp-red)",
+              border: "none",
+              "border-radius": "4px",
+              color: "var(--ctp-base)",
+              cursor: "pointer",
+              "white-space": "nowrap",
+              "font-weight": "600",
+            }}
+          >
+            Block
+          </button>
+        </Show>
+
+        {/* Proxy Mode Selector */}
+        <Show when={store.state.activeSessionId}>
+          <div
+            data-testid="proxy-mode-selector"
+            style={{
+              display: "flex",
+              "border-radius": "4px",
+              overflow: "hidden",
+              border: "1px solid var(--ctp-surface1)",
+            }}
+          >
+            <For each={["auto", "manual", "custom", "pure", "lockdown"] as const}>
+              {(mode) => (
+                <button
+                  data-testid={`mode-${mode}`}
+                  onClick={() => {
+                    void setProxyMode(mode);
+                  }}
+                  style={{
+                    padding: "2px 6px",
+                    "font-size": "9px",
+                    border: "none",
+                    background:
+                      proxyMode() === mode
+                        ? mode === "lockdown"
+                          ? "var(--ctp-red)"
+                          : mode === "pure"
+                            ? "var(--ctp-green)"
+                            : "var(--ctp-blue)"
+                        : "var(--ctp-surface0)",
+                    color:
+                      proxyMode() === mode
+                        ? "var(--ctp-base)"
+                        : "var(--ctp-overlay0)",
+                    cursor: "pointer",
+                    "text-transform": "capitalize",
+                  }}
+                >
+                  {mode === "lockdown" ? "Lock" : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+
+        {/* Rules Toggle */}
+        <Show when={store.state.activeSessionId}>
+          <button
+            data-testid="rules-toggle-btn"
+            onClick={() => setShowRules(!showRules())}
+            style={{
+              padding: "3px 8px",
+              "font-size": "10px",
+              background: showRules() ? "var(--ctp-blue)" : "var(--ctp-surface0)",
+              border: "1px solid var(--ctp-surface1)",
+              "border-radius": "4px",
+              color: showRules() ? "var(--ctp-base)" : "var(--ctp-subtext0)",
+              cursor: "pointer",
+              "white-space": "nowrap",
+            }}
+          >
+            Rules
+          </button>
+        </Show>
+
         {/* HAR Export */}
         <button
           data-testid="har-export-btn"
@@ -375,11 +542,74 @@ export default function NetworkPanel() {
         </div>
       </Show>
 
+      {/* Category Filter Chips */}
+      <div
+        data-testid="category-chips"
+        style={{
+          display: "flex",
+          gap: "4px",
+          padding: "4px 12px",
+          "border-bottom": "1px solid var(--ctp-surface0)",
+          background: "var(--ctp-mantle)",
+          "flex-wrap": "wrap",
+        }}
+      >
+        <For each={["All", "Api", "Telemetry", "Auth", "Update", "Git", "Unknown"] as const}>
+          {(cat) => {
+            const count = () =>
+              cat === "All"
+                ? requests().length
+                : requests().filter((r) => (r.category || "Unknown") === cat).length;
+            return (
+              <button
+                data-testid={`category-chip-${cat.toLowerCase()}`}
+                onClick={() => setCategoryFilter(cat === "All" ? "all" : cat)}
+                style={{
+                  padding: "2px 8px",
+                  "font-size": "10px",
+                  "border-radius": "10px",
+                  border: "1px solid",
+                  "border-color":
+                    (categoryFilter() === "all" && cat === "All") ||
+                    categoryFilter() === cat
+                      ? "var(--ctp-blue)"
+                      : "var(--ctp-surface1)",
+                  background:
+                    (categoryFilter() === "all" && cat === "All") ||
+                    categoryFilter() === cat
+                      ? "var(--ctp-blue)"
+                      : "var(--ctp-surface0)",
+                  color:
+                    (categoryFilter() === "all" && cat === "All") ||
+                    categoryFilter() === cat
+                      ? "var(--ctp-base)"
+                      : "var(--ctp-subtext0)",
+                  cursor: "pointer",
+                  "font-weight": "500",
+                }}
+              >
+                {cat}
+                <Show when={count() > 0}>
+                  <span
+                    style={{
+                      "margin-left": "4px",
+                      opacity: "0.7",
+                    }}
+                  >
+                    {count()}
+                  </span>
+                </Show>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+
       {/* Column headers */}
       <div
         style={{
           display: "grid",
-          "grid-template-columns": "60px 58px 1fr 50px 60px 60px 160px",
+          "grid-template-columns": "12px 60px 58px 1fr 50px 60px 60px 160px",
           gap: "8px",
           padding: "4px 12px",
           "font-size": "10px",
@@ -390,6 +620,7 @@ export default function NetworkPanel() {
           "border-bottom": "1px solid var(--ctp-surface0)",
         }}
       >
+        <span></span>
         <span>Method</span>
         <span>Time</span>
         <span>URL</span>
@@ -411,6 +642,11 @@ export default function NetworkPanel() {
           sessionId={store.state.activeSessionId!}
           httpApiUrl={store.state.httpApiUrl!}
         />
+      </Show>
+
+      {/* Rules Editor Panel */}
+      <Show when={showRules() && store.state.activeSessionId}>
+        <RuleEditor />
       </Show>
 
       {/* Request list */}
@@ -446,6 +682,12 @@ export default function NetworkPanel() {
                 onClick={() => selectRequest(request.id)}
                 timelineStart={timelineStart()}
                 timelineDuration={timelineDuration()}
+                onQuickBlock={(domain) => {
+                  void quickBlockDomain(domain);
+                }}
+                onBlockCategory={(category) => {
+                  void blockCategory(category);
+                }}
               />
             )}
           </For>
