@@ -298,6 +298,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/proxy/inject/{session_id}",
             get(api_get_inject_config).put(api_set_inject_config),
         )
+        .route(
+            "/api/proxy/rewrite/{session_id}",
+            get(api_get_rewrite_config).put(api_set_rewrite_config),
+        )
         .route("/api/plans", get(api_list_plans))
         .route(
             "/api/plans/for-session/{session_id}",
@@ -3659,6 +3663,24 @@ async fn api_set_inject_config(
     axum::Json(config): axum::Json<noaide_server::proxy::inject::InjectConfig>,
 ) -> axum::Json<serde_json::Value> {
     state.proxy.inject_store.set(session_id, config);
+    axum::Json(serde_json::json!({ "ok": true }))
+}
+
+// ── Rewrite Config Endpoints ────────────────────────────────────────────────
+
+async fn api_get_rewrite_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<noaide_server::proxy::rewrite::RewriteConfig> {
+    axum::Json(state.proxy.rewrite_store.get(&session_id))
+}
+
+async fn api_set_rewrite_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(config): axum::Json<noaide_server::proxy::rewrite::RewriteConfig>,
+) -> axum::Json<serde_json::Value> {
+    state.proxy.rewrite_store.set(session_id, config);
     axum::Json(serde_json::json!({ "ok": true }))
 }
 
