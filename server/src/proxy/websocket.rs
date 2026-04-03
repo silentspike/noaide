@@ -361,6 +361,7 @@ mod tests {
             proxy_modes: super::super::modes::ProxyModeStore::new(),
             inject_store: super::super::inject::InjectStore::new(),
             rewrite_store: super::super::rewrite::RewriteStore::new(),
+            key_store: super::super::keys::KeyStore::new(),
         });
 
         let session = Some("test-session".to_string());
@@ -395,6 +396,7 @@ mod tests {
             proxy_modes: super::super::modes::ProxyModeStore::new(),
             inject_store: super::super::inject::InjectStore::new(),
             rewrite_store: super::super::rewrite::RewriteStore::new(),
+            key_store: super::super::keys::KeyStore::new(),
         });
 
         let session = Some("test-session".to_string());
