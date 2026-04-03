@@ -82,29 +82,17 @@ pub async fn relay_frames(
                     )
                     .await;
 
-                    if upstream_tx
-                        .send(TungMessage::Binary(data))
-                        .await
-                        .is_err()
-                    {
+                    if upstream_tx.send(TungMessage::Binary(data)).await.is_err() {
                         break;
                     }
                 }
                 axum::extract::ws::Message::Ping(data) => {
-                    if upstream_tx
-                        .send(TungMessage::Ping(data))
-                        .await
-                        .is_err()
-                    {
+                    if upstream_tx.send(TungMessage::Ping(data)).await.is_err() {
                         break;
                     }
                 }
                 axum::extract::ws::Message::Pong(data) => {
-                    if upstream_tx
-                        .send(TungMessage::Pong(data))
-                        .await
-                        .is_err()
-                    {
+                    if upstream_tx.send(TungMessage::Pong(data)).await.is_err() {
                         break;
                     }
                 }
@@ -344,8 +332,8 @@ mod tests {
 
     #[tokio::test]
     async fn log_ws_frame_text_redacts_keys() {
-        use tokio::sync::{RwLock, broadcast};
         use std::collections::{HashMap, VecDeque};
+        use tokio::sync::{RwLock, broadcast};
 
         let (event_tx, _rx) = broadcast::channel(16);
         let state = Arc::new(super::super::handler::ProxyState {
@@ -367,7 +355,15 @@ mod tests {
         let session = Some("test-session".to_string());
         let body_with_key = r#"{"key": "sk-ant-api03-secret123"}"#;
 
-        log_ws_frame(&session, "wss://example.com/ws", "WS-OUT", Some(body_with_key), body_with_key.len(), &state).await;
+        log_ws_frame(
+            &session,
+            "wss://example.com/ws",
+            "WS-OUT",
+            Some(body_with_key),
+            body_with_key.len(),
+            &state,
+        )
+        .await;
 
         let captured = state.captured.read().await;
         assert_eq!(captured.len(), 1);
@@ -379,8 +375,8 @@ mod tests {
 
     #[tokio::test]
     async fn log_ws_frame_binary_shows_metadata() {
-        use tokio::sync::{RwLock, broadcast};
         use std::collections::{HashMap, VecDeque};
+        use tokio::sync::{RwLock, broadcast};
 
         let (event_tx, _rx) = broadcast::channel(16);
         let state = Arc::new(super::super::handler::ProxyState {
@@ -401,7 +397,15 @@ mod tests {
 
         let session = Some("test-session".to_string());
 
-        log_ws_frame(&session, "wss://example.com/ws", "WS-IN", None, 4096, &state).await;
+        log_ws_frame(
+            &session,
+            "wss://example.com/ws",
+            "WS-IN",
+            None,
+            4096,
+            &state,
+        )
+        .await;
 
         let captured = state.captured.read().await;
         assert_eq!(captured.len(), 1);
