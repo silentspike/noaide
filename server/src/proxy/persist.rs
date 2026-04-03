@@ -81,12 +81,13 @@ pub fn cleanup_old_configs(max_age: std::time::Duration) -> usize {
 
         if let Ok(metadata) = path.metadata()
             && let Ok(modified) = metadata.modified()
-                && let Ok(age) = now.duration_since(modified)
-                    && age > max_age
-                        && std::fs::remove_file(&path).is_ok() {
-                            info!(path = %path.display(), age_days = age.as_secs() / 86400, "deleted old proxy config");
-                            deleted += 1;
-                        }
+            && let Ok(age) = now.duration_since(modified)
+            && age > max_age
+            && std::fs::remove_file(&path).is_ok()
+        {
+            info!(path = %path.display(), age_days = age.as_secs() / 86400, "deleted old proxy config");
+            deleted += 1;
+        }
     }
 
     deleted

@@ -108,34 +108,36 @@ pub fn extract_tokens(body: &str) -> (String, u64, u64, u64, u64) {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
             // Anthropic: message_start has model + usage
             if json.get("type").and_then(|t| t.as_str()) == Some("message_start")
-                && let Some(msg) = json.get("message") {
-                    if let Some(m) = msg.get("model").and_then(|m| m.as_str()) {
-                        model = m.to_string();
-                    }
-                    if let Some(usage) = msg.get("usage") {
-                        input_tokens = usage
-                            .get("input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        cache_creation = usage
-                            .get("cache_creation_input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        cache_read = usage
-                            .get("cache_read_input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                    }
+                && let Some(msg) = json.get("message")
+            {
+                if let Some(m) = msg.get("model").and_then(|m| m.as_str()) {
+                    model = m.to_string();
                 }
+                if let Some(usage) = msg.get("usage") {
+                    input_tokens = usage
+                        .get("input_tokens")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    cache_creation = usage
+                        .get("cache_creation_input_tokens")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    cache_read = usage
+                        .get("cache_read_input_tokens")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                }
+            }
 
             // Anthropic: message_delta has output usage
             if json.get("type").and_then(|t| t.as_str()) == Some("message_delta")
-                && let Some(usage) = json.get("usage") {
-                    output_tokens = usage
-                        .get("output_tokens")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(output_tokens);
-                }
+                && let Some(usage) = json.get("usage")
+            {
+                output_tokens = usage
+                    .get("output_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(output_tokens);
+            }
 
             // OpenAI: usage in final chunk
             if let Some(usage) = json.get("usage") {
@@ -146,9 +148,10 @@ pub fn extract_tokens(body: &str) -> (String, u64, u64, u64, u64) {
                     output_tokens = ct;
                 }
                 if let Some(m) = json.get("model").and_then(|m| m.as_str())
-                    && model.is_empty() {
-                        model = m.to_string();
-                    }
+                    && model.is_empty()
+                {
+                    model = m.to_string();
+                }
             }
 
             // Gemini: usageMetadata
@@ -221,13 +224,15 @@ pub fn query_entries(
         .filter_map(|line| serde_json::from_str(line).ok())
         .filter(|e: &AuditEntry| {
             if let Some(sid) = session_id
-                && e.session_id.as_deref() != Some(sid) {
-                    return false;
-                }
+                && e.session_id.as_deref() != Some(sid)
+            {
+                return false;
+            }
             if let Some(m) = model
-                && !e.model.contains(m) {
-                    return false;
-                }
+                && !e.model.contains(m)
+            {
+                return false;
+            }
             true
         })
         .collect();
