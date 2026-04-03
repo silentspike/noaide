@@ -108,15 +108,14 @@ pub fn apply_rewrites(
     }
 
     // Thinking type override (Anthropic only)
-    if let Some(ref thinking) = config.thinking_type {
-        if provider == ApiProvider::Anthropic {
+    if let Some(ref thinking) = config.thinking_type
+        && provider == ApiProvider::Anthropic {
             if body.get("thinking").is_none() {
                 body["thinking"] = serde_json::json!({});
             }
             body["thinking"]["type"] = serde_json::Value::String(thinking.clone());
             modified = true;
         }
-    }
 
     if modified {
         debug!(provider = %provider.label(), "applied request body rewrites");
@@ -298,6 +297,6 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let parsed: RewriteConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.model_override, config.model_override);
-        assert_eq!(parsed.pure_mode, true);
+        assert!(parsed.pure_mode);
     }
 }

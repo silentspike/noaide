@@ -107,11 +107,10 @@ impl Default for InjectConfig {
 /// Build the full injection text from active presets + custom text.
 pub fn build_injection(config: &InjectConfig) -> String {
     let mut parts: Vec<&str> = config.presets.iter().map(|p| p.text()).collect();
-    if let Some(ref custom) = config.custom_text {
-        if !custom.is_empty() {
+    if let Some(ref custom) = config.custom_text
+        && !custom.is_empty() {
             parts.push(custom);
         }
-    }
     parts.join("\n\n")
 }
 

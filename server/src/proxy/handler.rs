@@ -588,15 +588,12 @@ pub async fn proxy_handler(
         } else {
             super::rewrite::RewriteConfig::default()
         };
-        if rewrite_config.is_active() {
-            if let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes) {
-                if super::rewrite::apply_rewrites(&mut body_json, provider, &rewrite_config) {
-                    if let Ok(modified) = serde_json::to_vec(&body_json) {
+        if rewrite_config.is_active()
+            && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+                && super::rewrite::apply_rewrites(&mut body_json, provider, &rewrite_config)
+                    && let Ok(modified) = serde_json::to_vec(&body_json) {
                         request_bytes = Bytes::from(modified);
                     }
-                }
-            }
-        }
     }
 
     // ── Build forwarding request ────────────────────────────────────────
@@ -623,10 +620,10 @@ pub async fn proxy_handler(
 
     // ── API Key Rotation ──────────────────────────────────────────────
     // If KeyStore has active keys for this provider, replace the Authorization header.
-    if state.key_store.has_active_keys(provider.label()) {
-        if let Some((_key_id, plaintext_key)) = state.key_store.select_key(provider.label()) {
+    if state.key_store.has_active_keys(provider.label())
+        && let Some((_key_id, plaintext_key)) = state.key_store.select_key(provider.label()) {
             let auth_value = match provider {
-                ApiProvider::Anthropic => format!("{plaintext_key}"),
+                ApiProvider::Anthropic => plaintext_key.to_string(),
                 _ => format!("Bearer {plaintext_key}"),
             };
             let header_name = match provider {
@@ -635,7 +632,6 @@ pub async fn proxy_handler(
             };
             req_builder = req_builder.header(header_name, auth_value);
         }
-    }
 
     if !request_bytes.is_empty() {
         req_builder = req_builder.body(request_bytes.to_vec());
@@ -1853,15 +1849,13 @@ async fn handle_websocket_proxy(
             _ => {
                 if let Ok(header_name) =
                     tokio_tungstenite::tungstenite::http::HeaderName::from_bytes(name.as_ref())
-                {
-                    if let Ok(header_value) =
+                    && let Ok(header_value) =
                         tokio_tungstenite::tungstenite::http::HeaderValue::from_bytes(
                             value.as_bytes(),
                         )
                     {
                         ws_request = ws_request.header(header_name, header_value);
                     }
-                }
             }
         }
     }

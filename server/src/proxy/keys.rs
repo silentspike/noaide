@@ -174,16 +174,14 @@ impl KeyStore {
         if let Some(mut entry) = self.keys.get_mut(key_id) {
             for (name, value) in headers {
                 let name_lower = name.to_lowercase();
-                if name_lower.contains("ratelimit") && name_lower.contains("5h") {
-                    if let Ok(v) = value.parse::<f64>() {
+                if name_lower.contains("ratelimit") && name_lower.contains("5h")
+                    && let Ok(v) = value.parse::<f64>() {
                         entry.rate_limit_5h = v;
                     }
-                }
-                if name_lower.contains("ratelimit") && name_lower.contains("7d") {
-                    if let Ok(v) = value.parse::<f64>() {
+                if name_lower.contains("ratelimit") && name_lower.contains("7d")
+                    && let Ok(v) = value.parse::<f64>() {
                         entry.rate_limit_7d = v;
                     }
-                }
             }
         }
     }
