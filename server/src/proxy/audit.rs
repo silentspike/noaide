@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
-use tracing::{debug, warn};
+use tracing::warn;
 
 /// Audit log entry with token usage and cost.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,7 +171,13 @@ pub fn extract_tokens(body: &str) -> (String, u64, u64, u64, u64) {
         }
     }
 
-    (model, input_tokens, output_tokens, cache_creation, cache_read)
+    (
+        model,
+        input_tokens,
+        output_tokens,
+        cache_creation,
+        cache_read,
+    )
 }
 
 /// Audit log file path.

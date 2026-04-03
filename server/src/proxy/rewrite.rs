@@ -181,8 +181,8 @@ impl Default for RewriteStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::handler::ApiProvider;
+    use super::*;
 
     #[test]
     fn model_override_anthropic() {

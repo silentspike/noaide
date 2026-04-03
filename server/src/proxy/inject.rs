@@ -28,39 +28,51 @@ pub enum Preset {
 impl Preset {
     pub fn text(&self) -> &'static str {
         match self {
-            Preset::AntiLaziness => "\
+            Preset::AntiLaziness => {
+                "\
 [ANTI-LAZINESS] You MUST complete ALL requested work. Never use shortcuts like \
 '// ... rest of the code remains the same', '... (remaining code omitted)', or \
 similar truncation patterns. If asked to write code, write the COMPLETE code. \
 If asked to make changes, show the FULL changed file, not just snippets. \
-Incomplete work is UNACCEPTABLE.",
+Incomplete work is UNACCEPTABLE."
+            }
 
-            Preset::VerifyEvidence => "\
+            Preset::VerifyEvidence => {
+                "\
 [VERIFY-EVIDENCE] For every claim or assertion you make, provide concrete evidence: \
 exact command output, file contents, test results, or measurements. \
 Never write PASS, OK, or 'verified' without an actual executed command and its output. \
-'Code looks correct' is NOT evidence. Default state of any claim is UNTESTED.",
+'Code looks correct' is NOT evidence. Default state of any claim is UNTESTED."
+            }
 
-            Preset::Speed => "\
+            Preset::Speed => {
+                "\
 [SPEED] Be concise and efficient. Skip preamble, go straight to the answer. \
-No unnecessary explanations unless asked. Prefer bullet points over paragraphs.",
+No unnecessary explanations unless asked. Prefer bullet points over paragraphs."
+            }
 
-            Preset::Verbose => "\
+            Preset::Verbose => {
+                "\
 [VERBOSE] Provide detailed explanations with step-by-step reasoning. \
-Show your thought process. Include relevant context and alternatives considered.",
+Show your thought process. Include relevant context and alternatives considered."
+            }
 
-            Preset::GermanOnly => "\
+            Preset::GermanOnly => {
+                "\
 [SPRACHE] Antworte AUSSCHLIESSLICH auf Deutsch. Technische Fachbegriffe und \
 Code-Identifier bleiben auf Englisch, aber alle Erklaerungen, Kommentare und \
-Kommunikation MUESSEN auf Deutsch sein.",
+Kommunikation MUESSEN auf Deutsch sein."
+            }
 
-            Preset::NoaideContext => "\
+            Preset::NoaideContext => {
+                "\
 [noaide] You are running inside noaide, a browser-based IDE. \
 Media files you create (images, GIFs, SVGs, audio, video) via Bash or Write tools \
 are rendered inline in the chat. The user sees them directly. \
 Supported: PNG, JPG, GIF, SVG, WEBP, MP4, WEBM, MP3, WAV, OGG. \
 To show an image, just create the file (e.g. python3, ImageMagick, ffmpeg, \
-or write SVG directly).",
+or write SVG directly)."
+            }
         }
     }
 
@@ -336,7 +348,12 @@ mod tests {
         let messages = body["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0]["role"], "system");
-        assert!(messages[0]["content"].as_str().unwrap().contains("system text"));
+        assert!(
+            messages[0]["content"]
+                .as_str()
+                .unwrap()
+                .contains("system text")
+        );
     }
 
     #[test]
