@@ -240,6 +240,8 @@ pub struct ProxyState {
     pub network_rules: Arc<super::rules::NetworkRulesEngine>,
     /// Per-session proxy mode (Auto/Manual/Custom/Pure/Lockdown).
     pub proxy_modes: super::modes::ProxyModeStore,
+    /// Per-session system prompt injection configuration.
+    pub inject_store: super::inject::InjectStore,
 }
 
 /// Extract session UUID from `/s/{uuid}/...` proxy path prefix.
@@ -546,8 +548,7 @@ pub async fn proxy_handler(
     } // skip_image_injection
 
     // ── System Prompt Injection ──────────────────────────────────────────
-    // Inform the LLM that it runs inside a browser-based IDE so it can
-    // create media files knowing they will be rendered inline in the chat.
+    // Uses configurable presets from inject module. Default: noaide context.
     // Same skip logic as image injection (only conversation endpoints).
     let skip_system_injection = provider == ApiProvider::GoogleCodeAssist
         && !effective_path.contains("streamGenerateContent");
@@ -555,88 +556,21 @@ pub async fn proxy_handler(
         && !request_bytes.is_empty()
         && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
     {
-        let noaide_context = "[noaide] You are running inside noaide, a browser-based IDE. \
-                Media files you create (images, GIFs, SVGs, audio, video) via Bash or Write tools \
-                are rendered inline in the chat. The user sees them directly. \
-                Supported: PNG, JPG, GIF, SVG, WEBP, MP4, WEBM, MP3, WAV, OGG. \
-                To show an image, just create the file (e.g. python3, ImageMagick, ffmpeg, \
-                or write SVG directly).";
+        let inject_config = if let Some(ref sid) = session_id {
+            state.inject_store.get(sid)
+        } else {
+            super::inject::InjectConfig::default()
+        };
+        let injection_text = super::inject::build_injection(&inject_config);
 
-        let mut injected_system = false;
-
-        match provider {
-            ApiProvider::Anthropic => {
-                // Anthropic: body_json["system"] — string or array of content blocks
-                match body_json.get("system") {
-                    Some(serde_json::Value::String(s)) => {
-                        body_json["system"] =
-                            serde_json::Value::String(format!("{s}\n\n{noaide_context}"));
-                        injected_system = true;
-                    }
-                    Some(serde_json::Value::Array(_)) => {
-                        if let Some(arr) = body_json["system"].as_array_mut() {
-                            arr.push(serde_json::json!({
-                                "type": "text",
-                                "text": noaide_context,
-                            }));
-                            injected_system = true;
-                        }
-                    }
-                    _ => {
-                        // No system field — create it
-                        body_json["system"] = serde_json::Value::String(noaide_context.to_string());
-                        injected_system = true;
-                    }
-                }
-            }
-            ApiProvider::GoogleCodeAssist | ApiProvider::Google => {
-                // Google: body_json["system_instruction"]["parts"] or
-                // body_json["request"]["system_instruction"]["parts"]
-                let targets = [
-                    vec!["system_instruction", "parts"],
-                    vec!["request", "system_instruction", "parts"],
-                ];
-                for target in &targets {
-                    let mut cursor = &mut body_json;
-                    let mut found = true;
-                    for (i, key) in target.iter().enumerate() {
-                        if i == target.len() - 1 {
-                            // Last key — should be "parts" array
-                            if let Some(arr) = cursor.get_mut(*key).and_then(|v| v.as_array_mut()) {
-                                arr.push(serde_json::json!({"text": noaide_context}));
-                                injected_system = true;
-                            } else {
-                                found = false;
-                            }
-                        } else if cursor.get(*key).is_some() {
-                            cursor = &mut cursor[*key];
-                        } else {
-                            found = false;
-                            break;
-                        }
-                    }
-                    if found && injected_system {
-                        break;
-                    }
-                }
-                // If no system_instruction exists, create it
-                if !injected_system {
-                    body_json["system_instruction"] = serde_json::json!({
-                        "parts": [{"text": noaide_context}]
-                    });
-                    injected_system = true;
-                }
-            }
-            _ => {
-                // OpenAI/ChatGPT: No system prompt injection for now
-                // (Codex uses a different format)
-            }
-        }
-
-        if injected_system && let Ok(modified) = serde_json::to_vec(&body_json) {
+        if !injection_text.is_empty()
+            && super::inject::inject_into_body(&mut body_json, provider, &injection_text)
+            && let Ok(modified) = serde_json::to_vec(&body_json)
+        {
             debug!(
                 provider = %provider.label(),
-                "injected noaide system context into API request"
+                presets = ?inject_config.presets,
+                "injected system prompt into API request"
             );
             request_bytes = Bytes::from(modified);
         }

@@ -294,6 +294,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/proxy/mode/{session_id}",
             get(api_get_proxy_mode).put(api_set_proxy_mode),
         )
+        .route(
+            "/api/proxy/inject/{session_id}",
+            get(api_get_inject_config).put(api_set_inject_config),
+        )
         .route("/api/plans", get(api_list_plans))
         .route(
             "/api/plans/for-session/{session_id}",
@@ -3637,6 +3641,24 @@ async fn api_set_proxy_mode(
     axum::Json(body): axum::Json<SetModeRequest>,
 ) -> axum::Json<serde_json::Value> {
     state.proxy.proxy_modes.set(session_id, body.mode);
+    axum::Json(serde_json::json!({ "ok": true }))
+}
+
+// ── Inject Config Endpoints ─────────────────────────────────────────────────
+
+async fn api_get_inject_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<noaide_server::proxy::inject::InjectConfig> {
+    axum::Json(state.proxy.inject_store.get(&session_id))
+}
+
+async fn api_set_inject_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(config): axum::Json<noaide_server::proxy::inject::InjectConfig>,
+) -> axum::Json<serde_json::Value> {
+    state.proxy.inject_store.set(session_id, config);
     axum::Json(serde_json::json!({ "ok": true }))
 }
 
