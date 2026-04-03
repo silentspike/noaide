@@ -238,6 +238,8 @@ pub struct ProxyState {
     pub ca: Option<Arc<super::tls_mitm::CaAuthority>>,
     /// Per-session network rules for CONNECT MITM traffic (Block/Allow/Delay).
     pub network_rules: Arc<super::rules::NetworkRulesEngine>,
+    /// Per-session proxy mode (Auto/Manual/Custom/Pure/Lockdown).
+    pub proxy_modes: super::modes::ProxyModeStore,
 }
 
 /// Extract session UUID from `/s/{uuid}/...` proxy path prefix.

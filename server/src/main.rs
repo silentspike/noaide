@@ -290,6 +290,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/proxy/network-rules/{session_id}/quick-block",
             post(api_quick_block_domain),
         )
+        .route(
+            "/api/proxy/mode/{session_id}",
+            get(api_get_proxy_mode).put(api_set_proxy_mode),
+        )
         .route("/api/plans", get(api_list_plans))
         .route(
             "/api/plans/for-session/{session_id}",
@@ -3610,6 +3614,30 @@ async fn api_quick_block_domain(
         StatusCode::CREATED,
         axum::Json(serde_json::json!({ "id": id })),
     )
+}
+
+// ── Proxy Mode Endpoints ────────────────────────────────────────────────────
+
+async fn api_get_proxy_mode(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<serde_json::Value> {
+    let mode = state.proxy.proxy_modes.get(&session_id);
+    axum::Json(serde_json::json!({ "mode": mode }))
+}
+
+#[derive(serde::Deserialize)]
+struct SetModeRequest {
+    mode: noaide_server::proxy::modes::ProxyMode,
+}
+
+async fn api_set_proxy_mode(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(body): axum::Json<SetModeRequest>,
+) -> axum::Json<serde_json::Value> {
+    state.proxy.proxy_modes.set(session_id, body.mode);
+    axum::Json(serde_json::json!({ "ok": true }))
 }
 
 // ── Git API Endpoints ────────────────────────────────────────────────────────

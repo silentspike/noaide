@@ -358,6 +358,7 @@ mod tests {
             pending_images: RwLock::new(HashMap::new()),
             ca: None,
             network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
+            proxy_modes: super::super::modes::ProxyModeStore::new(),
         });
 
         let session = Some("test-session".to_string());
@@ -389,6 +390,7 @@ mod tests {
             pending_images: RwLock::new(HashMap::new()),
             ca: None,
             network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
+            proxy_modes: super::super::modes::ProxyModeStore::new(),
         });
 
         let session = Some("test-session".to_string());
