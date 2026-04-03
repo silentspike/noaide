@@ -3,6 +3,7 @@ pub mod handler;
 pub mod inject;
 pub mod mitm;
 pub mod modes;
+pub mod persist;
 pub mod rewrite;
 pub mod rules;
 pub mod tls_mitm;
