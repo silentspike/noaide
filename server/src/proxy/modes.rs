@@ -28,7 +28,6 @@ pub enum ProxyMode {
     Lockdown,
 }
 
-
 /// Per-session proxy mode storage.
 pub struct ProxyModeStore {
     modes: DashMap<String, ProxyMode>,
