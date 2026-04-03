@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod classify;
 pub mod handler;
 pub mod inject;

@@ -313,6 +313,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/proxy/keys/{key_id}", delete(api_delete_key))
         .route("/api/proxy/keys/status", get(api_keys_status))
+        .route("/api/proxy/audit", get(api_get_audit))
+        .route("/api/proxy/audit/export", get(api_export_audit))
         .route("/api/plans", get(api_list_plans))
         .route(
             "/api/plans/for-session/{session_id}",
@@ -3734,6 +3736,55 @@ async fn api_list_presets() -> axum::Json<serde_json::Value> {
     })
     .collect();
     axum::Json(serde_json::json!({ "presets": presets }))
+}
+
+// ── Audit Log Endpoints ─────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct AuditQuery {
+    session_id: Option<String>,
+    model: Option<String>,
+    limit: Option<usize>,
+    format: Option<String>,
+}
+
+async fn api_get_audit(
+    axum::extract::Query(query): axum::extract::Query<AuditQuery>,
+) -> axum::Json<serde_json::Value> {
+    let entries = noaide_server::proxy::audit::query_entries(
+        query.session_id.as_deref(),
+        query.model.as_deref(),
+        query.limit.unwrap_or(100),
+    );
+    axum::Json(serde_json::json!({ "entries": entries }))
+}
+
+async fn api_export_audit(
+    axum::extract::Query(query): axum::extract::Query<AuditQuery>,
+) -> axum::response::Response {
+    let entries = noaide_server::proxy::audit::query_entries(
+        query.session_id.as_deref(),
+        query.model.as_deref(),
+        query.limit.unwrap_or(10000),
+    );
+
+    if query.format.as_deref() == Some("csv") {
+        let csv = noaide_server::proxy::audit::export_csv(&entries);
+        axum::response::Response::builder()
+            .header("content-type", "text/csv")
+            .header(
+                "content-disposition",
+                "attachment; filename=\"noaide-audit.csv\"",
+            )
+            .body(axum::body::Body::from(csv))
+            .unwrap()
+    } else {
+        let json = serde_json::to_string_pretty(&entries).unwrap_or_default();
+        axum::response::Response::builder()
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(json))
+            .unwrap()
+    }
 }
 
 // ── API Key Endpoints ───────────────────────────────────────────────────────
