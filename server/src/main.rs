@@ -139,6 +139,15 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Recovery: load persisted proxy configs (modes, inject, rewrite) from disk
+    noaide_server::proxy::persist::startup_cleanup();
+    noaide_server::proxy::persist::load_all_into_stores(
+        &proxy_state.proxy_modes,
+        &proxy_state.inject_store,
+        &proxy_state.rewrite_store,
+        &proxy_state.network_rules,
+    );
+
     let proxy_port: u16 = std::env::var("NOAIDE_PROXY_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -3687,6 +3696,7 @@ async fn api_get_proxy_config(
         mode: state.proxy.proxy_modes.get(&session_id),
         inject: state.proxy.inject_store.get(&session_id),
         rewrite: state.proxy.rewrite_store.get(&session_id),
+        rules: state.proxy.network_rules.get_rules(&session_id),
     };
     axum::Json(config)
 }
@@ -3705,6 +3715,12 @@ async fn api_set_proxy_config(
         .proxy
         .rewrite_store
         .set(session_id.clone(), config.rewrite.clone());
+    if !config.rules.is_empty() {
+        state
+            .proxy
+            .network_rules
+            .set_rules(&session_id, config.rules.clone());
+    }
     // Persist to disk (debounced)
     noaide_server::proxy::persist::schedule_save(session_id, config);
     axum::Json(serde_json::json!({ "ok": true }))
