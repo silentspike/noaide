@@ -307,10 +307,7 @@ async fn main() -> anyhow::Result<()> {
             get(api_get_proxy_config).put(api_set_proxy_config),
         )
         .route("/api/proxy/presets", get(api_list_presets))
-        .route(
-            "/api/proxy/keys",
-            get(api_list_keys).post(api_add_key),
-        )
+        .route("/api/proxy/keys", get(api_list_keys).post(api_add_key))
         .route("/api/proxy/keys/{key_id}", delete(api_delete_key))
         .route("/api/proxy/keys/status", get(api_keys_status))
         .route("/api/proxy/audit", get(api_get_audit))
@@ -3699,10 +3696,7 @@ async fn api_set_proxy_config(
     axum::extract::Path(session_id): axum::extract::Path<String>,
     axum::Json(config): axum::Json<noaide_server::proxy::persist::ProxyConfig>,
 ) -> axum::Json<serde_json::Value> {
-    state
-        .proxy
-        .proxy_modes
-        .set(session_id.clone(), config.mode);
+    state.proxy.proxy_modes.set(session_id.clone(), config.mode);
     state
         .proxy
         .inject_store
@@ -3796,9 +3790,7 @@ struct AddKeyRequest {
     label: String,
 }
 
-async fn api_list_keys(
-    State(state): State<AppState>,
-) -> axum::Json<serde_json::Value> {
+async fn api_list_keys(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
     let keys: Vec<serde_json::Value> = state
         .proxy
         .key_store
@@ -3824,7 +3816,10 @@ async fn api_add_key(
     State(state): State<AppState>,
     axum::Json(body): axum::Json<AddKeyRequest>,
 ) -> (StatusCode, axum::Json<serde_json::Value>) {
-    let id = state.proxy.key_store.add_key(&body.provider, &body.key, &body.label);
+    let id = state
+        .proxy
+        .key_store
+        .add_key(&body.provider, &body.key, &body.label);
     (
         StatusCode::CREATED,
         axum::Json(serde_json::json!({ "id": id })),
@@ -3839,9 +3834,7 @@ async fn api_delete_key(
     axum::Json(serde_json::json!({ "removed": removed }))
 }
 
-async fn api_keys_status(
-    State(state): State<AppState>,
-) -> axum::Json<serde_json::Value> {
+async fn api_keys_status(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({ "keys": state.proxy.key_store.status() }))
 }
 
