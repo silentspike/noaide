@@ -307,6 +307,12 @@ async fn main() -> anyhow::Result<()> {
             get(api_get_proxy_config).put(api_set_proxy_config),
         )
         .route("/api/proxy/presets", get(api_list_presets))
+        .route(
+            "/api/proxy/keys",
+            get(api_list_keys).post(api_add_key),
+        )
+        .route("/api/proxy/keys/{key_id}", delete(api_delete_key))
+        .route("/api/proxy/keys/status", get(api_keys_status))
         .route("/api/plans", get(api_list_plans))
         .route(
             "/api/plans/for-session/{session_id}",
@@ -3728,6 +3734,64 @@ async fn api_list_presets() -> axum::Json<serde_json::Value> {
     })
     .collect();
     axum::Json(serde_json::json!({ "presets": presets }))
+}
+
+// ── API Key Endpoints ───────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct AddKeyRequest {
+    provider: String,
+    key: String,
+    label: String,
+}
+
+async fn api_list_keys(
+    State(state): State<AppState>,
+) -> axum::Json<serde_json::Value> {
+    let keys: Vec<serde_json::Value> = state
+        .proxy
+        .key_store
+        .list_keys()
+        .into_iter()
+        .map(|k| {
+            serde_json::json!({
+                "id": k.id,
+                "provider": k.provider,
+                "label": k.label,
+                "active": k.active,
+                "rate_limit_5h": k.rate_limit_5h,
+                "rate_limit_7d": k.rate_limit_7d,
+                "last_used": k.last_used,
+                "request_count": k.request_count,
+            })
+        })
+        .collect();
+    axum::Json(serde_json::json!({ "keys": keys }))
+}
+
+async fn api_add_key(
+    State(state): State<AppState>,
+    axum::Json(body): axum::Json<AddKeyRequest>,
+) -> (StatusCode, axum::Json<serde_json::Value>) {
+    let id = state.proxy.key_store.add_key(&body.provider, &body.key, &body.label);
+    (
+        StatusCode::CREATED,
+        axum::Json(serde_json::json!({ "id": id })),
+    )
+}
+
+async fn api_delete_key(
+    State(state): State<AppState>,
+    axum::extract::Path(key_id): axum::extract::Path<String>,
+) -> axum::Json<serde_json::Value> {
+    let removed = state.proxy.key_store.remove_key(&key_id);
+    axum::Json(serde_json::json!({ "removed": removed }))
+}
+
+async fn api_keys_status(
+    State(state): State<AppState>,
+) -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({ "keys": state.proxy.key_store.status() }))
 }
 
 // ── Rewrite Config Endpoints ────────────────────────────────────────────────

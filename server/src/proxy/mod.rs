@@ -1,6 +1,7 @@
 pub mod classify;
 pub mod handler;
 pub mod inject;
+pub mod keys;
 pub mod mitm;
 pub mod modes;
 pub mod persist;
@@ -80,6 +81,7 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
         proxy_modes: modes::ProxyModeStore::new(),
         inject_store: inject::InjectStore::new(),
         rewrite_store: rewrite::RewriteStore::new(),
+        key_store: keys::KeyStore::new(),
     });
 
     (state, event_rx)
