@@ -589,9 +589,7 @@ pub async fn proxy_handler(
             super::rewrite::RewriteConfig::default()
         };
         if rewrite_config.is_active() {
-            if let Ok(mut body_json) =
-                serde_json::from_slice::<serde_json::Value>(&request_bytes)
-            {
+            if let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes) {
                 if super::rewrite::apply_rewrites(&mut body_json, provider, &rewrite_config) {
                     if let Ok(modified) = serde_json::to_vec(&body_json) {
                         request_bytes = Bytes::from(modified);
@@ -1524,8 +1522,7 @@ where
 
     // Prepend peeked bytes back into the stream for hyper to parse
     let prefix = bytes::Bytes::copy_from_slice(&peek_buf[..peek_len]);
-    let prefixed_client =
-        hyper_util::rt::TokioIo::new(PrefixedIo::new(prefix, client_tls));
+    let prefixed_client = hyper_util::rt::TokioIo::new(PrefixedIo::new(prefix, client_tls));
     let target_io = hyper_util::rt::TokioIo::new(target_tls);
 
     // Establish hyper HTTP/1.1 client connection to real target
@@ -1846,15 +1843,21 @@ async fn handle_websocket_proxy(
         let name_str = name.as_str().to_lowercase();
         // Forward auth, cookies, and provider-specific headers — skip hop-by-hop
         match name_str.as_str() {
-            "host" | "upgrade" | "connection" | "sec-websocket-key"
-            | "sec-websocket-version" | "sec-websocket-extensions"
+            "host"
+            | "upgrade"
+            | "connection"
+            | "sec-websocket-key"
+            | "sec-websocket-version"
+            | "sec-websocket-extensions"
             | "sec-websocket-protocol" => continue,
             _ => {
                 if let Ok(header_name) =
                     tokio_tungstenite::tungstenite::http::HeaderName::from_bytes(name.as_ref())
                 {
                     if let Ok(header_value) =
-                        tokio_tungstenite::tungstenite::http::HeaderValue::from_bytes(value.as_bytes())
+                        tokio_tungstenite::tungstenite::http::HeaderValue::from_bytes(
+                            value.as_bytes(),
+                        )
                     {
                         ws_request = ws_request.header(header_name, header_value);
                     }
@@ -1872,15 +1875,18 @@ async fn handle_websocket_proxy(
     };
 
     // Connect to upstream WebSocket
-    let (upstream_ws, _upstream_response) =
-        match tokio_tungstenite::connect_async(ws_request).await {
-            Ok(pair) => pair,
-            Err(e) => {
-                warn!(error = %e, url = %ws_url, "failed to connect to upstream WebSocket");
-                return (StatusCode::BAD_GATEWAY, "WebSocket upstream connection failed")
-                    .into_response();
-            }
-        };
+    let (upstream_ws, _upstream_response) = match tokio_tungstenite::connect_async(ws_request).await
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            warn!(error = %e, url = %ws_url, "failed to connect to upstream WebSocket");
+            return (
+                StatusCode::BAD_GATEWAY,
+                "WebSocket upstream connection failed",
+            )
+                .into_response();
+        }
+    };
 
     info!(url = %ws_url, session_id = ?session_id, "upstream WebSocket connected");
 

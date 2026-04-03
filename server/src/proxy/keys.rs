@@ -8,8 +8,7 @@ use ring::aead;
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
-use tracing::{debug, info, warn};
+use tracing::warn;
 
 /// An API key entry in the key store.
 #[derive(Debug, Clone, Serialize, Deserialize)]

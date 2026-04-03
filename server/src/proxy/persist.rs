@@ -174,9 +174,13 @@ mod tests {
         let json = serde_json::to_string_pretty(&config).unwrap();
         fs::write(&path, &json).unwrap();
 
-        let loaded: ProxyConfig = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let loaded: ProxyConfig =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.mode, super::super::modes::ProxyMode::Pure);
-        assert_eq!(loaded.rewrite.model_override, Some("claude-sonnet-4-6".to_string()));
+        assert_eq!(
+            loaded.rewrite.model_override,
+            Some("claude-sonnet-4-6".to_string())
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }
