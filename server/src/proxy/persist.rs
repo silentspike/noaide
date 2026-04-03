@@ -144,7 +144,12 @@ mod tests {
     use std::fs;
 
     fn test_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("noaide-persist-test-{}", std::process::id()));
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("noaide-persist-test-{id}"));
+        let _ = fs::remove_dir_all(&dir); // clean up leftover from previous run
         fs::create_dir_all(&dir).unwrap();
         dir
     }
