@@ -13,6 +13,8 @@ pub struct ProxyConfig {
     pub mode: super::modes::ProxyMode,
     pub inject: super::inject::InjectConfig,
     pub rewrite: super::rewrite::RewriteConfig,
+    #[serde(default)]
+    pub rules: Vec<super::rules::NetworkRule>,
 }
 
 /// Config directory for proxy persistence.
@@ -135,6 +137,33 @@ pub fn startup_cleanup() {
     }
 }
 
+/// Load all persisted configs into the proxy state stores.
+/// Call at server startup after cleanup.
+pub fn load_all_into_stores(
+    modes: &super::modes::ProxyModeStore,
+    inject: &super::inject::InjectStore,
+    rewrite: &super::rewrite::RewriteStore,
+    rules: &super::rules::NetworkRulesEngine,
+) -> usize {
+    let sessions = list_saved_sessions();
+    let mut loaded = 0;
+    for sid in &sessions {
+        if let Some(config) = load_config(sid) {
+            modes.set(sid.clone(), config.mode);
+            inject.set(sid.clone(), config.inject);
+            rewrite.set(sid.clone(), config.rewrite);
+            if !config.rules.is_empty() {
+                rules.set_rules(sid, config.rules);
+            }
+            loaded += 1;
+        }
+    }
+    if loaded > 0 {
+        info!(loaded = loaded, total = sessions.len(), "restored proxy configs from disk");
+    }
+    loaded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +195,7 @@ mod tests {
                 model_override: Some("claude-sonnet-4-6".to_string()),
                 ..Default::default()
             },
+            rules: vec![],
         };
 
         let json = serde_json::to_string_pretty(&config).unwrap();

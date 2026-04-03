@@ -1251,6 +1251,49 @@ pub async fn connect_handler(
     // Classify traffic
     let category = super::classify::classify_domain(&hostname);
 
+    // Check proxy mode (Lockdown blocks non-API, Pure blocks telemetry)
+    if let Some(ref sid) = session_id {
+        if state.proxy_modes.should_block(sid, &category.to_string()) {
+            info!(
+                target = %target_addr,
+                session = %sid,
+                category = %category,
+                mode = ?state.proxy_modes.get(sid),
+                "CONNECT blocked by proxy mode"
+            );
+
+            let log_entry = ApiRequestLog {
+                id: request_id,
+                session_id: session_id.clone(),
+                method: "CONNECT".to_string(),
+                url: format!("tunnel://{target_addr}"),
+                status_code: 403,
+                latency_ms: start.elapsed().as_millis() as u64,
+                request_size: 0,
+                response_size: 0,
+                request_body: String::new(),
+                response_body: format!("Blocked by proxy mode ({:?})", state.proxy_modes.get(sid)),
+                request_headers: vec![],
+                response_headers: vec![],
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64,
+                category: Some(category.to_string()),
+            };
+            {
+                let mut cap = state.captured.write().await;
+                if cap.len() >= MAX_CAPTURED_REQUESTS {
+                    cap.pop_front();
+                }
+                cap.push_back(log_entry.clone());
+            }
+            let _ = state.event_tx.send(log_entry);
+
+            return (StatusCode::FORBIDDEN, "Blocked by proxy mode").into_response();
+        }
+    }
+
     // Check network rules (block before even connecting)
     let rule_action = state
         .network_rules
