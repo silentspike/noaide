@@ -244,6 +244,8 @@ pub struct ProxyState {
     pub inject_store: super::inject::InjectStore,
     /// Per-session request body rewrite configuration.
     pub rewrite_store: super::rewrite::RewriteStore,
+    /// API key store for key rotation.
+    pub key_store: super::keys::KeyStore,
 }
 
 /// Extract session UUID from `/s/{uuid}/...` proxy path prefix.
