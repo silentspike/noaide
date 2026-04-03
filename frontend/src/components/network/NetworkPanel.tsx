@@ -16,6 +16,34 @@ export default function NetworkPanel() {
   const [pendingCount, setPendingCount] = createSignal(0);
   const [categoryFilter, setCategoryFilter] = createSignal<string>("all");
   const [showRules, setShowRules] = createSignal(false);
+  const [proxyMode, setProxyModeSignal] = createSignal("auto");
+
+  async function fetchProxyMode() {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      const res = await fetch(`${base}/api/proxy/mode/${sid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProxyModeSignal(data.mode || "auto");
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function setProxyMode(mode: string) {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      await fetch(`${base}/api/proxy/mode/${sid}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      setProxyModeSignal(mode);
+    } catch { /* ignore */ }
+  }
 
   async function fetchInterceptStatus() {
     const base = store.state.httpApiUrl;
@@ -105,6 +133,7 @@ export default function NetworkPanel() {
   onMount(() => {
     fetchRequests();
     fetchInterceptStatus();
+    void fetchProxyMode();
     const interval = setInterval(() => {
       fetchRequests();
       fetchInterceptStatus();
@@ -369,6 +398,51 @@ export default function NetworkPanel() {
           >
             Block
           </button>
+        </Show>
+
+        {/* Proxy Mode Selector */}
+        <Show when={store.state.activeSessionId}>
+          <div
+            data-testid="proxy-mode-selector"
+            style={{
+              display: "flex",
+              "border-radius": "4px",
+              overflow: "hidden",
+              border: "1px solid var(--ctp-surface1)",
+            }}
+          >
+            <For each={["auto", "manual", "custom", "pure", "lockdown"] as const}>
+              {(mode) => (
+                <button
+                  data-testid={`mode-${mode}`}
+                  onClick={() => {
+                    void setProxyMode(mode);
+                  }}
+                  style={{
+                    padding: "2px 6px",
+                    "font-size": "9px",
+                    border: "none",
+                    background:
+                      proxyMode() === mode
+                        ? mode === "lockdown"
+                          ? "var(--ctp-red)"
+                          : mode === "pure"
+                            ? "var(--ctp-green)"
+                            : "var(--ctp-blue)"
+                        : "var(--ctp-surface0)",
+                    color:
+                      proxyMode() === mode
+                        ? "var(--ctp-base)"
+                        : "var(--ctp-overlay0)",
+                    cursor: "pointer",
+                    "text-transform": "capitalize",
+                  }}
+                >
+                  {mode === "lockdown" ? "Lock" : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              )}
+            </For>
+          </div>
         </Show>
 
         {/* Rules Toggle */}

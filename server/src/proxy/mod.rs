@@ -1,6 +1,7 @@
 pub mod classify;
 pub mod handler;
 pub mod mitm;
+pub mod modes;
 pub mod rules;
 pub mod tls_mitm;
 pub mod websocket;
@@ -73,6 +74,7 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
         pending_images: RwLock::new(HashMap::new()),
         ca,
         network_rules: Arc::new(rules::NetworkRulesEngine::new()),
+        proxy_modes: modes::ProxyModeStore::new(),
     });
 
     (state, event_rx)
