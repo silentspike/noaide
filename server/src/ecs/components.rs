@@ -161,5 +161,5 @@ pub struct ApiRequestComponent {
     pub request_size: Option<u64>,
     pub response_size: Option<u64>,
     /// Traffic category for CONNECT MITM requests (e.g. "telemetry", "auth").
-    pub category: Option<String>,
+    pub traffic_category: Option<String>,
 }

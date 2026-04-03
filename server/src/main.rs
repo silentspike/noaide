@@ -290,6 +290,28 @@ async fn main() -> anyhow::Result<()> {
             "/api/proxy/network-rules/{session_id}/quick-block",
             post(api_quick_block_domain),
         )
+        .route(
+            "/api/proxy/mode/{session_id}",
+            get(api_get_proxy_mode).put(api_set_proxy_mode),
+        )
+        .route(
+            "/api/proxy/inject/{session_id}",
+            get(api_get_inject_config).put(api_set_inject_config),
+        )
+        .route(
+            "/api/proxy/rewrite/{session_id}",
+            get(api_get_rewrite_config).put(api_set_rewrite_config),
+        )
+        .route(
+            "/api/proxy/config/{session_id}",
+            get(api_get_proxy_config).put(api_set_proxy_config),
+        )
+        .route("/api/proxy/presets", get(api_list_presets))
+        .route("/api/proxy/keys", get(api_list_keys).post(api_add_key))
+        .route("/api/proxy/keys/{key_id}", delete(api_delete_key))
+        .route("/api/proxy/keys/status", get(api_keys_status))
+        .route("/api/proxy/audit", get(api_get_audit))
+        .route("/api/proxy/audit/export", get(api_export_audit))
         .route("/api/plans", get(api_list_plans))
         .route(
             "/api/plans/for-session/{session_id}",
@@ -2692,7 +2714,7 @@ fn proxy_log_to_component(log: &noaide_server::proxy::ApiRequestLog) -> ApiReque
         response_headers: Some(serde_json::to_string(&log.response_headers).unwrap_or_default()),
         request_size: Some(log.request_size as u64),
         response_size: Some(log.response_size as u64),
-        category: log.category.clone(),
+        traffic_category: log.category.clone(),
     }
 }
 
@@ -2724,7 +2746,7 @@ fn component_to_proxy_log(c: &ApiRequestComponent) -> noaide_server::proxy::ApiR
         timestamp: c.timestamp,
         request_size: c.request_size.unwrap_or(0) as usize,
         response_size: c.response_size.unwrap_or(0) as usize,
-        category: c.category.clone(),
+        category: c.traffic_category.clone(),
     }
 }
 
@@ -2764,6 +2786,7 @@ async fn api_get_proxy_requests(
                 "timestamp": r.timestamp,
                 "requestPreview": req_preview,
                 "responsePreview": res_preview,
+                "category": r.category,
             })
         })
         .collect();
@@ -3588,10 +3611,17 @@ async fn api_quick_block_domain(
     axum::extract::Path(session_id): axum::extract::Path<String>,
     axum::Json(body): axum::Json<QuickBlockRequest>,
 ) -> (StatusCode, axum::Json<serde_json::Value>) {
+    // Auto-glob: "datadoghq.com" → "*.datadoghq.com" so subdomains are also blocked.
+    // If user already specified a glob pattern, keep it as-is.
+    let pattern = if body.domain.starts_with("*.") {
+        body.domain
+    } else {
+        format!("*.{}", body.domain)
+    };
     let rule = noaide_server::proxy::NetworkRule {
         id: String::new(),
         session_id: session_id.clone(),
-        domain_pattern: Some(body.domain),
+        domain_pattern: Some(pattern),
         category_filter: None,
         action: noaide_server::proxy::RuleAction::Block,
         enabled: true,
@@ -3602,6 +3632,228 @@ async fn api_quick_block_domain(
         StatusCode::CREATED,
         axum::Json(serde_json::json!({ "id": id })),
     )
+}
+
+// ── Proxy Mode Endpoints ────────────────────────────────────────────────────
+
+async fn api_get_proxy_mode(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<serde_json::Value> {
+    let mode = state.proxy.proxy_modes.get(&session_id);
+    axum::Json(serde_json::json!({ "mode": mode }))
+}
+
+#[derive(serde::Deserialize)]
+struct SetModeRequest {
+    mode: noaide_server::proxy::modes::ProxyMode,
+}
+
+async fn api_set_proxy_mode(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(body): axum::Json<SetModeRequest>,
+) -> axum::Json<serde_json::Value> {
+    state.proxy.proxy_modes.set(session_id, body.mode);
+    axum::Json(serde_json::json!({ "ok": true }))
+}
+
+// ── Inject Config Endpoints ─────────────────────────────────────────────────
+
+async fn api_get_inject_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<noaide_server::proxy::inject::InjectConfig> {
+    axum::Json(state.proxy.inject_store.get(&session_id))
+}
+
+async fn api_set_inject_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(config): axum::Json<noaide_server::proxy::inject::InjectConfig>,
+) -> axum::Json<serde_json::Value> {
+    state.proxy.inject_store.set(session_id, config);
+    axum::Json(serde_json::json!({ "ok": true }))
+}
+
+// ── Proxy Config Endpoints (combined persistence) ──────────────────────────
+
+async fn api_get_proxy_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<noaide_server::proxy::persist::ProxyConfig> {
+    // Build config from current in-memory state
+    let config = noaide_server::proxy::persist::ProxyConfig {
+        mode: state.proxy.proxy_modes.get(&session_id),
+        inject: state.proxy.inject_store.get(&session_id),
+        rewrite: state.proxy.rewrite_store.get(&session_id),
+    };
+    axum::Json(config)
+}
+
+async fn api_set_proxy_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(config): axum::Json<noaide_server::proxy::persist::ProxyConfig>,
+) -> axum::Json<serde_json::Value> {
+    state.proxy.proxy_modes.set(session_id.clone(), config.mode);
+    state
+        .proxy
+        .inject_store
+        .set(session_id.clone(), config.inject.clone());
+    state
+        .proxy
+        .rewrite_store
+        .set(session_id.clone(), config.rewrite.clone());
+    // Persist to disk (debounced)
+    noaide_server::proxy::persist::schedule_save(session_id, config);
+    axum::Json(serde_json::json!({ "ok": true }))
+}
+
+async fn api_list_presets() -> axum::Json<serde_json::Value> {
+    use noaide_server::proxy::inject::Preset;
+    let presets: Vec<serde_json::Value> = [
+        Preset::NoaideContext,
+        Preset::AntiLaziness,
+        Preset::VerifyEvidence,
+        Preset::Speed,
+        Preset::Verbose,
+        Preset::GermanOnly,
+    ]
+    .iter()
+    .map(|p| {
+        serde_json::json!({
+            "id": p,
+            "label": p.label(),
+            "text": p.text(),
+        })
+    })
+    .collect();
+    axum::Json(serde_json::json!({ "presets": presets }))
+}
+
+// ── Audit Log Endpoints ─────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct AuditQuery {
+    session_id: Option<String>,
+    model: Option<String>,
+    limit: Option<usize>,
+    format: Option<String>,
+}
+
+async fn api_get_audit(
+    axum::extract::Query(query): axum::extract::Query<AuditQuery>,
+) -> axum::Json<serde_json::Value> {
+    let entries = noaide_server::proxy::audit::query_entries(
+        query.session_id.as_deref(),
+        query.model.as_deref(),
+        query.limit.unwrap_or(100),
+    );
+    axum::Json(serde_json::json!({ "entries": entries }))
+}
+
+async fn api_export_audit(
+    axum::extract::Query(query): axum::extract::Query<AuditQuery>,
+) -> axum::response::Response {
+    let entries = noaide_server::proxy::audit::query_entries(
+        query.session_id.as_deref(),
+        query.model.as_deref(),
+        query.limit.unwrap_or(10000),
+    );
+
+    if query.format.as_deref() == Some("csv") {
+        let csv = noaide_server::proxy::audit::export_csv(&entries);
+        axum::response::Response::builder()
+            .header("content-type", "text/csv")
+            .header(
+                "content-disposition",
+                "attachment; filename=\"noaide-audit.csv\"",
+            )
+            .body(axum::body::Body::from(csv))
+            .unwrap()
+    } else {
+        let json = serde_json::to_string_pretty(&entries).unwrap_or_default();
+        axum::response::Response::builder()
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(json))
+            .unwrap()
+    }
+}
+
+// ── API Key Endpoints ───────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct AddKeyRequest {
+    provider: String,
+    key: String,
+    label: String,
+}
+
+async fn api_list_keys(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
+    let keys: Vec<serde_json::Value> = state
+        .proxy
+        .key_store
+        .list_keys()
+        .into_iter()
+        .map(|k| {
+            serde_json::json!({
+                "id": k.id,
+                "provider": k.provider,
+                "label": k.label,
+                "active": k.active,
+                "rate_limit_5h": k.rate_limit_5h,
+                "rate_limit_7d": k.rate_limit_7d,
+                "last_used": k.last_used,
+                "request_count": k.request_count,
+            })
+        })
+        .collect();
+    axum::Json(serde_json::json!({ "keys": keys }))
+}
+
+async fn api_add_key(
+    State(state): State<AppState>,
+    axum::Json(body): axum::Json<AddKeyRequest>,
+) -> (StatusCode, axum::Json<serde_json::Value>) {
+    let id = state
+        .proxy
+        .key_store
+        .add_key(&body.provider, &body.key, &body.label);
+    (
+        StatusCode::CREATED,
+        axum::Json(serde_json::json!({ "id": id })),
+    )
+}
+
+async fn api_delete_key(
+    State(state): State<AppState>,
+    axum::extract::Path(key_id): axum::extract::Path<String>,
+) -> axum::Json<serde_json::Value> {
+    let removed = state.proxy.key_store.remove_key(&key_id);
+    axum::Json(serde_json::json!({ "removed": removed }))
+}
+
+async fn api_keys_status(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({ "keys": state.proxy.key_store.status() }))
+}
+
+// ── Rewrite Config Endpoints ────────────────────────────────────────────────
+
+async fn api_get_rewrite_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> axum::Json<noaide_server::proxy::rewrite::RewriteConfig> {
+    axum::Json(state.proxy.rewrite_store.get(&session_id))
+}
+
+async fn api_set_rewrite_config(
+    State(state): State<AppState>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    axum::Json(config): axum::Json<noaide_server::proxy::rewrite::RewriteConfig>,
+) -> axum::Json<serde_json::Value> {
+    state.proxy.rewrite_store.set(session_id, config);
+    axum::Json(serde_json::json!({ "ok": true }))
 }
 
 // ── Git API Endpoints ────────────────────────────────────────────────────────

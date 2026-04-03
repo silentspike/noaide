@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::body::Body;
-use axum::extract::State;
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
+use axum::extract::{FromRequest, State};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
 use bytes::Bytes;
@@ -15,6 +15,69 @@ use tokio::sync::{RwLock, broadcast, oneshot};
 use tracing::{debug, info, warn};
 
 use super::mitm::{self, ApiRequestLog};
+
+/// A stream that prepends buffered bytes before delegating to the inner stream.
+/// Reads: first returns prefix bytes, then reads from inner.
+/// Writes: always writes to inner (the prefix is read-only).
+struct PrefixedIo<S> {
+    prefix: bytes::Bytes,
+    prefix_pos: usize,
+    inner: S,
+}
+
+impl<S> PrefixedIo<S> {
+    fn new(prefix: bytes::Bytes, inner: S) -> Self {
+        Self {
+            prefix,
+            prefix_pos: 0,
+            inner,
+        }
+    }
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for PrefixedIo<S> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        // Serve prefix bytes first
+        if this.prefix_pos < this.prefix.len() {
+            let remaining = &this.prefix[this.prefix_pos..];
+            let to_copy = remaining.len().min(buf.remaining());
+            buf.put_slice(&remaining[..to_copy]);
+            this.prefix_pos += to_copy;
+            return std::task::Poll::Ready(Ok(()));
+        }
+        // Then delegate to inner stream
+        std::pin::Pin::new(&mut this.inner).poll_read(cx, buf)
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for PrefixedIo<S> {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
+    }
+}
 
 /// Try to decompress a zstd-encoded request body for logging.
 /// Codex CLI sends `content-encoding: zstd` on request bodies.
@@ -31,7 +94,7 @@ fn try_decompress_request(body: &[u8], headers: &[(String, String)]) -> Option<V
 }
 
 /// Maximum number of captured requests kept in memory
-const MAX_CAPTURED_REQUESTS: usize = 1000;
+pub(crate) const MAX_CAPTURED_REQUESTS: usize = 1000;
 
 /// Supported upstream API providers
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,6 +238,14 @@ pub struct ProxyState {
     pub ca: Option<Arc<super::tls_mitm::CaAuthority>>,
     /// Per-session network rules for CONNECT MITM traffic (Block/Allow/Delay).
     pub network_rules: Arc<super::rules::NetworkRulesEngine>,
+    /// Per-session proxy mode (Auto/Manual/Custom/Pure/Lockdown).
+    pub proxy_modes: super::modes::ProxyModeStore,
+    /// Per-session system prompt injection configuration.
+    pub inject_store: super::inject::InjectStore,
+    /// Per-session request body rewrite configuration.
+    pub rewrite_store: super::rewrite::RewriteStore,
+    /// API key store for key rotation.
+    pub key_store: super::keys::KeyStore,
 }
 
 /// Extract session UUID from `/s/{uuid}/...` proxy path prefix.
@@ -199,16 +270,21 @@ fn extract_session_prefix(path: &str) -> (Option<String>, &str) {
 }
 
 /// Main proxy handler — intercepts requests, detects provider, forwards to upstream,
-/// logs redacted request/response, and publishes events
+/// logs redacted request/response, and publishes events.
+///
+/// Takes the full `axum::extract::Request` so WebSocket upgrades can be handled
+/// BEFORE the body is consumed (hyper pitfall: upgrade requires the original request).
 pub async fn proxy_handler(
     State(state): State<Arc<ProxyState>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Body,
+    req: axum::extract::Request,
 ) -> Response {
     let start = Instant::now();
     let request_id = uuid::Uuid::new_v4().to_string();
+
+    // Decompose request into parts we need
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    let headers = req.headers().clone();
 
     // Extract session ID from /s/{uuid}/... prefix (managed sessions only)
     let path = uri.path();
@@ -228,6 +304,22 @@ pub async fn proxy_handler(
     let base_url = provider.base_url();
     let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
     let target_url = format!("{base_url}{effective_path}{query}");
+
+    // ── WebSocket Upgrade Detection ────────────────────────────────────
+    // Check BEFORE body.collect() — consuming the body prevents hyper upgrade.
+    // Codex WebSocket goes through reverse proxy (chatgpt.com in NO_PROXY).
+    if super::websocket::is_websocket_upgrade(&headers) {
+        info!(
+            request_id = %request_id,
+            target_url = %target_url,
+            session_id = ?session_id,
+            "WebSocket upgrade detected, establishing upstream connection"
+        );
+        return handle_websocket_proxy(state, session_id, target_url, req).await;
+    }
+
+    // Now consume the body (safe — not a WebSocket upgrade)
+    let body = req.into_body();
 
     // Collect request body (mutable — intercept gate may replace it)
     let mut request_bytes: Bytes = match body.collect().await {
@@ -460,8 +552,7 @@ pub async fn proxy_handler(
     } // skip_image_injection
 
     // ── System Prompt Injection ──────────────────────────────────────────
-    // Inform the LLM that it runs inside a browser-based IDE so it can
-    // create media files knowing they will be rendered inline in the chat.
+    // Uses configurable presets from inject module. Default: noaide context.
     // Same skip logic as image injection (only conversation endpoints).
     let skip_system_injection = provider == ApiProvider::GoogleCodeAssist
         && !effective_path.contains("streamGenerateContent");
@@ -469,89 +560,39 @@ pub async fn proxy_handler(
         && !request_bytes.is_empty()
         && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
     {
-        let noaide_context = "[noaide] You are running inside noaide, a browser-based IDE. \
-                Media files you create (images, GIFs, SVGs, audio, video) via Bash or Write tools \
-                are rendered inline in the chat. The user sees them directly. \
-                Supported: PNG, JPG, GIF, SVG, WEBP, MP4, WEBM, MP3, WAV, OGG. \
-                To show an image, just create the file (e.g. python3, ImageMagick, ffmpeg, \
-                or write SVG directly).";
+        let inject_config = if let Some(ref sid) = session_id {
+            state.inject_store.get(sid)
+        } else {
+            super::inject::InjectConfig::default()
+        };
+        let injection_text = super::inject::build_injection(&inject_config);
 
-        let mut injected_system = false;
-
-        match provider {
-            ApiProvider::Anthropic => {
-                // Anthropic: body_json["system"] — string or array of content blocks
-                match body_json.get("system") {
-                    Some(serde_json::Value::String(s)) => {
-                        body_json["system"] =
-                            serde_json::Value::String(format!("{s}\n\n{noaide_context}"));
-                        injected_system = true;
-                    }
-                    Some(serde_json::Value::Array(_)) => {
-                        if let Some(arr) = body_json["system"].as_array_mut() {
-                            arr.push(serde_json::json!({
-                                "type": "text",
-                                "text": noaide_context,
-                            }));
-                            injected_system = true;
-                        }
-                    }
-                    _ => {
-                        // No system field — create it
-                        body_json["system"] = serde_json::Value::String(noaide_context.to_string());
-                        injected_system = true;
-                    }
-                }
-            }
-            ApiProvider::GoogleCodeAssist | ApiProvider::Google => {
-                // Google: body_json["system_instruction"]["parts"] or
-                // body_json["request"]["system_instruction"]["parts"]
-                let targets = [
-                    vec!["system_instruction", "parts"],
-                    vec!["request", "system_instruction", "parts"],
-                ];
-                for target in &targets {
-                    let mut cursor = &mut body_json;
-                    let mut found = true;
-                    for (i, key) in target.iter().enumerate() {
-                        if i == target.len() - 1 {
-                            // Last key — should be "parts" array
-                            if let Some(arr) = cursor.get_mut(*key).and_then(|v| v.as_array_mut()) {
-                                arr.push(serde_json::json!({"text": noaide_context}));
-                                injected_system = true;
-                            } else {
-                                found = false;
-                            }
-                        } else if cursor.get(*key).is_some() {
-                            cursor = &mut cursor[*key];
-                        } else {
-                            found = false;
-                            break;
-                        }
-                    }
-                    if found && injected_system {
-                        break;
-                    }
-                }
-                // If no system_instruction exists, create it
-                if !injected_system {
-                    body_json["system_instruction"] = serde_json::json!({
-                        "parts": [{"text": noaide_context}]
-                    });
-                    injected_system = true;
-                }
-            }
-            _ => {
-                // OpenAI/ChatGPT: No system prompt injection for now
-                // (Codex uses a different format)
-            }
-        }
-
-        if injected_system && let Ok(modified) = serde_json::to_vec(&body_json) {
+        if !injection_text.is_empty()
+            && super::inject::inject_into_body(&mut body_json, provider, &injection_text)
+            && let Ok(modified) = serde_json::to_vec(&body_json)
+        {
             debug!(
                 provider = %provider.label(),
-                "injected noaide system context into API request"
+                presets = ?inject_config.presets,
+                "injected system prompt into API request"
             );
+            request_bytes = Bytes::from(modified);
+        }
+    }
+
+    // ── Request Body Rewrite ──────────────────────────────────────────
+    // Apply per-session model override, temperature, max_tokens, pure mode.
+    if !request_bytes.is_empty() {
+        let rewrite_config = if let Some(ref sid) = session_id {
+            state.rewrite_store.get(sid)
+        } else {
+            super::rewrite::RewriteConfig::default()
+        };
+        if rewrite_config.is_active()
+            && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+            && super::rewrite::apply_rewrites(&mut body_json, provider, &rewrite_config)
+            && let Ok(modified) = serde_json::to_vec(&body_json)
+        {
             request_bytes = Bytes::from(modified);
         }
     }
@@ -576,6 +617,22 @@ pub async fn proxy_handler(
             continue;
         }
         req_builder = req_builder.header(name.clone(), value.clone());
+    }
+
+    // ── API Key Rotation ──────────────────────────────────────────────
+    // If KeyStore has active keys for this provider, replace the Authorization header.
+    if state.key_store.has_active_keys(provider.label())
+        && let Some((_key_id, plaintext_key)) = state.key_store.select_key(provider.label())
+    {
+        let auth_value = match provider {
+            ApiProvider::Anthropic => plaintext_key.to_string(),
+            _ => format!("Bearer {plaintext_key}"),
+        };
+        let header_name = match provider {
+            ApiProvider::Anthropic => "x-api-key",
+            _ => "authorization",
+        };
+        req_builder = req_builder.header(header_name, auth_value);
     }
 
     if !request_bytes.is_empty() {
@@ -794,7 +851,33 @@ pub async fn proxy_handler(
                 }
                 cap.push_back(log_entry.clone());
             }
-            let _ = state.event_tx.send(log_entry);
+            let _ = state.event_tx.send(log_entry.clone());
+
+            // ── Audit Log: extract tokens + append ──
+            {
+                let response_str = &log_entry.response_body;
+                let (model, input_tokens, output_tokens, cache_creation, cache_read) =
+                    super::audit::extract_tokens(response_str);
+                if input_tokens > 0 || output_tokens > 0 {
+                    let cost = super::audit::calculate_cost(&model, input_tokens, output_tokens);
+                    let audit_entry = super::audit::AuditEntry {
+                        id: log_entry.id.clone(),
+                        session_id: log_entry.session_id.clone(),
+                        method: log_entry.method.clone(),
+                        url: log_entry.url.clone(),
+                        model,
+                        provider: provider.label().to_string(),
+                        input_tokens,
+                        output_tokens,
+                        cache_creation_tokens: cache_creation,
+                        cache_read_tokens: cache_read,
+                        cost_usd: cost,
+                        timestamp: log_entry.timestamp,
+                        latency_ms: log_entry.latency_ms,
+                    };
+                    super::audit::append_entry(&audit_entry);
+                }
+            }
 
             // Replay the buffered SSE data as the response body.
             // The content-type (text/event-stream) is preserved, so the client's
@@ -1437,8 +1520,7 @@ where
 
     // Prepend peeked bytes back into the stream for hyper to parse
     let prefix = bytes::Bytes::copy_from_slice(&peek_buf[..peek_len]);
-    let prefixed_client =
-        hyper_util::rt::TokioIo::new(tokio::io::join(std::io::Cursor::new(prefix), client_tls));
+    let prefixed_client = hyper_util::rt::TokioIo::new(PrefixedIo::new(prefix, client_tls));
     let target_io = hyper_util::rt::TokioIo::new(target_tls);
 
     // Establish hyper HTTP/1.1 client connection to real target
@@ -1727,6 +1809,98 @@ async fn log_tunnel_metadata(
         "provider" => "tunnel",
     )
     .increment(1);
+}
+
+/// Handle a WebSocket upgrade through the reverse proxy.
+///
+/// Flow:
+/// 1. Connect to upstream via tokio-tungstenite with forwarded headers
+/// 2. Use axum's WebSocketUpgrade to upgrade the client connection
+/// 3. Relay frames bidirectionally, logging text frames as ApiRequestLog
+async fn handle_websocket_proxy(
+    state: Arc<ProxyState>,
+    session_id: Option<String>,
+    target_url: String,
+    req: axum::extract::Request,
+) -> Response {
+    use axum::extract::ws::WebSocketUpgrade;
+
+    // Build the upstream WebSocket URL (wss:// for https://)
+    let ws_url = target_url
+        .replacen("https://", "wss://", 1)
+        .replacen("http://", "ws://", 1);
+
+    // Forward relevant headers to upstream (auth, cookies, etc.)
+    let mut ws_request = tokio_tungstenite::tungstenite::http::Request::builder()
+        .uri(&ws_url)
+        .method("GET");
+
+    // Copy important headers from the original request
+    let original_headers = req.headers();
+    for (name, value) in original_headers.iter() {
+        let name_str = name.as_str().to_lowercase();
+        // Forward auth, cookies, and provider-specific headers — skip hop-by-hop
+        match name_str.as_str() {
+            "host"
+            | "upgrade"
+            | "connection"
+            | "sec-websocket-key"
+            | "sec-websocket-version"
+            | "sec-websocket-extensions"
+            | "sec-websocket-protocol" => continue,
+            _ => {
+                if let Ok(header_name) =
+                    tokio_tungstenite::tungstenite::http::HeaderName::from_bytes(name.as_ref())
+                    && let Ok(header_value) =
+                        tokio_tungstenite::tungstenite::http::HeaderValue::from_bytes(
+                            value.as_bytes(),
+                        )
+                {
+                    ws_request = ws_request.header(header_name, header_value);
+                }
+            }
+        }
+    }
+
+    let ws_request = match ws_request.body(()) {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(error = %e, "failed to build upstream WS request");
+            return (StatusCode::BAD_GATEWAY, "Bad Gateway").into_response();
+        }
+    };
+
+    // Connect to upstream WebSocket
+    let (upstream_ws, _upstream_response) = match tokio_tungstenite::connect_async(ws_request).await
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            warn!(error = %e, url = %ws_url, "failed to connect to upstream WebSocket");
+            return (
+                StatusCode::BAD_GATEWAY,
+                "WebSocket upstream connection failed",
+            )
+                .into_response();
+        }
+    };
+
+    info!(url = %ws_url, session_id = ?session_id, "upstream WebSocket connected");
+
+    // Extract axum's WebSocketUpgrade from the original request
+    let ws_upgrade = match WebSocketUpgrade::from_request(req, &()).await {
+        Ok(ws) => ws,
+        Err(e) => {
+            warn!(error = %e, "failed to extract WebSocket upgrade from request");
+            return (StatusCode::BAD_REQUEST, "WebSocket upgrade failed").into_response();
+        }
+    };
+
+    // Perform the upgrade and start frame relay
+    let session_clone = session_id.clone();
+    let url_clone = ws_url.clone();
+    ws_upgrade.on_upgrade(move |client_ws| {
+        super::websocket::relay_frames(client_ws, upstream_ws, session_clone, url_clone, state)
+    })
 }
 
 #[cfg(test)]

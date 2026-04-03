@@ -15,7 +15,7 @@ interface RequestDetailProps {
 type Tab = "response" | "request" | "headers";
 
 export type { RequestDetailFull };
-export { tryParseJson, parseSseEvents, extractResponseContent };
+export { tryParseJson, parseSseEvents, extractResponseContent, tryDecodeBase64 };
 
 /** Try to parse JSON and pretty-print it. */
 function tryParseJson(text: string): unknown | null {
@@ -58,6 +58,27 @@ function parseSseEvents(
     });
   }
   return events;
+}
+
+/** Try to decode a base64-encoded string. Returns null if not base64. */
+function tryDecodeBase64(text: string): string | null {
+  const trimmed = text.trim();
+  // Quick heuristic: only attempt if it looks like base64 (long string, no spaces, valid chars)
+  if (trimmed.length < 20 || /\s/.test(trimmed) || !/^[A-Za-z0-9+/=]+$/.test(trimmed)) {
+    return null;
+  }
+  try {
+    const decoded = atob(trimmed);
+    // Check if result is mostly printable ASCII
+    const printable = decoded.split("").filter((c) => {
+      const code = c.charCodeAt(0);
+      return (code >= 32 && code <= 126) || code === 10 || code === 13 || code === 9;
+    }).length;
+    if (printable / decoded.length > 0.8) return decoded;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** Extract text blocks from an API response SSE stream. */
@@ -104,6 +125,40 @@ function extractResponseContent(body: string): {
       }
       const usage = d.usage as Record<string, number>;
       if (usage) outputTokens = usage.output_tokens || 0;
+    }
+
+    // OpenAI/Codex format: choices[].delta.content
+    if (d.choices && Array.isArray(d.choices)) {
+      for (const choice of d.choices as Record<string, unknown>[]) {
+        const delta = choice.delta as Record<string, unknown>;
+        if (delta && typeof delta.content === "string") {
+          text += delta.content;
+        }
+      }
+      if (d.model && typeof d.model === "string") model = d.model;
+      const usage = d.usage as Record<string, number>;
+      if (usage) {
+        inputTokens = usage.prompt_tokens || inputTokens;
+        outputTokens = usage.completion_tokens || outputTokens;
+      }
+    }
+
+    // Gemini format: candidates[].content.parts[].text
+    if (d.candidates && Array.isArray(d.candidates)) {
+      for (const candidate of d.candidates as Record<string, unknown>[]) {
+        const content = candidate.content as Record<string, unknown>;
+        if (content && Array.isArray(content.parts)) {
+          for (const part of content.parts as Record<string, unknown>[]) {
+            if (typeof part.text === "string") text += part.text;
+          }
+        }
+      }
+      const meta = d.usageMetadata as Record<string, number>;
+      if (meta) {
+        inputTokens = meta.promptTokenCount || inputTokens;
+        outputTokens = meta.candidatesTokenCount || outputTokens;
+      }
+      if (d.modelVersion && typeof d.modelVersion === "string") model = d.modelVersion;
     }
   }
 
@@ -264,14 +319,43 @@ export default function RequestDetail(props: RequestDetailProps) {
           <Show
             when={isSse() && responseContent() && !showRawResponse()}
             fallback={
-              <pre style={codeBlockStyle}>
-                {(() => {
-                  const parsed = tryParseJson(props.request.responseBody);
-                  return parsed
-                    ? JSON.stringify(parsed, null, 2)
-                    : props.request.responseBody;
-                })()}
-              </pre>
+              <div>
+                <div style={{ display: "flex", gap: "4px", "margin-bottom": "4px" }}>
+                  <button
+                    data-testid="copy-decoded-btn"
+                    onClick={() => {
+                      const body = props.request.responseBody;
+                      const parsed = tryParseJson(body);
+                      const decoded = parsed ? JSON.stringify(parsed, null, 2) : (tryDecodeBase64(body) || body);
+                      void navigator.clipboard.writeText(decoded);
+                    }}
+                    style={{
+                      padding: "2px 8px",
+                      background: "var(--ctp-surface0)",
+                      border: "1px solid var(--ctp-surface1)",
+                      "border-radius": "3px",
+                      color: "var(--ctp-overlay1)",
+                      "font-size": "10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Copy decoded
+                  </button>
+                </div>
+                <pre style={codeBlockStyle}>
+                  {(() => {
+                    const body = props.request.responseBody;
+                    const parsed = tryParseJson(body);
+                    if (parsed) return JSON.stringify(parsed, null, 2);
+                    const b64 = tryDecodeBase64(body);
+                    if (b64) {
+                      const innerParsed = tryParseJson(b64);
+                      return innerParsed ? JSON.stringify(innerParsed, null, 2) : b64;
+                    }
+                    return body;
+                  })()}
+                </pre>
+              </div>
             }
           >
             {/* Structured SSE response view */}

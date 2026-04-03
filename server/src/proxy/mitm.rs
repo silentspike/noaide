@@ -90,7 +90,18 @@ pub fn build_log(
             .as_millis() as i64,
         request_size: request_body.len(),
         response_size: response_body.len(),
-        category: None,
+        category: {
+            // Classify reverse-proxy requests by extracting host from URL
+            let host = url
+                .strip_prefix("https://")
+                .or_else(|| url.strip_prefix("http://"))
+                .unwrap_or(url)
+                .split('/')
+                .next()
+                .unwrap_or("");
+            let cat = super::classify::classify_domain(host);
+            Some(cat.to_string())
+        },
     }
 }
 
