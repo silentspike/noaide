@@ -623,6 +623,22 @@ pub async fn proxy_handler(
         req_builder = req_builder.header(name.clone(), value.clone());
     }
 
+    // ── API Key Rotation ──────────────────────────────────────────────
+    // If KeyStore has active keys for this provider, replace the Authorization header.
+    if state.key_store.has_active_keys(provider.label()) {
+        if let Some((_key_id, plaintext_key)) = state.key_store.select_key(provider.label()) {
+            let auth_value = match provider {
+                ApiProvider::Anthropic => format!("{plaintext_key}"),
+                _ => format!("Bearer {plaintext_key}"),
+            };
+            let header_name = match provider {
+                ApiProvider::Anthropic => "x-api-key",
+                _ => "authorization",
+            };
+            req_builder = req_builder.header(header_name, auth_value);
+        }
+    }
+
     if !request_bytes.is_empty() {
         req_builder = req_builder.body(request_bytes.to_vec());
     }
@@ -839,7 +855,33 @@ pub async fn proxy_handler(
                 }
                 cap.push_back(log_entry.clone());
             }
-            let _ = state.event_tx.send(log_entry);
+            let _ = state.event_tx.send(log_entry.clone());
+
+            // ── Audit Log: extract tokens + append ──
+            {
+                let response_str = &log_entry.response_body;
+                let (model, input_tokens, output_tokens, cache_creation, cache_read) =
+                    super::audit::extract_tokens(response_str);
+                if input_tokens > 0 || output_tokens > 0 {
+                    let cost = super::audit::calculate_cost(&model, input_tokens, output_tokens);
+                    let audit_entry = super::audit::AuditEntry {
+                        id: log_entry.id.clone(),
+                        session_id: log_entry.session_id.clone(),
+                        method: log_entry.method.clone(),
+                        url: log_entry.url.clone(),
+                        model,
+                        provider: provider.label().to_string(),
+                        input_tokens,
+                        output_tokens,
+                        cache_creation_tokens: cache_creation,
+                        cache_read_tokens: cache_read,
+                        cost_usd: cost,
+                        timestamp: log_entry.timestamp,
+                        latency_ms: log_entry.latency_ms,
+                    };
+                    super::audit::append_entry(&audit_entry);
+                }
+            }
 
             // Replay the buffered SSE data as the response body.
             // The content-type (text/event-stream) is preserved, so the client's
