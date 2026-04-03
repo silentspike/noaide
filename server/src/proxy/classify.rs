@@ -49,6 +49,7 @@ static RULES: &[(&str, TrafficCategory)] = &[
     // Update
     ("downloads.claude.ai", TrafficCategory::Update),
     ("update.electronjs.org", TrafficCategory::Update),
+    ("registry.npmjs.org", TrafficCategory::Update),
     // Git
     ("raw.githubusercontent.com", TrafficCategory::Git),
     ("github.com", TrafficCategory::Git),
