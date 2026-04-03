@@ -13,6 +13,7 @@ export default function NetworkPanel() {
   const [statusFilter, setStatusFilter] = createSignal<string>("all");
   const [interceptMode, setInterceptMode] = createSignal<"auto" | "manual">("auto");
   const [pendingCount, setPendingCount] = createSignal(0);
+  const [categoryFilter, setCategoryFilter] = createSignal<string>("all");
 
   async function fetchInterceptStatus() {
     const base = store.state.httpApiUrl;
@@ -114,6 +115,7 @@ export default function NetworkPanel() {
     const query = filter().toLowerCase();
     const method = methodFilter();
     const status = statusFilter();
+    const cat = categoryFilter();
 
     if (query) {
       items = items.filter(
@@ -133,6 +135,10 @@ export default function NetworkPanel() {
       items = items.filter((r) => r.statusCode >= 400 && r.statusCode < 500);
     } else if (status === "5xx") {
       items = items.filter((r) => r.statusCode >= 500);
+    }
+
+    if (cat !== "all") {
+      items = items.filter((r) => (r.category || "Unknown") === cat);
     }
 
     return items;
@@ -298,6 +304,40 @@ export default function NetworkPanel() {
           </button>
         </Show>
 
+        {/* Quick-Block selected domain */}
+        <Show when={selectedRequest()}>
+          <button
+            data-testid="quick-block-btn"
+            onClick={async () => {
+              const base = store.state.httpApiUrl;
+              const sid = store.state.activeSessionId;
+              const req = selectedRequest();
+              if (!base || !sid || !req) return;
+              try {
+                const domain = new URL(req.url).hostname;
+                await fetch(`${base}/api/proxy/quick-block`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ session_id: sid, domain }),
+                });
+              } catch { /* ignore */ }
+            }}
+            style={{
+              padding: "3px 8px",
+              "font-size": "10px",
+              background: "var(--ctp-red)",
+              border: "none",
+              "border-radius": "4px",
+              color: "var(--ctp-base)",
+              cursor: "pointer",
+              "white-space": "nowrap",
+              "font-weight": "600",
+            }}
+          >
+            Block
+          </button>
+        </Show>
+
         {/* HAR Export */}
         <button
           data-testid="har-export-btn"
@@ -375,11 +415,74 @@ export default function NetworkPanel() {
         </div>
       </Show>
 
+      {/* Category Filter Chips */}
+      <div
+        data-testid="category-chips"
+        style={{
+          display: "flex",
+          gap: "4px",
+          padding: "4px 12px",
+          "border-bottom": "1px solid var(--ctp-surface0)",
+          background: "var(--ctp-mantle)",
+          "flex-wrap": "wrap",
+        }}
+      >
+        <For each={["All", "Api", "Telemetry", "Auth", "Update", "Git", "Unknown"] as const}>
+          {(cat) => {
+            const count = () =>
+              cat === "All"
+                ? requests().length
+                : requests().filter((r) => (r.category || "Unknown") === cat).length;
+            return (
+              <button
+                data-testid={`category-chip-${cat.toLowerCase()}`}
+                onClick={() => setCategoryFilter(cat === "All" ? "all" : cat)}
+                style={{
+                  padding: "2px 8px",
+                  "font-size": "10px",
+                  "border-radius": "10px",
+                  border: "1px solid",
+                  "border-color":
+                    (categoryFilter() === "all" && cat === "All") ||
+                    categoryFilter() === cat
+                      ? "var(--ctp-blue)"
+                      : "var(--ctp-surface1)",
+                  background:
+                    (categoryFilter() === "all" && cat === "All") ||
+                    categoryFilter() === cat
+                      ? "var(--ctp-blue)"
+                      : "var(--ctp-surface0)",
+                  color:
+                    (categoryFilter() === "all" && cat === "All") ||
+                    categoryFilter() === cat
+                      ? "var(--ctp-base)"
+                      : "var(--ctp-subtext0)",
+                  cursor: "pointer",
+                  "font-weight": "500",
+                }}
+              >
+                {cat}
+                <Show when={count() > 0}>
+                  <span
+                    style={{
+                      "margin-left": "4px",
+                      opacity: "0.7",
+                    }}
+                  >
+                    {count()}
+                  </span>
+                </Show>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+
       {/* Column headers */}
       <div
         style={{
           display: "grid",
-          "grid-template-columns": "60px 58px 1fr 50px 60px 60px 160px",
+          "grid-template-columns": "12px 60px 58px 1fr 50px 60px 60px 160px",
           gap: "8px",
           padding: "4px 12px",
           "font-size": "10px",
@@ -390,6 +493,7 @@ export default function NetworkPanel() {
           "border-bottom": "1px solid var(--ctp-surface0)",
         }}
       >
+        <span></span>
         <span>Method</span>
         <span>Time</span>
         <span>URL</span>
