@@ -11,6 +11,7 @@ interface ApiRequest {
   timestamp: number;
   requestPreview?: string;
   responsePreview?: string;
+  category?: string;
 }
 
 interface RequestRowProps {
@@ -53,6 +54,18 @@ function formatTime(timestamp: number): string {
   return `${h}:${m}:${s}`;
 }
 
+/** Map traffic category to Catppuccin Mocha color */
+function categoryColor(category?: string): string {
+  switch (category) {
+    case "Api": return "#89b4fa"; // ctp-blue
+    case "Telemetry": return "#f9e2af"; // ctp-yellow
+    case "Auth": return "#cba6f7"; // ctp-mauve
+    case "Update": return "#fab387"; // ctp-peach
+    case "Git": return "#a6e3a1"; // ctp-green
+    default: return "#6c7086"; // ctp-overlay0
+  }
+}
+
 function shortUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -65,7 +78,7 @@ function shortUrl(url: string): string {
 }
 
 export type { ApiRequest };
-export { statusColor, statusColorDark, formatSize, formatTime, shortUrl };
+export { statusColor, statusColorDark, formatSize, formatTime, shortUrl, categoryColor };
 
 export default function RequestRow(props: RequestRowProps) {
   const [hovered, setHovered] = createSignal(false);
@@ -116,17 +129,28 @@ export default function RequestRow(props: RequestRowProps) {
         transition: "background 150ms ease",
       }}
     >
-      {/* Primary row: method, url, status, size, time, waterfall */}
+      {/* Primary row: category dot, method, url, status, size, time, waterfall */}
       <div
         style={{
           display: "grid",
-          "grid-template-columns": "60px 58px 1fr 50px 60px 60px 160px",
+          "grid-template-columns": "12px 60px 58px 1fr 50px 60px 60px 160px",
           gap: "8px",
           "align-items": "center",
           padding: "6px 12px 2px 12px",
           "font-size": "12px",
         }}
       >
+        {/* Category dot */}
+        <span
+          title={props.request.category || "Unknown"}
+          style={{
+            width: "8px",
+            height: "8px",
+            "border-radius": "50%",
+            background: categoryColor(props.request.category),
+            "flex-shrink": "0",
+          }}
+        />
         <span style={{ "font-weight": "600", color: "var(--ctp-blue)" }}>
           {props.request.method}
         </span>
