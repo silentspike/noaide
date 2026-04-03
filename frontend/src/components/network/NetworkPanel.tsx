@@ -169,7 +169,7 @@ export default function NetworkPanel() {
     }
 
     if (cat !== "all") {
-      items = items.filter((r) => (r.category || "Unknown") === cat);
+      items = items.filter((r) => (r.category || "unknown").toLowerCase() === cat.toLowerCase());
     }
 
     return items;
