@@ -109,13 +109,14 @@ pub fn apply_rewrites(
 
     // Thinking type override (Anthropic only)
     if let Some(ref thinking) = config.thinking_type
-        && provider == ApiProvider::Anthropic {
-            if body.get("thinking").is_none() {
-                body["thinking"] = serde_json::json!({});
-            }
-            body["thinking"]["type"] = serde_json::Value::String(thinking.clone());
-            modified = true;
+        && provider == ApiProvider::Anthropic
+    {
+        if body.get("thinking").is_none() {
+            body["thinking"] = serde_json::json!({});
         }
+        body["thinking"]["type"] = serde_json::Value::String(thinking.clone());
+        modified = true;
+    }
 
     if modified {
         debug!(provider = %provider.label(), "applied request body rewrites");
