@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message as TungMessage;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use super::mitm::{self, ApiRequestLog};
 
@@ -360,6 +360,7 @@ mod tests {
             network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
             proxy_modes: super::super::modes::ProxyModeStore::new(),
             inject_store: super::super::inject::InjectStore::new(),
+            rewrite_store: super::super::rewrite::RewriteStore::new(),
         });
 
         let session = Some("test-session".to_string());
@@ -393,6 +394,7 @@ mod tests {
             network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
             proxy_modes: super::super::modes::ProxyModeStore::new(),
             inject_store: super::super::inject::InjectStore::new(),
+            rewrite_store: super::super::rewrite::RewriteStore::new(),
         });
 
         let session = Some("test-session".to_string());

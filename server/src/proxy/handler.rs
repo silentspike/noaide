@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use axum::body::Body;
 use axum::extract::{FromRequest, State};
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use base64::Engine as _;
 use bytes::Bytes;
@@ -242,6 +242,8 @@ pub struct ProxyState {
     pub proxy_modes: super::modes::ProxyModeStore,
     /// Per-session system prompt injection configuration.
     pub inject_store: super::inject::InjectStore,
+    /// Per-session request body rewrite configuration.
+    pub rewrite_store: super::rewrite::RewriteStore,
 }
 
 /// Extract session UUID from `/s/{uuid}/...` proxy path prefix.
@@ -573,6 +575,27 @@ pub async fn proxy_handler(
                 "injected system prompt into API request"
             );
             request_bytes = Bytes::from(modified);
+        }
+    }
+
+    // ── Request Body Rewrite ──────────────────────────────────────────
+    // Apply per-session model override, temperature, max_tokens, pure mode.
+    if !request_bytes.is_empty() {
+        let rewrite_config = if let Some(ref sid) = session_id {
+            state.rewrite_store.get(sid)
+        } else {
+            super::rewrite::RewriteConfig::default()
+        };
+        if rewrite_config.is_active() {
+            if let Ok(mut body_json) =
+                serde_json::from_slice::<serde_json::Value>(&request_bytes)
+            {
+                if super::rewrite::apply_rewrites(&mut body_json, provider, &rewrite_config) {
+                    if let Ok(modified) = serde_json::to_vec(&body_json) {
+                        request_bytes = Bytes::from(modified);
+                    }
+                }
+            }
         }
     }
 

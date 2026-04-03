@@ -5,7 +5,7 @@
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+// tracing used by inject_into_body callers, not here directly
 
 /// Available injection presets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]

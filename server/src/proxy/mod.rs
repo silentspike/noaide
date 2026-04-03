@@ -3,6 +3,7 @@ pub mod handler;
 pub mod inject;
 pub mod mitm;
 pub mod modes;
+pub mod rewrite;
 pub mod rules;
 pub mod tls_mitm;
 pub mod websocket;
@@ -77,6 +78,7 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
         network_rules: Arc::new(rules::NetworkRulesEngine::new()),
         proxy_modes: modes::ProxyModeStore::new(),
         inject_store: inject::InjectStore::new(),
+        rewrite_store: rewrite::RewriteStore::new(),
     });
 
     (state, event_rx)
