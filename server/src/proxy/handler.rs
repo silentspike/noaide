@@ -968,7 +968,7 @@ pub async fn proxy_handler(
             .increment(1);
             metrics::histogram!("proxy_latency_ms",
                 "method" => log_entry.method.clone(),
-                "provider" => provider_label,
+                "provider" => provider_label.clone(),
             )
             .record(log_entry.latency_ms as f64);
 
@@ -979,7 +979,33 @@ pub async fn proxy_handler(
                 }
                 cap.push_back(log_entry.clone());
             }
-            let _ = log_state.event_tx.send(log_entry);
+            let _ = log_state.event_tx.send(log_entry.clone());
+
+            // ── Audit Log: extract tokens from streaming response ──
+            {
+                let response_str = &log_entry.response_body;
+                let (model, input_tokens, output_tokens, cache_creation, cache_read) =
+                    super::audit::extract_tokens(response_str);
+                if input_tokens > 0 || output_tokens > 0 {
+                    let cost = super::audit::calculate_cost(&model, input_tokens, output_tokens);
+                    let audit_entry = super::audit::AuditEntry {
+                        id: log_entry.id.clone(),
+                        session_id: log_entry.session_id.clone(),
+                        method: log_entry.method.clone(),
+                        url: log_entry.url.clone(),
+                        model,
+                        provider: provider_label,
+                        input_tokens,
+                        output_tokens,
+                        cache_creation_tokens: cache_creation,
+                        cache_read_tokens: cache_read,
+                        cost_usd: cost,
+                        timestamp: log_entry.timestamp,
+                        latency_ms: log_entry.latency_ms,
+                    };
+                    super::audit::append_entry(&audit_entry);
+                }
+            }
         });
 
         // Build streaming response back to caller
