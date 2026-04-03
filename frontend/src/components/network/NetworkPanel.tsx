@@ -3,6 +3,7 @@ import { useSession } from "../../App";
 import RequestRow from "./RequestRow";
 import RequestDetail, { type RequestDetailFull } from "./RequestDetail";
 import InterceptQueue from "./InterceptQueue";
+import RuleEditor from "./RuleEditor";
 
 export default function NetworkPanel() {
   const store = useSession();
@@ -14,6 +15,7 @@ export default function NetworkPanel() {
   const [interceptMode, setInterceptMode] = createSignal<"auto" | "manual">("auto");
   const [pendingCount, setPendingCount] = createSignal(0);
   const [categoryFilter, setCategoryFilter] = createSignal<string>("all");
+  const [showRules, setShowRules] = createSignal(false);
 
   async function fetchInterceptStatus() {
     const base = store.state.httpApiUrl;
@@ -165,6 +167,37 @@ export default function NetworkPanel() {
     if (!id) return null;
     return requests().find((r) => r.id === id) ?? null;
   });
+
+  async function quickBlockDomain(domain: string) {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      await fetch(`${base}/api/proxy/quick-block`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sid, domain }),
+      });
+    } catch { /* ignore */ }
+  }
+
+  async function blockCategory(category: string) {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+    if (!base || !sid) return;
+    try {
+      await fetch(`${base}/api/proxy/network-rules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sid,
+          category_filter: category,
+          action: "block",
+          priority: 50,
+        }),
+      });
+    } catch { /* ignore */ }
+  }
 
   return (
     <div
@@ -335,6 +368,26 @@ export default function NetworkPanel() {
             }}
           >
             Block
+          </button>
+        </Show>
+
+        {/* Rules Toggle */}
+        <Show when={store.state.activeSessionId}>
+          <button
+            data-testid="rules-toggle-btn"
+            onClick={() => setShowRules(!showRules())}
+            style={{
+              padding: "3px 8px",
+              "font-size": "10px",
+              background: showRules() ? "var(--ctp-blue)" : "var(--ctp-surface0)",
+              border: "1px solid var(--ctp-surface1)",
+              "border-radius": "4px",
+              color: showRules() ? "var(--ctp-base)" : "var(--ctp-subtext0)",
+              cursor: "pointer",
+              "white-space": "nowrap",
+            }}
+          >
+            Rules
           </button>
         </Show>
 
@@ -517,6 +570,11 @@ export default function NetworkPanel() {
         />
       </Show>
 
+      {/* Rules Editor Panel */}
+      <Show when={showRules() && store.state.activeSessionId}>
+        <RuleEditor />
+      </Show>
+
       {/* Request list */}
       <div
         style={{
@@ -550,6 +608,12 @@ export default function NetworkPanel() {
                 onClick={() => selectRequest(request.id)}
                 timelineStart={timelineStart()}
                 timelineDuration={timelineDuration()}
+                onQuickBlock={(domain) => {
+                  void quickBlockDomain(domain);
+                }}
+                onBlockCategory={(category) => {
+                  void blockCategory(category);
+                }}
               />
             )}
           </For>
