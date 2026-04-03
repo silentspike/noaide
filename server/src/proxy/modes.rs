@@ -13,8 +13,10 @@ use serde::{Deserialize, Serialize};
 /// Proxy operation mode for a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ProxyMode {
     /// Default: allow all traffic, no interception
+    #[default]
     Auto,
     /// Intercept all requests for manual review
     Manual,
@@ -26,11 +28,6 @@ pub enum ProxyMode {
     Lockdown,
 }
 
-impl Default for ProxyMode {
-    fn default() -> Self {
-        ProxyMode::Auto
-    }
-}
 
 /// Per-session proxy mode storage.
 pub struct ProxyModeStore {

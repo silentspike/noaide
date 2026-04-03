@@ -107,8 +107,8 @@ pub fn extract_tokens(body: &str) -> (String, u64, u64, u64, u64) {
 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
             // Anthropic: message_start has model + usage
-            if json.get("type").and_then(|t| t.as_str()) == Some("message_start") {
-                if let Some(msg) = json.get("message") {
+            if json.get("type").and_then(|t| t.as_str()) == Some("message_start")
+                && let Some(msg) = json.get("message") {
                     if let Some(m) = msg.get("model").and_then(|m| m.as_str()) {
                         model = m.to_string();
                     }
@@ -127,17 +127,15 @@ pub fn extract_tokens(body: &str) -> (String, u64, u64, u64, u64) {
                             .unwrap_or(0);
                     }
                 }
-            }
 
             // Anthropic: message_delta has output usage
-            if json.get("type").and_then(|t| t.as_str()) == Some("message_delta") {
-                if let Some(usage) = json.get("usage") {
+            if json.get("type").and_then(|t| t.as_str()) == Some("message_delta")
+                && let Some(usage) = json.get("usage") {
                     output_tokens = usage
                         .get("output_tokens")
                         .and_then(|v| v.as_u64())
                         .unwrap_or(output_tokens);
                 }
-            }
 
             // OpenAI: usage in final chunk
             if let Some(usage) = json.get("usage") {
@@ -147,11 +145,10 @@ pub fn extract_tokens(body: &str) -> (String, u64, u64, u64, u64) {
                 if let Some(ct) = usage.get("completion_tokens").and_then(|v| v.as_u64()) {
                     output_tokens = ct;
                 }
-                if let Some(m) = json.get("model").and_then(|m| m.as_str()) {
-                    if model.is_empty() {
+                if let Some(m) = json.get("model").and_then(|m| m.as_str())
+                    && model.is_empty() {
                         model = m.to_string();
                     }
-                }
             }
 
             // Gemini: usageMetadata
@@ -223,16 +220,14 @@ pub fn query_entries(
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .filter(|e: &AuditEntry| {
-            if let Some(sid) = session_id {
-                if e.session_id.as_deref() != Some(sid) {
+            if let Some(sid) = session_id
+                && e.session_id.as_deref() != Some(sid) {
                     return false;
                 }
-            }
-            if let Some(m) = model {
-                if !e.model.contains(m) {
+            if let Some(m) = model
+                && !e.model.contains(m) {
                     return false;
                 }
-            }
             true
         })
         .collect();
