@@ -1,5 +1,6 @@
 pub mod classify;
 pub mod handler;
+pub mod inject;
 pub mod mitm;
 pub mod modes;
 pub mod rules;
@@ -75,6 +76,7 @@ pub fn create_proxy_state() -> (Arc<ProxyState>, broadcast::Receiver<ApiRequestL
         ca,
         network_rules: Arc::new(rules::NetworkRulesEngine::new()),
         proxy_modes: modes::ProxyModeStore::new(),
+        inject_store: inject::InjectStore::new(),
     });
 
     (state, event_rx)

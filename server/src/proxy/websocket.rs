@@ -359,6 +359,7 @@ mod tests {
             ca: None,
             network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
             proxy_modes: super::super::modes::ProxyModeStore::new(),
+            inject_store: super::super::inject::InjectStore::new(),
         });
 
         let session = Some("test-session".to_string());
@@ -391,6 +392,7 @@ mod tests {
             ca: None,
             network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
             proxy_modes: super::super::modes::ProxyModeStore::new(),
+            inject_store: super::super::inject::InjectStore::new(),
         });
 
         let session = Some("test-session".to_string());
