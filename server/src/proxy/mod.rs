@@ -3,6 +3,7 @@ pub mod handler;
 pub mod mitm;
 pub mod rules;
 pub mod tls_mitm;
+pub mod websocket;
 
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
