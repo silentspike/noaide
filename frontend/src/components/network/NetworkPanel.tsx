@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show, For, onMount, onCleanup } from "solid-js";
+import { createSignal, createMemo, Show, For, onMount, onCleanup, createEffect } from "solid-js";
 import { useSession } from "../../App";
 import RequestRow from "./RequestRow";
 import RequestDetail, { type RequestDetailFull } from "./RequestDetail";
@@ -17,6 +17,7 @@ export default function NetworkPanel() {
   const [categoryFilter, setCategoryFilter] = createSignal<string>("all");
   const [showRules, setShowRules] = createSignal(false);
   const [proxyMode, setProxyModeSignal] = createSignal("auto");
+  const [rulesVersion, setRulesVersion] = createSignal(0);
 
   async function fetchProxyMode() {
     const base = store.state.httpApiUrl;
@@ -141,6 +142,27 @@ export default function NetworkPanel() {
     onCleanup(() => clearInterval(interval));
   });
 
+  createEffect(() => {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+
+    setSelectedId(null);
+    setRequests([]);
+
+    if (!base) return;
+
+    void fetchRequests();
+    if (!sid) {
+      setPendingCount(0);
+      setInterceptMode("auto");
+      setProxyModeSignal("auto");
+      return;
+    }
+
+    void fetchInterceptStatus();
+    void fetchProxyMode();
+  });
+
   const filteredRequests = createMemo(() => {
     let items = requests();
     const query = filter().toLowerCase();
@@ -202,11 +224,14 @@ export default function NetworkPanel() {
     const sid = store.state.activeSessionId;
     if (!base || !sid) return;
     try {
-      await fetch(`${base}/api/proxy/quick-block`, {
+      const res = await fetch(`${base}/api/proxy/network-rules/${sid}/quick-block`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sid, domain }),
+        body: JSON.stringify({ domain }),
       });
+      if (res.ok) {
+        setRulesVersion((v) => v + 1);
+      }
     } catch { /* ignore */ }
   }
 
@@ -215,16 +240,21 @@ export default function NetworkPanel() {
     const sid = store.state.activeSessionId;
     if (!base || !sid) return;
     try {
-      await fetch(`${base}/api/proxy/network-rules`, {
+      const res = await fetch(`${base}/api/proxy/network-rules/${sid}/rules`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: "",
           session_id: sid,
-          category_filter: category,
-          action: "block",
+          category_filter: category.toLowerCase(),
+          action: { type: "block" },
+          enabled: true,
           priority: 50,
         }),
       });
+      if (res.ok) {
+        setRulesVersion((v) => v + 1);
+      }
     } catch { /* ignore */ }
   }
 
@@ -371,17 +401,11 @@ export default function NetworkPanel() {
           <button
             data-testid="quick-block-btn"
             onClick={async () => {
-              const base = store.state.httpApiUrl;
-              const sid = store.state.activeSessionId;
               const req = selectedRequest();
-              if (!base || !sid || !req) return;
+              if (!req) return;
               try {
                 const domain = new URL(req.url).hostname;
-                await fetch(`${base}/api/proxy/quick-block`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ session_id: sid, domain }),
-                });
+                await quickBlockDomain(domain);
               } catch { /* ignore */ }
             }}
             style={{
@@ -646,7 +670,11 @@ export default function NetworkPanel() {
 
       {/* Rules Editor Panel */}
       <Show when={showRules() && store.state.activeSessionId}>
-        <RuleEditor />
+        <RuleEditor
+          sessionId={store.state.activeSessionId!}
+          httpApiUrl={store.state.httpApiUrl!}
+          refreshKey={rulesVersion()}
+        />
       </Show>
 
       {/* Request list */}
