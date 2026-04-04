@@ -4,6 +4,10 @@ import RequestRow from "./RequestRow";
 import RequestDetail, { type RequestDetailFull } from "./RequestDetail";
 import InterceptQueue from "./InterceptQueue";
 import RuleEditor from "./RuleEditor";
+import InjectPanel from "./InjectPanel";
+import RewritePanel from "./RewritePanel";
+import RateLimitPanel from "./RateLimitPanel";
+import AuditPanel from "./AuditPanel";
 
 export default function NetworkPanel() {
   const store = useSession();
@@ -675,6 +679,16 @@ export default function NetworkPanel() {
           httpApiUrl={store.state.httpApiUrl!}
           refreshKey={rulesVersion()}
         />
+      </Show>
+
+      {/* Custom mode configuration panels */}
+      <Show when={proxyMode() === "custom" && store.state.activeSessionId}>
+        <>
+          <InjectPanel />
+          <RewritePanel />
+          <RateLimitPanel />
+          <AuditPanel />
+        </>
       </Show>
 
       {/* Request list */}
