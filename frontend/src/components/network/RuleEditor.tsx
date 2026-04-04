@@ -1,16 +1,44 @@
-import { createSignal, For, Show, onMount, onCleanup } from "solid-js";
-import { useSession } from "../../App";
+import { createSignal, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 
 interface NetworkRule {
   id: string;
+  session_id?: string;
   domain_pattern?: string;
   category_filter?: string;
-  action: "allow" | "block" | { delay: { ms: number } };
+  action: RuleAction;
+  enabled?: boolean;
   priority: number;
 }
 
-export default function RuleEditor() {
-  const store = useSession();
+interface RuleEditorProps {
+  sessionId: string;
+  httpApiUrl: string;
+  refreshKey?: number;
+}
+
+type RuleAction =
+  | "allow"
+  | "block"
+  | { type: "allow" }
+  | { type: "block" }
+  | { type: "delay"; ms: number }
+  | { delay: { ms: number } };
+
+function actionType(action: RuleAction): "allow" | "block" | "delay" {
+  if (typeof action === "string") return action;
+  if ("type" in action) return action.type;
+  return "delay";
+}
+
+function actionLabel(action: RuleAction): string {
+  if (typeof action !== "string") {
+    if ("ms" in action) return `DELAY ${action.ms}ms`;
+    if ("delay" in action) return `DELAY ${action.delay.ms}ms`;
+  }
+  return actionType(action).toUpperCase();
+}
+
+export default function RuleEditor(props: RuleEditorProps) {
   const [rules, setRules] = createSignal<NetworkRule[]>([]);
   const [newDomain, setNewDomain] = createSignal("");
   const [newCategory, setNewCategory] = createSignal("");
@@ -18,32 +46,28 @@ export default function RuleEditor() {
   const [newPriority, _setNewPriority] = createSignal(50);
 
   async function fetchRules() {
-    const base = store.state.httpApiUrl;
-    const sid = store.state.activeSessionId;
-    if (!base || !sid) return;
     try {
-      const res = await fetch(`${base}/api/proxy/network-rules/${sid}`);
+      const res = await fetch(`${props.httpApiUrl}/api/proxy/network-rules/${props.sessionId}`);
       if (res.ok) {
         const data = await res.json();
-        setRules(data.rules || []);
+        setRules(Array.isArray(data) ? data : data.rules || []);
       }
     } catch { /* ignore */ }
   }
 
   async function addRule() {
-    const base = store.state.httpApiUrl;
-    const sid = store.state.activeSessionId;
-    if (!base || !sid) return;
     const body: Record<string, unknown> = {
-      session_id: sid,
-      action: newAction(),
+      id: "",
+      session_id: props.sessionId,
+      action: { type: newAction() },
+      enabled: true,
       priority: newPriority(),
     };
     if (newDomain()) body.domain_pattern = newDomain();
-    if (newCategory()) body.category_filter = newCategory();
+    if (newCategory()) body.category_filter = newCategory().toLowerCase();
 
     try {
-      await fetch(`${base}/api/proxy/network-rules`, {
+      await fetch(`${props.httpApiUrl}/api/proxy/network-rules/${props.sessionId}/rules`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -55,11 +79,8 @@ export default function RuleEditor() {
   }
 
   async function deleteRule(ruleId: string) {
-    const base = store.state.httpApiUrl;
-    const sid = store.state.activeSessionId;
-    if (!base || !sid) return;
     try {
-      await fetch(`${base}/api/proxy/network-rules/${sid}/${ruleId}`, {
+      await fetch(`${props.httpApiUrl}/api/proxy/network-rules/${props.sessionId}/rules/${ruleId}`, {
         method: "DELETE",
       });
       await fetchRules();
@@ -70,6 +91,18 @@ export default function RuleEditor() {
     fetchRules();
     const interval = setInterval(fetchRules, 5000);
     onCleanup(() => clearInterval(interval));
+  });
+
+  createEffect(() => {
+    props.sessionId;
+    props.httpApiUrl;
+    setRules([]);
+    void fetchRules();
+  });
+
+  createEffect(() => {
+    props.refreshKey;
+    void fetchRules();
   });
 
   return (
@@ -129,17 +162,15 @@ export default function RuleEditor() {
                     "font-size": "9px",
                     "font-weight": "600",
                     background:
-                      rule.action === "block"
+                      actionType(rule.action) === "block"
                         ? "var(--ctp-red)"
-                        : rule.action === "allow"
+                        : actionType(rule.action) === "allow"
                           ? "var(--ctp-green)"
                           : "var(--ctp-yellow)",
                     color: "var(--ctp-base)",
                   }}
                 >
-                  {typeof rule.action === "string"
-                    ? rule.action.toUpperCase()
-                    : `DELAY ${rule.action.delay.ms}ms`}
+                  {actionLabel(rule.action)}
                 </span>
                 <span style={{ color: "var(--ctp-text)", flex: "1" }}>
                   {rule.domain_pattern || rule.category_filter || "any"}
