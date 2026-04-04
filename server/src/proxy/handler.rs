@@ -968,7 +968,7 @@ pub async fn proxy_handler(
             .increment(1);
             metrics::histogram!("proxy_latency_ms",
                 "method" => log_entry.method.clone(),
-                "provider" => provider_label,
+                "provider" => provider_label.clone(),
             )
             .record(log_entry.latency_ms as f64);
 
@@ -979,7 +979,33 @@ pub async fn proxy_handler(
                 }
                 cap.push_back(log_entry.clone());
             }
-            let _ = log_state.event_tx.send(log_entry);
+            let _ = log_state.event_tx.send(log_entry.clone());
+
+            // ── Audit Log: extract tokens from streaming response ──
+            {
+                let response_str = &log_entry.response_body;
+                let (model, input_tokens, output_tokens, cache_creation, cache_read) =
+                    super::audit::extract_tokens(response_str);
+                if input_tokens > 0 || output_tokens > 0 {
+                    let cost = super::audit::calculate_cost(&model, input_tokens, output_tokens);
+                    let audit_entry = super::audit::AuditEntry {
+                        id: log_entry.id.clone(),
+                        session_id: log_entry.session_id.clone(),
+                        method: log_entry.method.clone(),
+                        url: log_entry.url.clone(),
+                        model,
+                        provider: provider_label,
+                        input_tokens,
+                        output_tokens,
+                        cache_creation_tokens: cache_creation,
+                        cache_read_tokens: cache_read,
+                        cost_usd: cost,
+                        timestamp: log_entry.timestamp,
+                        latency_ms: log_entry.latency_ms,
+                    };
+                    super::audit::append_entry(&audit_entry);
+                }
+            }
         });
 
         // Build streaming response back to caller
@@ -1224,6 +1250,49 @@ pub async fn connect_handler(
 
     // Classify traffic
     let category = super::classify::classify_domain(&hostname);
+
+    // Check proxy mode (Lockdown blocks non-API, Pure blocks telemetry)
+    if let Some(ref sid) = session_id {
+        if state.proxy_modes.should_block(sid, &category.to_string()) {
+            info!(
+                target = %target_addr,
+                session = %sid,
+                category = %category,
+                mode = ?state.proxy_modes.get(sid),
+                "CONNECT blocked by proxy mode"
+            );
+
+            let log_entry = ApiRequestLog {
+                id: request_id,
+                session_id: session_id.clone(),
+                method: "CONNECT".to_string(),
+                url: format!("tunnel://{target_addr}"),
+                status_code: 403,
+                latency_ms: start.elapsed().as_millis() as u64,
+                request_size: 0,
+                response_size: 0,
+                request_body: String::new(),
+                response_body: format!("Blocked by proxy mode ({:?})", state.proxy_modes.get(sid)),
+                request_headers: vec![],
+                response_headers: vec![],
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64,
+                category: Some(category.to_string()),
+            };
+            {
+                let mut cap = state.captured.write().await;
+                if cap.len() >= MAX_CAPTURED_REQUESTS {
+                    cap.pop_front();
+                }
+                cap.push_back(log_entry.clone());
+            }
+            let _ = state.event_tx.send(log_entry);
+
+            return (StatusCode::FORBIDDEN, "Blocked by proxy mode").into_response();
+        }
+    }
 
     // Check network rules (block before even connecting)
     let rule_action = state
