@@ -18,7 +18,7 @@ jobs:
     # Only enforce on scope:full issues (work packages)
     if: contains(join(github.event.issue.labels.*.name, ','), 'scope:full')
     steps:
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         with:
           script: |
             const issue = context.payload.issue;
