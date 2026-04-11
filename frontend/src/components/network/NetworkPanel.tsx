@@ -6,6 +6,7 @@ import InterceptQueue from "./InterceptQueue";
 import RuleEditor from "./RuleEditor";
 import InjectPanel from "./InjectPanel";
 import RewritePanel from "./RewritePanel";
+import KeyManagementPanel from "./KeyManagementPanel";
 import RateLimitPanel from "./RateLimitPanel";
 import AuditPanel from "./AuditPanel";
 
@@ -142,6 +143,7 @@ export default function NetworkPanel() {
     const interval = setInterval(() => {
       fetchRequests();
       fetchInterceptStatus();
+      void fetchProxyMode();
     }, interceptMode() === "manual" ? 1000 : 2000);
     onCleanup(() => clearInterval(interval));
   });
@@ -276,6 +278,7 @@ export default function NetworkPanel() {
         style={{
           display: "flex",
           "align-items": "center",
+          "flex-wrap": "wrap",
           gap: "8px",
           padding: "8px 12px",
           "border-bottom": "1px solid var(--ctp-surface0)",
@@ -289,7 +292,8 @@ export default function NetworkPanel() {
           value={filter()}
           onInput={(e) => setFilter(e.currentTarget.value)}
           style={{
-            flex: "1",
+            flex: "1 1 140px",
+            "min-width": "0",
             padding: "4px 8px",
             background: "var(--ctp-surface0)",
             border: "1px solid var(--ctp-surface1)",
@@ -507,6 +511,7 @@ export default function NetworkPanel() {
                   request: { method: r.method, url: r.url, httpVersion: "HTTP/2", headers: [], queryString: [], bodySize: r.requestSize ?? -1 },
                   response: { status: r.statusCode, statusText: "", httpVersion: "HTTP/2", headers: [], content: { size: r.responseSize ?? -1, mimeType: "application/json" }, bodySize: r.responseSize ?? -1 },
                   timings: { send: 0, wait: r.latencyMs, receive: 0 },
+                  _traffic_category: r.category || "Unknown",
                 })),
               },
             };
@@ -587,7 +592,7 @@ export default function NetworkPanel() {
             const count = () =>
               cat === "All"
                 ? requests().length
-                : requests().filter((r) => (r.category || "Unknown") === cat).length;
+                : requests().filter((r) => (r.category || "unknown").toLowerCase() === cat.toLowerCase()).length;
             return (
               <button
                 data-testid={`category-chip-${cat.toLowerCase()}`}
@@ -686,6 +691,7 @@ export default function NetworkPanel() {
         <>
           <InjectPanel />
           <RewritePanel />
+          <KeyManagementPanel />
           <RateLimitPanel />
           <AuditPanel />
         </>
