@@ -353,9 +353,9 @@ pub fn is_websocket_upgrade(headers: &axum::http::HeaderMap) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::handler::ApiProvider;
     use super::*;
     use axum::http::HeaderMap;
-    use super::super::handler::ApiProvider;
 
     #[test]
     fn detects_websocket_upgrade_headers() {
@@ -565,7 +565,7 @@ mod tests {
 
     fn test_proxy_state() -> super::super::handler::ProxyState {
         use std::collections::{HashMap, VecDeque};
-        use tokio::sync::{broadcast, RwLock};
+        use tokio::sync::{RwLock, broadcast};
 
         let (event_tx, _rx) = broadcast::channel(16);
         super::super::handler::ProxyState {

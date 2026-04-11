@@ -179,7 +179,9 @@ fn strip_to_essentials(body: &mut serde_json::Value, provider: super::handler::A
 
     match provider {
         ApiProvider::Anthropic => {
-            obj.retain(|key, _| ["model", "messages", "stream", "max_tokens"].contains(&key.as_str()));
+            obj.retain(|key, _| {
+                ["model", "messages", "stream", "max_tokens"].contains(&key.as_str())
+            });
         }
         ApiProvider::OpenAI => {
             obj.retain(|key, _| {
@@ -191,7 +193,9 @@ fn strip_to_essentials(body: &mut serde_json::Value, provider: super::handler::A
             obj.retain(|key, _| ["model", "input"].contains(&key.as_str()));
         }
         ApiProvider::Google => {
-            obj.retain(|key, _| ["model", "contents", "stream", "generationConfig"].contains(&key.as_str()));
+            obj.retain(|key, _| {
+                ["model", "contents", "stream", "generationConfig"].contains(&key.as_str())
+            });
         }
         ApiProvider::GoogleCodeAssist => {
             let model = obj.remove("model");
@@ -229,11 +233,10 @@ fn strip_system_prompt(
     use super::handler::ApiProvider;
 
     match provider {
-        ApiProvider::Anthropic => {
-            body.as_object_mut()
-                .map(|obj| obj.remove("system").is_some())
-                .unwrap_or(false)
-        }
+        ApiProvider::Anthropic => body
+            .as_object_mut()
+            .map(|obj| obj.remove("system").is_some())
+            .unwrap_or(false),
         ApiProvider::OpenAI | ApiProvider::ChatGPT => {
             let Some(obj) = body.as_object_mut() else {
                 return false;
@@ -505,9 +508,11 @@ mod tests {
         let modified = apply_rewrites(&mut body, ApiProvider::GoogleCodeAssist, &config);
         assert!(modified);
         assert_eq!(body["model"], "gemini-2.5-pro");
-        assert!(body["request"]["generationConfig"]
-            .get("thinkingConfig")
-            .is_none());
+        assert!(
+            body["request"]["generationConfig"]
+                .get("thinkingConfig")
+                .is_none()
+        );
         assert_eq!(body["request"]["generationConfig"]["temperature"], 1);
     }
 

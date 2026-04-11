@@ -462,7 +462,10 @@ async fn main() -> anyhow::Result<()> {
                     match std::net::TcpListener::bind(("0.0.0.0", whisper_port)) {
                         Ok(listener) => drop(listener),
                         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                            warn!(port = whisper_port, "whisper sidecar port already in use; skipping spawn");
+                            warn!(
+                                port = whisper_port,
+                                "whisper sidecar port already in use; skipping spawn"
+                            );
                             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                             continue;
                         }
@@ -3985,9 +3988,7 @@ async fn api_delete_key(
     axum::extract::Path(key_id): axum::extract::Path<String>,
 ) -> axum::Json<serde_json::Value> {
     let removed = state.proxy.key_store.remove_key(&key_id);
-    if removed
-        && let Err(e) = noaide_server::proxy::keys::save_to_disk(&state.proxy.key_store)
-    {
+    if removed && let Err(e) = noaide_server::proxy::keys::save_to_disk(&state.proxy.key_store) {
         warn!(error = %e, key_id = %key_id, "failed to persist api keys after delete");
     }
     axum::Json(serde_json::json!({ "removed": removed }))
@@ -3999,9 +4000,7 @@ async fn api_update_key(
     axum::Json(body): axum::Json<UpdateKeyRequest>,
 ) -> axum::Json<serde_json::Value> {
     let updated = state.proxy.key_store.set_active(&key_id, body.active);
-    if updated
-        && let Err(e) = noaide_server::proxy::keys::save_to_disk(&state.proxy.key_store)
-    {
+    if updated && let Err(e) = noaide_server::proxy::keys::save_to_disk(&state.proxy.key_store) {
         warn!(error = %e, key_id = %key_id, active = body.active, "failed to persist api keys after update");
     }
     axum::Json(serde_json::json!({ "updated": updated }))
