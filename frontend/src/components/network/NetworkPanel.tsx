@@ -1,9 +1,14 @@
-import { createSignal, createMemo, Show, For, onMount, onCleanup } from "solid-js";
+import { createSignal, createMemo, Show, For, onMount, onCleanup, createEffect } from "solid-js";
 import { useSession } from "../../App";
 import RequestRow from "./RequestRow";
 import RequestDetail, { type RequestDetailFull } from "./RequestDetail";
 import InterceptQueue from "./InterceptQueue";
 import RuleEditor from "./RuleEditor";
+import InjectPanel from "./InjectPanel";
+import RewritePanel from "./RewritePanel";
+import KeyManagementPanel from "./KeyManagementPanel";
+import RateLimitPanel from "./RateLimitPanel";
+import AuditPanel from "./AuditPanel";
 
 export default function NetworkPanel() {
   const store = useSession();
@@ -17,6 +22,7 @@ export default function NetworkPanel() {
   const [categoryFilter, setCategoryFilter] = createSignal<string>("all");
   const [showRules, setShowRules] = createSignal(false);
   const [proxyMode, setProxyModeSignal] = createSignal("auto");
+  const [rulesVersion, setRulesVersion] = createSignal(0);
 
   async function fetchProxyMode() {
     const base = store.state.httpApiUrl;
@@ -137,8 +143,30 @@ export default function NetworkPanel() {
     const interval = setInterval(() => {
       fetchRequests();
       fetchInterceptStatus();
+      void fetchProxyMode();
     }, interceptMode() === "manual" ? 1000 : 2000);
     onCleanup(() => clearInterval(interval));
+  });
+
+  createEffect(() => {
+    const base = store.state.httpApiUrl;
+    const sid = store.state.activeSessionId;
+
+    setSelectedId(null);
+    setRequests([]);
+
+    if (!base) return;
+
+    void fetchRequests();
+    if (!sid) {
+      setPendingCount(0);
+      setInterceptMode("auto");
+      setProxyModeSignal("auto");
+      return;
+    }
+
+    void fetchInterceptStatus();
+    void fetchProxyMode();
   });
 
   const filteredRequests = createMemo(() => {
@@ -169,7 +197,7 @@ export default function NetworkPanel() {
     }
 
     if (cat !== "all") {
-      items = items.filter((r) => (r.category || "Unknown") === cat);
+      items = items.filter((r) => (r.category || "unknown").toLowerCase() === cat.toLowerCase());
     }
 
     return items;
@@ -202,11 +230,14 @@ export default function NetworkPanel() {
     const sid = store.state.activeSessionId;
     if (!base || !sid) return;
     try {
-      await fetch(`${base}/api/proxy/quick-block`, {
+      const res = await fetch(`${base}/api/proxy/network-rules/${sid}/quick-block`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sid, domain }),
+        body: JSON.stringify({ domain }),
       });
+      if (res.ok) {
+        setRulesVersion((v) => v + 1);
+      }
     } catch { /* ignore */ }
   }
 
@@ -215,16 +246,21 @@ export default function NetworkPanel() {
     const sid = store.state.activeSessionId;
     if (!base || !sid) return;
     try {
-      await fetch(`${base}/api/proxy/network-rules`, {
+      const res = await fetch(`${base}/api/proxy/network-rules/${sid}/rules`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: "",
           session_id: sid,
-          category_filter: category,
-          action: "block",
+          category_filter: category.toLowerCase(),
+          action: { type: "block" },
+          enabled: true,
           priority: 50,
         }),
       });
+      if (res.ok) {
+        setRulesVersion((v) => v + 1);
+      }
     } catch { /* ignore */ }
   }
 
@@ -242,6 +278,7 @@ export default function NetworkPanel() {
         style={{
           display: "flex",
           "align-items": "center",
+          "flex-wrap": "wrap",
           gap: "8px",
           padding: "8px 12px",
           "border-bottom": "1px solid var(--ctp-surface0)",
@@ -255,7 +292,8 @@ export default function NetworkPanel() {
           value={filter()}
           onInput={(e) => setFilter(e.currentTarget.value)}
           style={{
-            flex: "1",
+            flex: "1 1 140px",
+            "min-width": "0",
             padding: "4px 8px",
             background: "var(--ctp-surface0)",
             border: "1px solid var(--ctp-surface1)",
@@ -371,17 +409,11 @@ export default function NetworkPanel() {
           <button
             data-testid="quick-block-btn"
             onClick={async () => {
-              const base = store.state.httpApiUrl;
-              const sid = store.state.activeSessionId;
               const req = selectedRequest();
-              if (!base || !sid || !req) return;
+              if (!req) return;
               try {
                 const domain = new URL(req.url).hostname;
-                await fetch(`${base}/api/proxy/quick-block`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ session_id: sid, domain }),
-                });
+                await quickBlockDomain(domain);
               } catch { /* ignore */ }
             }}
             style={{
@@ -479,6 +511,7 @@ export default function NetworkPanel() {
                   request: { method: r.method, url: r.url, httpVersion: "HTTP/2", headers: [], queryString: [], bodySize: r.requestSize ?? -1 },
                   response: { status: r.statusCode, statusText: "", httpVersion: "HTTP/2", headers: [], content: { size: r.responseSize ?? -1, mimeType: "application/json" }, bodySize: r.responseSize ?? -1 },
                   timings: { send: 0, wait: r.latencyMs, receive: 0 },
+                  _traffic_category: r.category || "Unknown",
                 })),
               },
             };
@@ -559,7 +592,7 @@ export default function NetworkPanel() {
             const count = () =>
               cat === "All"
                 ? requests().length
-                : requests().filter((r) => (r.category || "Unknown") === cat).length;
+                : requests().filter((r) => (r.category || "unknown").toLowerCase() === cat.toLowerCase()).length;
             return (
               <button
                 data-testid={`category-chip-${cat.toLowerCase()}`}
@@ -646,7 +679,22 @@ export default function NetworkPanel() {
 
       {/* Rules Editor Panel */}
       <Show when={showRules() && store.state.activeSessionId}>
-        <RuleEditor />
+        <RuleEditor
+          sessionId={store.state.activeSessionId!}
+          httpApiUrl={store.state.httpApiUrl!}
+          refreshKey={rulesVersion()}
+        />
+      </Show>
+
+      {/* Custom mode configuration panels */}
+      <Show when={proxyMode() === "custom" && store.state.activeSessionId}>
+        <>
+          <InjectPanel />
+          <RewritePanel />
+          <KeyManagementPanel />
+          <RateLimitPanel />
+          <AuditPanel />
+        </>
       </Show>
 
       {/* Request list */}

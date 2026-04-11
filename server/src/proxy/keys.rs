@@ -7,8 +7,8 @@ use dashmap::DashMap;
 use ring::aead;
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::warn;
+use std::path::{Path, PathBuf};
+use tracing::{info, warn};
 
 /// An API key entry in the key store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +42,65 @@ fn derive_key() -> aead::LessSafeKey {
     let unbound_key =
         aead::UnboundKey::new(&aead::AES_256_GCM, &key_bytes).expect("AES key creation failed");
     aead::LessSafeKey::new(unbound_key)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct PersistedKeyStore {
+    keys: Vec<ApiKeyEntry>,
+}
+
+fn key_store_path() -> PathBuf {
+    std::env::var("NOAIDE_API_KEYS_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/data/noaide/api-keys.json"))
+}
+
+fn save_to_path(store: &KeyStore, path: &Path) -> Result<(), std::io::Error> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut keys = store.list_keys();
+    keys.sort_by(|left, right| left.id.cmp(&right.id));
+    let payload = PersistedKeyStore { keys };
+    let json = serde_json::to_string_pretty(&payload)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(path, json)?;
+    debug_assert!(path.is_absolute());
+    Ok(())
+}
+
+fn load_from_path(store: &KeyStore, path: &Path) -> Result<usize, std::io::Error> {
+    let json = match std::fs::read_to_string(path) {
+        Ok(json) => json,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e),
+    };
+
+    let payload: PersistedKeyStore = serde_json::from_str(&json)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    for entry in &payload.keys {
+        store.keys.insert(entry.id.clone(), entry.clone());
+    }
+
+    Ok(payload.keys.len())
+}
+
+pub fn save_to_disk(store: &KeyStore) -> Result<(), std::io::Error> {
+    let path = key_store_path();
+    save_to_path(store, &path)?;
+    info!(path = %path.display(), count = store.keys.len(), "persisted api keys to disk");
+    Ok(())
+}
+
+pub fn load_from_disk(store: &KeyStore) -> Result<usize, std::io::Error> {
+    let path = key_store_path();
+    let loaded = load_from_path(store, &path)?;
+    if loaded > 0 {
+        info!(path = %path.display(), loaded = loaded, "restored api keys from disk");
+    }
+    Ok(loaded)
 }
 
 /// Encrypt an API key string.
@@ -90,15 +149,15 @@ pub fn decrypt_key(encrypted: &str) -> Result<String, String> {
 /// Key store with round-robin selection and rate-limit tracking.
 pub struct KeyStore {
     keys: DashMap<String, ApiKeyEntry>,
-    /// Round-robin counter
-    counter: AtomicU64,
+    /// Round-robin counters keyed by provider label.
+    provider_counters: DashMap<String, u64>,
 }
 
 impl KeyStore {
     pub fn new() -> Self {
         Self {
             keys: DashMap::new(),
-            counter: AtomicU64::new(0),
+            provider_counters: DashMap::new(),
         }
     }
 
@@ -126,6 +185,16 @@ impl KeyStore {
         self.keys.remove(id).is_some()
     }
 
+    /// Explicitly set whether a key is active.
+    pub fn set_active(&self, id: &str, active: bool) -> bool {
+        if let Some(mut entry) = self.keys.get_mut(id) {
+            entry.active = active;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Get all keys (without decrypted values).
     pub fn list_keys(&self) -> Vec<ApiKeyEntry> {
         self.keys.iter().map(|r| r.value().clone()).collect()
@@ -134,7 +203,7 @@ impl KeyStore {
     /// Select the next active key for a provider using round-robin.
     /// Returns (key_id, decrypted_key) or None if no active keys.
     pub fn select_key(&self, provider: &str) -> Option<(String, String)> {
-        let active: Vec<_> = self
+        let mut active: Vec<_> = self
             .keys
             .iter()
             .filter(|r| r.value().provider == provider && r.value().active)
@@ -145,7 +214,19 @@ impl KeyStore {
             return None;
         }
 
-        let idx = self.counter.fetch_add(1, Ordering::Relaxed) as usize % active.len();
+        // DashMap iteration order is not stable. Sort so round-robin selection
+        // stays deterministic across calls and providers.
+        active.sort_by(|left, right| left.0.cmp(&right.0));
+
+        let idx = {
+            let mut counter = self
+                .provider_counters
+                .entry(provider.to_string())
+                .or_insert(0);
+            let idx = (*counter as usize) % active.len();
+            *counter += 1;
+            idx
+        };
         let (id, encrypted) = &active[idx];
 
         match decrypt_key(encrypted) {
@@ -236,6 +317,36 @@ impl Default for KeyStore {
 mod tests {
     use super::*;
 
+    fn temp_keys_path() -> PathBuf {
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("noaide-api-keys-{id}.json"))
+    }
+
+    #[test]
+    fn persist_roundtrip_uses_encrypted_values() {
+        let path = temp_keys_path();
+        let store = KeyStore::new();
+        store.add_key(
+            "anthropic",
+            "sk-ant-persist-roundtrip-1234567890",
+            "Persist Roundtrip",
+        );
+
+        save_to_path(&store, &path).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(!content.contains("sk-ant-persist-roundtrip-1234567890"));
+
+        let loaded = KeyStore::new();
+        assert_eq!(load_from_path(&loaded, &path).unwrap(), 1);
+        let (_, plaintext) = loaded.select_key("anthropic").unwrap();
+        assert_eq!(plaintext, "sk-ant-persist-roundtrip-1234567890");
+
+        let _ = std::fs::remove_file(path);
+    }
+
     #[test]
     fn encrypt_decrypt_roundtrip() {
         let key = "sk-ant-api03-test-key-1234567890";
@@ -259,19 +370,19 @@ mod tests {
     }
 
     #[test]
-    fn round_robin_distribution() {
+    fn round_robin_distribution_is_balanced() {
         let store = KeyStore::new();
         store.add_key("anthropic", "key-1", "Key 1");
         store.add_key("anthropic", "key-2", "Key 2");
 
-        let mut keys_used = std::collections::HashSet::new();
-        for _ in 0..10 {
+        let mut counts = std::collections::HashMap::new();
+        for _ in 0..4 {
             if let Some((_, key)) = store.select_key("anthropic") {
-                keys_used.insert(key);
+                *counts.entry(key).or_insert(0usize) += 1;
             }
         }
-        // Both keys should have been used
-        assert_eq!(keys_used.len(), 2);
+        assert_eq!(counts.get("key-1"), Some(&2));
+        assert_eq!(counts.get("key-2"), Some(&2));
     }
 
     #[test]
@@ -314,5 +425,29 @@ mod tests {
 
         let (_, key) = store.select_key("openai").unwrap();
         assert_eq!(key, "key-oai");
+    }
+
+    #[test]
+    fn round_robin_is_independent_per_provider() {
+        let store = KeyStore::new();
+        store.add_key("anthropic", "ant-a", "Ant A");
+        store.add_key("anthropic", "ant-b", "Ant B");
+        store.add_key("openai", "oai-a", "OAI A");
+        store.add_key("openai", "oai-b", "OAI B");
+
+        let mut ant_counts = std::collections::HashMap::new();
+        let mut oai_counts = std::collections::HashMap::new();
+
+        for _ in 0..4 {
+            let (_, ant_key) = store.select_key("anthropic").unwrap();
+            *ant_counts.entry(ant_key).or_insert(0usize) += 1;
+            let (_, oai_key) = store.select_key("openai").unwrap();
+            *oai_counts.entry(oai_key).or_insert(0usize) += 1;
+        }
+
+        assert_eq!(ant_counts.get("ant-a"), Some(&2));
+        assert_eq!(ant_counts.get("ant-b"), Some(&2));
+        assert_eq!(oai_counts.get("oai-a"), Some(&2));
+        assert_eq!(oai_counts.get("oai-b"), Some(&2));
     }
 }

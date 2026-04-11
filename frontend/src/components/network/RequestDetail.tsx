@@ -263,12 +263,38 @@ export default function RequestDetail(props: RequestDetailProps) {
     return null;
   });
 
+  const decodedResponseBody = createMemo(function () {
+    const body = props.request.responseBody;
+    const parsed = tryParseJson(body);
+    if (parsed) {
+      return {
+        text: JSON.stringify(parsed, null, 2),
+        isBase64: false,
+      };
+    }
+
+    const b64 = tryDecodeBase64(body);
+    if (b64) {
+      const innerParsed = tryParseJson(b64);
+      return {
+        text: innerParsed ? JSON.stringify(innerParsed, null, 2) : b64,
+        isBase64: true,
+      };
+    }
+
+    return {
+      text: body,
+      isBase64: false,
+    };
+  });
+
   const requestParsed = createMemo(function () {
     return parseRequestBody(props.request.requestBody);
   });
 
   return (
     <div
+      data-testid="request-detail"
       style={{
         display: "flex",
         "flex-direction": "column",
@@ -324,10 +350,7 @@ export default function RequestDetail(props: RequestDetailProps) {
                   <button
                     data-testid="copy-decoded-btn"
                     onClick={() => {
-                      const body = props.request.responseBody;
-                      const parsed = tryParseJson(body);
-                      const decoded = parsed ? JSON.stringify(parsed, null, 2) : (tryDecodeBase64(body) || body);
-                      void navigator.clipboard.writeText(decoded);
+                      void navigator.clipboard.writeText(decodedResponseBody().text);
                     }}
                     style={{
                       padding: "2px 8px",
@@ -342,18 +365,15 @@ export default function RequestDetail(props: RequestDetailProps) {
                     Copy decoded
                   </button>
                 </div>
-                <pre style={codeBlockStyle}>
-                  {(() => {
-                    const body = props.request.responseBody;
-                    const parsed = tryParseJson(body);
-                    if (parsed) return JSON.stringify(parsed, null, 2);
-                    const b64 = tryDecodeBase64(body);
-                    if (b64) {
-                      const innerParsed = tryParseJson(b64);
-                      return innerParsed ? JSON.stringify(innerParsed, null, 2) : b64;
-                    }
-                    return body;
-                  })()}
+                <pre
+                  data-testid={
+                    decodedResponseBody().isBase64
+                      ? "base64-decoded"
+                      : "decoded-body"
+                  }
+                  style={codeBlockStyle}
+                >
+                  {decodedResponseBody().text}
                 </pre>
               </div>
             }
@@ -412,6 +432,7 @@ export default function RequestDetail(props: RequestDetailProps) {
                   </span>
                 </Show>
                 <button
+                  data-testid="raw-decoded-toggle"
                   onClick={() => setShowRawResponse(true)}
                   style={{
                     "margin-left": "auto",

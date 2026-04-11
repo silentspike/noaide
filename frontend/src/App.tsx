@@ -1,5 +1,5 @@
-import { Router, Route } from "@solidjs/router";
-import { createContext, useContext, createSignal, Show, For, onMount, onCleanup } from "solid-js";
+import { Router, Route, useLocation, useNavigate, useParams } from "@solidjs/router";
+import { createContext, useContext, createSignal, Show, For, onMount, onCleanup, createEffect, untrack } from "solid-js";
 import ThreePanel from "./layouts/ThreePanel";
 import MobileLayout from "./layouts/MobileLayout";
 import ChatPanel from "./components/chat/ChatPanel";
@@ -246,8 +246,39 @@ function Shell() {
   const [centerTab, setCenterTab] = createSignal<CenterTabId>("chat");
 
   const store = useSession();
+  const params = useParams<{ id?: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const isMac2 = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
   const mod = isMac2 ? "\u2318" : "Ctrl+";
+
+  createEffect(() => {
+    const routeSessionId = params.id ?? null;
+    if (!routeSessionId) return;
+    const activeSessionId = untrack(() => store.state.activeSessionId);
+    if (routeSessionId !== activeSessionId) {
+      store.setActiveSession(routeSessionId);
+    }
+  });
+
+  createEffect(() => {
+    const activeSessionId = store.state.activeSessionId;
+    const routeSessionId = params.id ?? null;
+    const pathname = location.pathname;
+
+    if (!activeSessionId) {
+      if (routeSessionId) return;
+      if (pathname !== "/") {
+        navigate("/", { replace: true });
+      }
+      return;
+    }
+
+    const targetPath = `/session/${activeSessionId}`;
+    if (pathname !== targetPath) {
+      navigate(targetPath, { replace: true });
+    }
+  });
 
   const commands = () => {
     const cmds = [
