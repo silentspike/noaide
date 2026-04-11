@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -82,15 +83,92 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for PrefixedIo<S> {
 /// Try to decompress a zstd-encoded request body for logging.
 /// Codex CLI sends `content-encoding: zstd` on request bodies.
 /// Original compressed bytes are still forwarded to upstream unchanged.
-fn try_decompress_request(body: &[u8], headers: &[(String, String)]) -> Option<Vec<u8>> {
-    let has_zstd = headers
+fn request_uses_zstd(headers: &[(String, String)]) -> bool {
+    headers
         .iter()
-        .any(|(k, v)| k == "content-encoding" && v.contains("zstd"));
-    if has_zstd {
-        zstd::stream::decode_all(body).ok()
+        .any(|(k, v)| k.eq_ignore_ascii_case("content-encoding") && v.contains("zstd"))
+}
+
+fn try_decompress_request(body: &[u8], headers: &[(String, String)]) -> Option<Vec<u8>> {
+    if request_uses_zstd(headers) {
+        zstd::stream::decode_all(Cursor::new(body)).ok()
     } else {
         None
     }
+}
+
+fn try_recompress_request(body: &[u8], headers: &[(String, String)]) -> Option<Vec<u8>> {
+    if request_uses_zstd(headers) {
+        zstd::stream::encode_all(Cursor::new(body), 0).ok()
+    } else {
+        Some(body.to_vec())
+    }
+}
+
+fn apply_forward_headers(
+    mut builder: reqwest::RequestBuilder,
+    headers: &[(String, String)],
+) -> reqwest::RequestBuilder {
+    for (name_str, value_str) in headers {
+        if name_str.eq_ignore_ascii_case("host")
+            || name_str.eq_ignore_ascii_case("connection")
+            || name_str.eq_ignore_ascii_case("transfer-encoding")
+            || name_str.eq_ignore_ascii_case("accept-encoding")
+            || name_str.eq_ignore_ascii_case("content-length")
+        {
+            continue;
+        }
+
+        let Ok(name) = reqwest::header::HeaderName::from_bytes(name_str.as_bytes()) else {
+            warn!(header = %name_str, "skipping invalid request header name");
+            continue;
+        };
+        let Ok(value) = reqwest::header::HeaderValue::from_str(value_str) else {
+            warn!(header = %name_str, "skipping invalid request header value");
+            continue;
+        };
+        builder = builder.header(name, value);
+    }
+    builder
+}
+
+fn rotated_key_header(provider: ApiProvider) -> (&'static str, bool) {
+    match provider {
+        ApiProvider::Anthropic => ("x-api-key", false),
+        ApiProvider::Google | ApiProvider::GoogleCodeAssist => ("x-goog-api-key", false),
+        ApiProvider::OpenAI | ApiProvider::ChatGPT => ("authorization", true),
+    }
+}
+
+fn apply_rotated_api_key(
+    headers: &mut Vec<(String, String)>,
+    provider: ApiProvider,
+    key_store: &super::keys::KeyStore,
+) {
+    if !key_store.has_active_keys(provider.label()) {
+        return;
+    }
+
+    let Some((_key_id, plaintext_key)) = key_store.select_key(provider.label()) else {
+        return;
+    };
+
+    let (header_name, use_bearer_prefix) = rotated_key_header(provider);
+    let header_value = if use_bearer_prefix {
+        format!("Bearer {plaintext_key}")
+    } else {
+        plaintext_key
+    };
+
+    headers.retain(|(name, _)| {
+        !name.eq_ignore_ascii_case(header_name)
+            && !(provider == ApiProvider::Anthropic && name.eq_ignore_ascii_case("authorization"))
+            && !(matches!(
+                provider,
+                ApiProvider::Google | ApiProvider::GoogleCodeAssist
+            ) && name.eq_ignore_ascii_case("authorization"))
+    });
+    headers.push((header_name.to_string(), header_value));
 }
 
 /// Maximum number of captured requests kept in memory
@@ -304,6 +382,62 @@ pub async fn proxy_handler(
     let base_url = provider.base_url();
     let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
     let target_url = format!("{base_url}{effective_path}{query}");
+    let target_host = base_url
+        .strip_prefix("https://")
+        .or_else(|| base_url.strip_prefix("http://"))
+        .unwrap_or(base_url)
+        .split('/')
+        .next()
+        .unwrap_or("");
+    let request_category = super::classify::classify_request(target_host, effective_path);
+
+    // Reverse-proxy requests can still be telemetry (for example Codex posts
+    // analytics events to chatgpt.com/backend-api/codex/analytics-events/events).
+    // Enforce Pure/Lockdown here too, not just in CONNECT MITM.
+    if let Some(ref sid) = session_id
+        && state
+            .proxy_modes
+            .should_block(sid, &request_category.to_string())
+    {
+        info!(
+            request_id = %request_id,
+            target_url = %target_url,
+            session = %sid,
+            category = %request_category,
+            mode = ?state.proxy_modes.get(sid),
+            "reverse-proxy request blocked by proxy mode"
+        );
+
+        let log_entry = ApiRequestLog {
+            id: request_id,
+            session_id: session_id.clone(),
+            method: method.to_string(),
+            url: target_url.clone(),
+            status_code: 403,
+            latency_ms: start.elapsed().as_millis() as u64,
+            request_size: 0,
+            response_size: 0,
+            request_body: String::new(),
+            response_body: format!("Blocked by proxy mode ({:?})", state.proxy_modes.get(sid)),
+            request_headers: vec![],
+            response_headers: vec![],
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
+            category: Some(request_category.to_string()),
+        };
+        {
+            let mut cap = state.captured.write().await;
+            if cap.len() >= MAX_CAPTURED_REQUESTS {
+                cap.pop_front();
+            }
+            cap.push_back(log_entry.clone());
+        }
+        let _ = state.event_tx.send(log_entry);
+
+        return (StatusCode::FORBIDDEN, "Blocked by proxy mode").into_response();
+    }
 
     // ── WebSocket Upgrade Detection ────────────────────────────────────
     // Check BEFORE body.collect() — consuming the body prevents hyper upgrade.
@@ -342,6 +476,19 @@ pub async fn proxy_handler(
         })
         .collect();
 
+    let mut transform_bytes = if request_uses_zstd(&request_headers) {
+        match try_decompress_request(&request_bytes, &request_headers) {
+            Some(decoded) => Bytes::from(decoded),
+            None => {
+                warn!(request_id = %request_id, "failed to decompress zstd request body for transforms");
+                request_bytes.clone()
+            }
+        }
+    } else {
+        request_bytes.clone()
+    };
+    let mut request_body_modified = false;
+
     // ── Intercept Gate ──────────────────────────────────────────────────
     // If this session's intercept mode is Manual, hold the request and wait
     // for a user decision (Forward/Drop) via the API.
@@ -360,84 +507,6 @@ pub async fn proxy_handler(
         "intercept decision"
     );
 
-    if should_intercept {
-        let intercept_id = uuid::Uuid::new_v4().to_string();
-        let (decision_tx, decision_rx) = oneshot::channel();
-
-        let pending = PendingIntercept {
-            id: intercept_id.clone(),
-            session_id: session_id.clone(),
-            method: method.to_string(),
-            url: target_url.clone(),
-            provider,
-            request_body: request_bytes.to_vec(),
-            request_headers: request_headers.clone(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as i64,
-            decision_tx,
-        };
-
-        state
-            .pending_intercepts
-            .write()
-            .await
-            .insert(intercept_id.clone(), pending);
-
-        info!(
-            intercept_id = %intercept_id,
-            session = ?session_id,
-            method = %method,
-            url = %target_url,
-            "request intercepted, awaiting decision"
-        );
-
-        // Wait indefinitely for user decision (no timeout — user may need
-        // minutes to inspect/edit the request, like in Burp Suite).
-        // If the server shuts down, the sender is dropped and we auto-forward.
-        // If the CLI client disconnects, Tokio cancels this handler future,
-        // dropping decision_rx. The dead PendingIntercept is cleaned up when
-        // someone tries to forward/drop it via the API (sender.is_closed() check).
-        let decision = match decision_rx.await {
-            Ok(decision) => decision,
-            Err(_) => {
-                // Sender dropped (server shutting down or API cleanup) — forward automatically
-                warn!(intercept_id = %intercept_id, "intercept sender dropped, auto-forwarding");
-                InterceptDecision::Forward {
-                    modified_body: None,
-                    modified_headers: None,
-                }
-            }
-        };
-
-        // Remove from pending (may already be removed by timeout branch above)
-        state.pending_intercepts.write().await.remove(&intercept_id);
-
-        match decision {
-            InterceptDecision::Forward {
-                modified_body,
-                modified_headers,
-            } => {
-                if let Some(body) = modified_body {
-                    request_bytes = Bytes::from(body);
-                }
-                if let Some(hdrs) = modified_headers {
-                    request_headers = hdrs;
-                }
-                info!(intercept_id = %intercept_id, "intercepted request forwarded");
-            }
-            InterceptDecision::Drop => {
-                info!(intercept_id = %intercept_id, "intercepted request dropped");
-                return (
-                    StatusCode::from_u16(499).unwrap_or(StatusCode::BAD_REQUEST),
-                    "Request dropped by interceptor",
-                )
-                    .into_response();
-            }
-        }
-    }
-
     // ── Image Injection ────────────────────────────────────────────────
     // If the GUI user has queued images for this session, inject them into
     // the API request body. Supports multiple API formats:
@@ -455,8 +524,8 @@ pub async fn proxy_handler(
         let mut pending = state.pending_images.write().await;
         if let Some(images) = pending.remove(sid)
             && !images.is_empty()
-            && !request_bytes.is_empty()
-            && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+            && !transform_bytes.is_empty()
+            && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&transform_bytes)
         {
             let mut injected = false;
 
@@ -546,7 +615,8 @@ pub async fn proxy_handler(
                     provider = %provider.label(),
                     "injected pending images into API request"
                 );
-                request_bytes = Bytes::from(modified);
+                transform_bytes = Bytes::from(modified);
+                request_body_modified = true;
             }
         }
     } // skip_image_injection
@@ -557,8 +627,8 @@ pub async fn proxy_handler(
     let skip_system_injection = provider == ApiProvider::GoogleCodeAssist
         && !effective_path.contains("streamGenerateContent");
     if !skip_system_injection
-        && !request_bytes.is_empty()
-        && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+        && !transform_bytes.is_empty()
+        && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&transform_bytes)
     {
         let inject_config = if let Some(ref sid) = session_id {
             state.inject_store.get(sid)
@@ -576,64 +646,135 @@ pub async fn proxy_handler(
                 presets = ?inject_config.presets,
                 "injected system prompt into API request"
             );
-            request_bytes = Bytes::from(modified);
+            transform_bytes = Bytes::from(modified);
+            request_body_modified = true;
         }
     }
 
     // ── Request Body Rewrite ──────────────────────────────────────────
     // Apply per-session model override, temperature, max_tokens, pure mode.
-    if !request_bytes.is_empty() {
+    let skip_body_rewrite = provider == ApiProvider::GoogleCodeAssist
+        && !effective_path.contains("generateContent")
+        && !effective_path.contains("streamGenerateContent");
+    if !transform_bytes.is_empty() {
         let rewrite_config = if let Some(ref sid) = session_id {
             state.rewrite_store.get(sid)
         } else {
             super::rewrite::RewriteConfig::default()
         };
-        if rewrite_config.is_active()
-            && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&request_bytes)
+        if !skip_body_rewrite
+            && rewrite_config.is_active()
+            && let Ok(mut body_json) = serde_json::from_slice::<serde_json::Value>(&transform_bytes)
             && super::rewrite::apply_rewrites(&mut body_json, provider, &rewrite_config)
             && let Ok(modified) = serde_json::to_vec(&body_json)
         {
-            request_bytes = Bytes::from(modified);
+            transform_bytes = Bytes::from(modified);
+            request_body_modified = true;
         }
     }
+
+    if request_body_modified {
+        request_bytes = match try_recompress_request(&transform_bytes, &request_headers) {
+            Some(reencoded) => Bytes::from(reencoded),
+            None => {
+                warn!(request_id = %request_id, "failed to recompress modified zstd request body");
+                return (StatusCode::BAD_GATEWAY, "Bad Gateway").into_response();
+            }
+        };
+    }
+
+    // ── Intercept Gate ──────────────────────────────────────────────────
+    // Hold the fully transformed request so the pending body reflects the
+    // real upstream payload after image injection, prompt injection, and rewrite.
+    if should_intercept {
+        let intercept_id = uuid::Uuid::new_v4().to_string();
+        let (decision_tx, decision_rx) = oneshot::channel();
+
+        let pending = PendingIntercept {
+            id: intercept_id.clone(),
+            session_id: session_id.clone(),
+            method: method.to_string(),
+            url: target_url.clone(),
+            provider,
+            request_body: request_bytes.to_vec(),
+            request_headers: request_headers.clone(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64,
+            decision_tx,
+        };
+
+        state
+            .pending_intercepts
+            .write()
+            .await
+            .insert(intercept_id.clone(), pending);
+
+        info!(
+            intercept_id = %intercept_id,
+            session = ?session_id,
+            method = %method,
+            url = %target_url,
+            "request intercepted, awaiting decision"
+        );
+
+        let decision = match decision_rx.await {
+            Ok(decision) => decision,
+            Err(_) => {
+                warn!(intercept_id = %intercept_id, "intercept sender dropped, auto-forwarding");
+                InterceptDecision::Forward {
+                    modified_body: None,
+                    modified_headers: None,
+                }
+            }
+        };
+
+        state.pending_intercepts.write().await.remove(&intercept_id);
+
+        match decision {
+            InterceptDecision::Forward {
+                modified_body,
+                modified_headers,
+            } => {
+                if let Some(hdrs) = modified_headers {
+                    request_headers = hdrs;
+                }
+                if let Some(body) = modified_body {
+                    request_bytes = match try_recompress_request(&body, &request_headers) {
+                        Some(reencoded) => Bytes::from(reencoded),
+                        None => {
+                            warn!(intercept_id = %intercept_id, "failed to recompress modified intercept body");
+                            return (StatusCode::BAD_GATEWAY, "Bad Gateway").into_response();
+                        }
+                    };
+                }
+                info!(intercept_id = %intercept_id, "intercepted request forwarded");
+            }
+            InterceptDecision::Drop => {
+                info!(intercept_id = %intercept_id, "intercepted request dropped");
+                return (
+                    StatusCode::from_u16(499).unwrap_or(StatusCode::BAD_REQUEST),
+                    "Request dropped by interceptor",
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // ── API Key Rotation ──────────────────────────────────────────────
+    // Apply the selected provider key to the mutable header set so the
+    // actual forwarded headers and the captured/logged headers stay aligned.
+    apply_rotated_api_key(&mut request_headers, provider, &state.key_store);
 
     // ── Build forwarding request ────────────────────────────────────────
 
     let mut req_builder = state.client.request(method.clone(), &target_url);
 
-    // Forward headers (skip hop-by-hop + accept-encoding + content-length).
-    // Stripping accept-encoding lets reqwest handle decompression automatically,
-    // giving us cleartext response bodies for logging in the Network Tab.
-    // Content-length is stripped so reqwest sets it from the actual body
-    // (which may differ from the original after interceptor body modifications).
-    for (name, value) in headers.iter() {
-        let name_str = name.as_str();
-        if name_str == "host"
-            || name_str == "connection"
-            || name_str == "transfer-encoding"
-            || name_str == "accept-encoding"
-            || name_str == "content-length"
-        {
-            continue;
-        }
-        req_builder = req_builder.header(name.clone(), value.clone());
-    }
-
-    // ── API Key Rotation ──────────────────────────────────────────────
-    // If KeyStore has active keys for this provider, replace the Authorization header.
-    if state.key_store.has_active_keys(provider.label())
-        && let Some((_key_id, plaintext_key)) = state.key_store.select_key(provider.label())
-    {
-        let auth_value = match provider {
-            ApiProvider::Anthropic => plaintext_key.to_string(),
-            _ => format!("Bearer {plaintext_key}"),
-        };
-        let header_name = match provider {
-            ApiProvider::Anthropic => "x-api-key",
-            _ => "authorization",
-        };
-        req_builder = req_builder.header(header_name, auth_value);
-    }
+    // Forward the current mutable header set. This preserves manual header edits
+    // made in the intercept UI and keeps content-encoding aligned with any
+    // re-encoded request body after inject/rewrite transforms.
+    req_builder = apply_forward_headers(req_builder, &request_headers);
 
     if !request_bytes.is_empty() {
         req_builder = req_builder.body(request_bytes.to_vec());
@@ -646,18 +787,7 @@ pub async fn proxy_handler(
             // Retry once on connection error
             warn!("upstream connection failed, retrying: {e}");
             let mut retry_builder = state.client.request(method.clone(), &target_url);
-            for (name, value) in headers.iter() {
-                let name_str = name.as_str();
-                if name_str == "host"
-                    || name_str == "connection"
-                    || name_str == "transfer-encoding"
-                    || name_str == "accept-encoding"
-                    || name_str == "content-length"
-                {
-                    continue;
-                }
-                retry_builder = retry_builder.header(name.clone(), value.clone());
-            }
+            retry_builder = apply_forward_headers(retry_builder, &request_headers);
             if !request_bytes.is_empty() {
                 retry_builder = retry_builder.body(request_bytes.to_vec());
             }
@@ -1893,16 +2023,22 @@ async fn handle_websocket_proxy(
     req: axum::extract::Request,
 ) -> Response {
     use axum::extract::ws::WebSocketUpgrade;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
     // Build the upstream WebSocket URL (wss:// for https://)
     let ws_url = target_url
         .replacen("https://", "wss://", 1)
         .replacen("http://", "ws://", 1);
 
-    // Forward relevant headers to upstream (auth, cookies, etc.)
-    let mut ws_request = tokio_tungstenite::tungstenite::http::Request::builder()
-        .uri(&ws_url)
-        .method("GET");
+    // Start from tungstenite's client request so it generates a valid
+    // WebSocket handshake (host, upgrade, version, random key).
+    let mut ws_request = match ws_url.as_str().into_client_request() {
+        Ok(request) => request,
+        Err(e) => {
+            warn!(error = %e, url = %ws_url, "failed to build upstream WS request");
+            return (StatusCode::BAD_GATEWAY, "Bad Gateway").into_response();
+        }
+    };
 
     // Copy important headers from the original request
     let original_headers = req.headers();
@@ -1915,29 +2051,12 @@ async fn handle_websocket_proxy(
             | "connection"
             | "sec-websocket-key"
             | "sec-websocket-version"
-            | "sec-websocket-extensions"
-            | "sec-websocket-protocol" => continue,
+            | "sec-websocket-extensions" => continue,
             _ => {
-                if let Ok(header_name) =
-                    tokio_tungstenite::tungstenite::http::HeaderName::from_bytes(name.as_ref())
-                    && let Ok(header_value) =
-                        tokio_tungstenite::tungstenite::http::HeaderValue::from_bytes(
-                            value.as_bytes(),
-                        )
-                {
-                    ws_request = ws_request.header(header_name, header_value);
-                }
+                ws_request.headers_mut().append(name.clone(), value.clone());
             }
         }
     }
-
-    let ws_request = match ws_request.body(()) {
-        Ok(r) => r,
-        Err(e) => {
-            warn!(error = %e, "failed to build upstream WS request");
-            return (StatusCode::BAD_GATEWAY, "Bad Gateway").into_response();
-        }
-    };
 
     // Connect to upstream WebSocket
     let (upstream_ws, _upstream_response) = match tokio_tungstenite::connect_async(ws_request).await
@@ -2120,6 +2239,48 @@ mod tests {
             detect_provider(&headers, "/v1beta/models/gemini-pro"),
             ApiProvider::Google
         );
+    }
+
+    #[test]
+    fn rotated_api_key_uses_expected_header_names() {
+        let store = super::super::keys::KeyStore::new();
+        store.add_key("anthropic", "sk-ant-test-1", "Anthropic");
+        store.add_key("openai", "sk-proj-test-1", "OpenAI"); // gitleaks:allow
+        store.add_key(
+            "google-codeassist",
+            "AIzaSyB1234567890abcdefghijklmnopqrst", // gitleaks:allow
+            "Google",
+        );
+
+        let mut anthropic_headers = vec![("authorization".to_string(), "Bearer stale".to_string())];
+        apply_rotated_api_key(&mut anthropic_headers, ApiProvider::Anthropic, &store);
+        assert!(anthropic_headers
+            .iter()
+            .any(|(name, value)| name == "x-api-key" && value == "sk-ant-test-1"));
+        assert!(!anthropic_headers
+            .iter()
+            .any(|(name, _)| name == "authorization"));
+
+        let mut openai_headers = vec![("authorization".to_string(), "Bearer stale".to_string())];
+        apply_rotated_api_key(&mut openai_headers, ApiProvider::OpenAI, &store);
+        assert!(openai_headers
+            .iter()
+            .any(|(name, value)| name == "authorization" && value == "Bearer sk-proj-test-1"));
+
+        let mut google_headers = vec![
+            (
+                "x-goog-api-key".to_string(),
+                "AIzaSy-stale-1234567890abcdefghijklmnopqrst".to_string(),
+            ),
+            ("authorization".to_string(), "Bearer stale".to_string()),
+        ];
+        apply_rotated_api_key(&mut google_headers, ApiProvider::GoogleCodeAssist, &store);
+        assert!(google_headers.iter().any(|(name, value)| {
+            name == "x-goog-api-key" && value == "AIzaSyB1234567890abcdefghijklmnopqrst"
+        }));
+        assert!(!google_headers
+            .iter()
+            .any(|(name, _)| name == "authorization"));
     }
 
     #[tokio::test]

@@ -77,8 +77,8 @@ thiserror = "2"
 anyhow = "1"
 zstd = "0.13"
 
-# WebSocket client (for whisper proxy)
-tokio-tungstenite = "0.26"
+# WebSocket client (Codex + other WSS upstreams)
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 
 # TLS MITM (CONNECT proxy)
 rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
@@ -90,4 +90,3 @@ rustls-native-certs = "0.8"
 
 # Git integration
 git2 = "0.20"
-

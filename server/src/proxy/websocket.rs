@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message as TungMessage;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use super::mitm::{self, ApiRequestLog};
 
@@ -51,19 +51,26 @@ pub async fn relay_frames(
 
             match msg {
                 axum::extract::ws::Message::Text(text) => {
+                    let outbound = transform_outgoing_text_frame(
+                        text.as_ref(),
+                        &url_for_out,
+                        session_for_out.as_deref(),
+                        &state_for_out,
+                    );
+
                     // Log text frame as WS-OUT
                     log_ws_frame(
                         &session_for_out,
                         &url_for_out,
                         "WS-OUT",
-                        Some(text.as_ref()),
-                        text.len(),
+                        Some(&outbound),
+                        outbound.len(),
                         &state_for_out,
                     )
                     .await;
 
                     if upstream_tx
-                        .send(TungMessage::Text(text.as_str().into()))
+                        .send(TungMessage::Text(outbound.into()))
                         .await
                         .is_err()
                     {
@@ -197,6 +204,70 @@ pub async fn relay_frames(
     info!(url = %url_for_out, "WebSocket relay ended");
 }
 
+fn transform_outgoing_text_frame(
+    text: &str,
+    url: &str,
+    session_id: Option<&str>,
+    state: &super::handler::ProxyState,
+) -> String {
+    let Some(session_id) = session_id else {
+        return text.to_string();
+    };
+
+    let Some(provider) = detect_ws_provider(url) else {
+        return text.to_string();
+    };
+
+    let Ok(mut body_json) = serde_json::from_str::<serde_json::Value>(text) else {
+        return text.to_string();
+    };
+
+    if body_json.get("type").and_then(|value| value.as_str()) != Some("response.create") {
+        return text.to_string();
+    }
+
+    let mut modified = false;
+
+    let inject_config = state.inject_store.get(session_id);
+    let injection_text = super::inject::build_injection(&inject_config);
+    if !injection_text.is_empty()
+        && super::inject::inject_into_body(&mut body_json, provider, &injection_text)
+    {
+        modified = true;
+    }
+
+    let rewrite_config = state.rewrite_store.get(session_id);
+    if rewrite_config.is_active()
+        && super::rewrite::apply_rewrites(&mut body_json, provider, &rewrite_config)
+    {
+        modified = true;
+    }
+
+    if !modified {
+        return text.to_string();
+    }
+
+    match serde_json::to_string(&body_json) {
+        Ok(serialized) => serialized,
+        Err(error) => {
+            warn!(error = %error, url = %url, "failed to serialize transformed websocket frame");
+            text.to_string()
+        }
+    }
+}
+
+fn detect_ws_provider(url: &str) -> Option<super::handler::ApiProvider> {
+    let parsed = reqwest::Url::parse(url).ok()?;
+    let host = parsed.host_str()?;
+    let path = parsed.path();
+
+    if host == "chatgpt.com" && path.starts_with("/backend-api/") {
+        return Some(super::handler::ApiProvider::ChatGPT);
+    }
+
+    None
+}
+
 /// Log a single WebSocket frame as an ApiRequestLog entry.
 ///
 /// Text frames include the (redacted) body content; binary frames log only metadata.
@@ -284,6 +355,7 @@ pub fn is_websocket_upgrade(headers: &axum::http::HeaderMap) -> bool {
 mod tests {
     use super::*;
     use axum::http::HeaderMap;
+    use super::super::handler::ApiProvider;
 
     #[test]
     fn detects_websocket_upgrade_headers() {
@@ -332,25 +404,7 @@ mod tests {
 
     #[tokio::test]
     async fn log_ws_frame_text_redacts_keys() {
-        use std::collections::{HashMap, VecDeque};
-        use tokio::sync::{RwLock, broadcast};
-
-        let (event_tx, _rx) = broadcast::channel(16);
-        let state = Arc::new(super::super::handler::ProxyState {
-            client: reqwest::Client::new(),
-            event_tx,
-            captured: RwLock::new(VecDeque::new()),
-            intercept_modes: RwLock::new(HashMap::new()),
-            pending_intercepts: RwLock::new(HashMap::new()),
-            pending_response_intercepts: RwLock::new(HashMap::new()),
-            pending_images: RwLock::new(HashMap::new()),
-            ca: None,
-            network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
-            proxy_modes: super::super::modes::ProxyModeStore::new(),
-            inject_store: super::super::inject::InjectStore::new(),
-            rewrite_store: super::super::rewrite::RewriteStore::new(),
-            key_store: super::super::keys::KeyStore::new(),
-        });
+        let state = Arc::new(test_proxy_state());
 
         let session = Some("test-session".to_string());
         let body_with_key = r#"{"key": "sk-ant-api03-secret123"}"#;
@@ -375,25 +429,7 @@ mod tests {
 
     #[tokio::test]
     async fn log_ws_frame_binary_shows_metadata() {
-        use std::collections::{HashMap, VecDeque};
-        use tokio::sync::{RwLock, broadcast};
-
-        let (event_tx, _rx) = broadcast::channel(16);
-        let state = Arc::new(super::super::handler::ProxyState {
-            client: reqwest::Client::new(),
-            event_tx,
-            captured: RwLock::new(VecDeque::new()),
-            intercept_modes: RwLock::new(HashMap::new()),
-            pending_intercepts: RwLock::new(HashMap::new()),
-            pending_response_intercepts: RwLock::new(HashMap::new()),
-            pending_images: RwLock::new(HashMap::new()),
-            ca: None,
-            network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
-            proxy_modes: super::super::modes::ProxyModeStore::new(),
-            inject_store: super::super::inject::InjectStore::new(),
-            rewrite_store: super::super::rewrite::RewriteStore::new(),
-            key_store: super::super::keys::KeyStore::new(),
-        });
+        let state = Arc::new(test_proxy_state());
 
         let session = Some("test-session".to_string());
 
@@ -413,5 +449,139 @@ mod tests {
         assert_eq!(entry.method, "WS-IN");
         assert!(entry.response_body.contains("binary frame"));
         assert!(entry.response_body.contains("4096"));
+    }
+
+    #[test]
+    fn transforms_codex_ws_response_create_with_inject_and_rewrite() {
+        let state = test_proxy_state();
+        state.inject_store.set(
+            "session-1".to_string(),
+            super::super::inject::InjectConfig {
+                presets: vec![],
+                custom_text: Some("ws inject".to_string()),
+            },
+        );
+        state.rewrite_store.set(
+            "session-1".to_string(),
+            super::super::rewrite::RewriteConfig {
+                model_override: Some("gpt-4o".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let original = serde_json::json!({
+            "type": "response.create",
+            "model": "gpt-5.4",
+            "instructions": "existing instructions",
+            "input": [{"role": "user", "content": [{"type": "input_text", "text": "hello"}]}],
+        });
+
+        let transformed = transform_outgoing_text_frame(
+            &serde_json::to_string(&original).unwrap(),
+            "wss://chatgpt.com/backend-api/codex/responses",
+            Some("session-1"),
+            &state,
+        );
+
+        let parsed: serde_json::Value = serde_json::from_str(&transformed).unwrap();
+        assert_eq!(parsed["model"], "gpt-4o");
+        let instructions = parsed["instructions"].as_str().unwrap();
+        assert!(instructions.contains("existing instructions"));
+        assert!(instructions.contains("ws inject"));
+    }
+
+    #[test]
+    fn transforms_codex_ws_response_create_with_pure_mode() {
+        let state = test_proxy_state();
+        state.rewrite_store.set(
+            "session-1".to_string(),
+            super::super::rewrite::RewriteConfig {
+                pure_mode: true,
+                ..Default::default()
+            },
+        );
+
+        let original = serde_json::json!({
+            "type": "response.create",
+            "model": "gpt-5.4",
+            "stream": true,
+            "instructions": "existing instructions",
+            "tools": [{"type": "function"}],
+            "input": [{"role": "user", "content": [{"type": "input_text", "text": "hello"}]}],
+        });
+
+        let transformed = transform_outgoing_text_frame(
+            &serde_json::to_string(&original).unwrap(),
+            "wss://chatgpt.com/backend-api/codex/responses",
+            Some("session-1"),
+            &state,
+        );
+
+        let parsed: serde_json::Value = serde_json::from_str(&transformed).unwrap();
+        let obj = parsed.as_object().unwrap();
+        assert_eq!(obj.len(), 2);
+        assert_eq!(parsed["model"], "gpt-5.4");
+        assert!(parsed["input"].is_array());
+        assert!(parsed.get("stream").is_none());
+        assert!(parsed.get("instructions").is_none());
+        assert!(parsed.get("tools").is_none());
+    }
+
+    #[test]
+    fn leaves_non_response_create_ws_frames_unchanged() {
+        let state = test_proxy_state();
+        state.inject_store.set(
+            "session-1".to_string(),
+            super::super::inject::InjectConfig {
+                presets: vec![],
+                custom_text: Some("ws inject".to_string()),
+            },
+        );
+
+        let original = serde_json::json!({
+            "type": "response.cancel",
+            "instructions": "existing instructions",
+        });
+        let original_text = serde_json::to_string(&original).unwrap();
+
+        let transformed = transform_outgoing_text_frame(
+            &original_text,
+            "wss://chatgpt.com/backend-api/codex/responses",
+            Some("session-1"),
+            &state,
+        );
+
+        assert_eq!(transformed, original_text);
+    }
+
+    #[test]
+    fn detects_chatgpt_ws_provider() {
+        assert_eq!(
+            detect_ws_provider("wss://chatgpt.com/backend-api/codex/responses"),
+            Some(ApiProvider::ChatGPT)
+        );
+        assert_eq!(detect_ws_provider("wss://example.com/ws"), None);
+    }
+
+    fn test_proxy_state() -> super::super::handler::ProxyState {
+        use std::collections::{HashMap, VecDeque};
+        use tokio::sync::{broadcast, RwLock};
+
+        let (event_tx, _rx) = broadcast::channel(16);
+        super::super::handler::ProxyState {
+            client: reqwest::Client::new(),
+            event_tx,
+            captured: RwLock::new(VecDeque::new()),
+            intercept_modes: RwLock::new(HashMap::new()),
+            pending_intercepts: RwLock::new(HashMap::new()),
+            pending_response_intercepts: RwLock::new(HashMap::new()),
+            pending_images: RwLock::new(HashMap::new()),
+            ca: None,
+            network_rules: Arc::new(super::super::rules::NetworkRulesEngine::new()),
+            proxy_modes: super::super::modes::ProxyModeStore::new(),
+            inject_store: super::super::inject::InjectStore::new(),
+            rewrite_store: super::super::rewrite::RewriteStore::new(),
+            key_store: super::super::keys::KeyStore::new(),
+        }
     }
 }

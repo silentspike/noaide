@@ -1,6 +1,6 @@
-//! Traffic classification for CONNECT MITM proxy.
+//! Traffic classification for proxy traffic.
 //!
-//! Classifies network traffic by domain into categories
+//! Classifies reverse-proxy and CONNECT traffic into categories
 //! (Api, Telemetry, Auth, Update, Git, Unknown) for the
 //! network rules engine and Network Tab display.
 
@@ -62,6 +62,20 @@ static RULES: &[(&str, TrafficCategory)] = &[
     ("chatgpt.com", TrafficCategory::Api),
 ];
 
+/// Codex ChatGPT-backend analytics endpoint.
+///
+/// Upstream Codex currently posts analytics events to:
+/// `https://chatgpt.com/backend-api/codex/analytics-events/events`
+const CODEX_CHATGPT_ANALYTICS_PATH: &str = "/backend-api/codex/analytics-events/events";
+
+fn strip_port(host: &str) -> &str {
+    host.split(':').next().unwrap_or(host)
+}
+
+fn is_chatgpt_telemetry_path(domain: &str, path: &str) -> bool {
+    domain == "chatgpt.com" && path.starts_with(CODEX_CHATGPT_ANALYTICS_PATH)
+}
+
 /// Classify a domain (host without port) into a traffic category.
 ///
 /// Matching rules:
@@ -70,8 +84,20 @@ static RULES: &[(&str, TrafficCategory)] = &[
 ///
 /// Returns `Unknown` if no rule matches.
 pub fn classify_domain(host: &str) -> TrafficCategory {
-    // Strip port if present (e.g. "github.com:443" → "github.com")
-    let domain = host.split(':').next().unwrap_or(host);
+    classify_request(host, "")
+}
+
+/// Classify a request by host + path.
+///
+/// Some traffic needs path-aware classification. In particular, Codex emits
+/// analytics traffic on `chatgpt.com`, which would otherwise be lumped into
+/// the general ChatGPT API bucket.
+pub fn classify_request(host: &str, path: &str) -> TrafficCategory {
+    let domain = strip_port(host);
+
+    if is_chatgpt_telemetry_path(domain, path) {
+        return TrafficCategory::Telemetry;
+    }
 
     for &(pattern, category) in RULES {
         if domain == pattern {
@@ -85,6 +111,20 @@ pub fn classify_domain(host: &str) -> TrafficCategory {
     }
 
     TrafficCategory::Unknown
+}
+
+/// Classify an absolute URL into a traffic category.
+pub fn classify_url(url: &str) -> TrafficCategory {
+    let without_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+
+    let Some(path_start) = without_scheme.find('/') else {
+        return classify_request(without_scheme, "");
+    };
+
+    classify_request(&without_scheme[..path_start], &without_scheme[path_start..])
 }
 
 #[cfg(test)]
@@ -180,6 +220,30 @@ mod tests {
     fn test_chatgpt_is_api() {
         // chatgpt.com (without subdomain) is Api, NOT telemetry
         assert_eq!(classify_domain("chatgpt.com"), TrafficCategory::Api);
+    }
+
+    #[test]
+    fn test_chatgpt_analytics_events_are_telemetry() {
+        assert_eq!(
+            classify_request("chatgpt.com", "/backend-api/codex/analytics-events/events"),
+            TrafficCategory::Telemetry
+        );
+    }
+
+    #[test]
+    fn test_chatgpt_regular_backend_api_remains_api() {
+        assert_eq!(
+            classify_request("chatgpt.com", "/backend-api/codex/responses"),
+            TrafficCategory::Api
+        );
+    }
+
+    #[test]
+    fn test_chatgpt_analytics_url_with_port_is_telemetry() {
+        assert_eq!(
+            classify_url("https://chatgpt.com:443/backend-api/codex/analytics-events/events"),
+            TrafficCategory::Telemetry
+        );
     }
 
     #[test]

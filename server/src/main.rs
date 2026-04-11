@@ -146,7 +146,9 @@ async fn main() -> anyhow::Result<()> {
         &proxy_state.inject_store,
         &proxy_state.rewrite_store,
         &proxy_state.network_rules,
-    );
+        &proxy_state.intercept_modes,
+    )
+    .await;
 
     let proxy_port: u16 = std::env::var("NOAIDE_PROXY_PORT")
         .ok()
@@ -199,6 +201,16 @@ async fn main() -> anyhow::Result<()> {
             "restored session→plan mappings from previous run"
         );
         drop(mapping);
+    }
+
+    match noaide_server::proxy::keys::load_from_disk(&proxy_state.key_store) {
+        Ok(loaded) if loaded > 0 => {
+            info!(loaded = loaded, "restored api keys from disk");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            warn!(error = %e, "failed to restore api keys from disk");
+        }
     }
 
     let app_state = AppState {
@@ -317,7 +329,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/proxy/presets", get(api_list_presets))
         .route("/api/proxy/keys", get(api_list_keys).post(api_add_key))
-        .route("/api/proxy/keys/{key_id}", delete(api_delete_key))
+        .route(
+            "/api/proxy/keys/{key_id}",
+            delete(api_delete_key).put(api_update_key),
+        )
         .route("/api/proxy/keys/status", get(api_keys_status))
         .route("/api/proxy/audit", get(api_get_audit))
         .route("/api/proxy/audit/export", get(api_export_audit))
@@ -444,6 +459,20 @@ async fn main() -> anyhow::Result<()> {
         if script_path.exists() {
             tokio::spawn(async move {
                 loop {
+                    match std::net::TcpListener::bind(("0.0.0.0", whisper_port)) {
+                        Ok(listener) => drop(listener),
+                        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                            warn!(port = whisper_port, "whisper sidecar port already in use; skipping spawn");
+                            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                            continue;
+                        }
+                        Err(e) => {
+                            warn!(error = %e, port = whisper_port, "failed to probe whisper sidecar port");
+                            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                            continue;
+                        }
+                    }
+
                     info!(port = whisper_port, "spawning whisper sidecar");
                     let result = tokio::process::Command::new(&venv_python)
                         .arg(&script_path)
@@ -2166,17 +2195,33 @@ async fn api_send_message(
         let session_id = noaide_server::session::SessionId(uuid);
         let mgr = state.session_manager.read().await;
         if let Some(session) = mgr.get(&session_id) {
-            // Send text and CR separately. Ink-based TUIs (Gemini CLI) parse
-            // raw PTY input in chunks — if text and \r arrive in the same
-            // read() call, Ink treats \r as a newline character in the text
-            // field rather than as a Return key press that triggers submit.
-            // Splitting the write with a short delay ensures the TUI processes
-            // the text first (onChange) and then handles \r as Return (onSubmit).
-            // This also works correctly for Claude CLI which handles both forms.
+            let cli_type = {
+                let types = state.session_cli_types.read().await;
+                types.get(&uuid).copied()
+            };
+
             let send_result = async {
-                session.send_input(&body.text).await?;
-                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-                session.send_input("\r").await
+                if cli_type == Some(noaide_server::discovery::scanner::CliType::Gemini) {
+                    // Gemini CLI treats multi-character PTY writes as an untrusted
+                    // paste. In that mode Enter is downgraded to newline instead
+                    // of submit, so the prompt just grows a blank line and never
+                    // issues generateContent/streamGenerateContent. Type each
+                    // character as an individual keypress to avoid paste mode.
+                    for ch in body.text.chars() {
+                        let mut buf = [0u8; 4];
+                        session.send_input(ch.encode_utf8(&mut buf)).await?;
+                        tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                    session.send_input("\r").await
+                } else {
+                    // Send text and CR separately. Ink-based TUIs parse raw PTY
+                    // input in chunks — if text and \r arrive in the same read(),
+                    // \r can end up as literal newline text instead of submit.
+                    session.send_input(&body.text).await?;
+                    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                    session.send_input("\r").await
+                }
             }
             .await;
 
@@ -2831,6 +2876,18 @@ fn extract_request_preview(body: &str) -> String {
     }
 }
 
+/// Decode intercepted request/response bodies for display when the original
+/// transport used body compression (for example Codex `content-encoding: zstd`).
+fn render_intercept_body(body: &[u8], headers: &[(String, String)]) -> String {
+    let decoded = headers
+        .iter()
+        .any(|(k, v)| k.eq_ignore_ascii_case("content-encoding") && v.contains("zstd"))
+        .then(|| zstd::stream::decode_all(body).ok())
+        .flatten();
+    let display = decoded.as_deref().unwrap_or(body);
+    noaide_server::proxy::mitm::redact(&String::from_utf8_lossy(display))
+}
+
 /// Truncate a string to max_len chars, appending "..." if truncated.
 fn truncate_preview(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
@@ -2936,63 +2993,7 @@ async fn api_set_intercept_mode(
     Path(session_id): Path<String>,
     axum::Json(body): axum::Json<SetInterceptModeRequest>,
 ) -> axum::Json<serde_json::Value> {
-    state
-        .proxy
-        .intercept_modes
-        .write()
-        .await
-        .insert(session_id.clone(), body.mode);
-
-    // Auto-forward all pending requests when switching to Auto
-    if body.mode == noaide_server::proxy::InterceptMode::Auto {
-        let mut pending = state.proxy.pending_intercepts.write().await;
-        let session_ids: Vec<String> = pending
-            .iter()
-            .filter(|(_, p)| p.session_id.as_deref() == Some(&session_id))
-            .map(|(id, _)| id.clone())
-            .collect();
-
-        let mut forwarded = 0;
-        for id in session_ids {
-            if let Some(p) = pending.remove(&id) {
-                let _ = p
-                    .decision_tx
-                    .send(noaide_server::proxy::InterceptDecision::Forward {
-                        modified_body: None,
-                        modified_headers: None,
-                    });
-                forwarded += 1;
-            }
-        }
-
-        // Also auto-forward all pending response intercepts for this session
-        let mut pending_resp = state.proxy.pending_response_intercepts.write().await;
-        let resp_ids: Vec<String> = pending_resp
-            .iter()
-            .filter(|(_, p)| p.session_id.as_deref() == Some(&session_id))
-            .map(|(id, _)| id.clone())
-            .collect();
-
-        let mut forwarded_responses = 0;
-        for id in resp_ids {
-            if let Some(p) = pending_resp.remove(&id) {
-                let _ = p
-                    .decision_tx
-                    .send(noaide_server::proxy::InterceptDecision::Forward {
-                        modified_body: None,
-                        modified_headers: None,
-                    });
-                forwarded_responses += 1;
-            }
-        }
-
-        info!(
-            session = %session_id,
-            forwarded_requests = forwarded,
-            forwarded_responses,
-            "switched to auto mode, forwarded all pending"
-        );
-    }
+    set_session_intercept_mode(&state, &session_id, body.mode).await;
 
     axum::Json(serde_json::json!({
         "ok": true,
@@ -3011,8 +3012,7 @@ async fn api_get_pending_intercepts(
         .filter(|p| p.session_id.as_deref() == Some(&session_id))
         .map(|p| {
             // Redact request body for display
-            let body_preview =
-                noaide_server::proxy::mitm::redact(&String::from_utf8_lossy(&p.request_body));
+            let body_preview = render_intercept_body(&p.request_body, &p.request_headers);
             // Check if caller (CLI) already disconnected (oneshot receiver dropped)
             let disconnected = p.decision_tx.is_closed();
             serde_json::json!({
@@ -3053,8 +3053,7 @@ async fn api_get_pending_body(
             axum::Json(serde_json::json!({"error": "session mismatch"})),
         );
     }
-    let body =
-        noaide_server::proxy::mitm::redact(&String::from_utf8_lossy(&intercept.request_body));
+    let body = render_intercept_body(&intercept.request_body, &intercept.request_headers);
     (
         axum::http::StatusCode::OK,
         axum::Json(serde_json::json!({"body": body})),
@@ -3581,6 +3580,10 @@ async fn api_set_network_rules(
     axum::Json(rules): axum::Json<Vec<noaide_server::proxy::NetworkRule>>,
 ) -> StatusCode {
     state.proxy.network_rules.set_rules(&session_id, rules);
+    noaide_server::proxy::persist::schedule_save(
+        session_id.clone(),
+        build_proxy_config_snapshot(&state, &session_id),
+    );
     StatusCode::OK
 }
 
@@ -3591,6 +3594,10 @@ async fn api_add_network_rule(
     axum::Json(rule): axum::Json<noaide_server::proxy::NetworkRule>,
 ) -> (StatusCode, axum::Json<serde_json::Value>) {
     let id = state.proxy.network_rules.add_rule(&session_id, rule);
+    noaide_server::proxy::persist::schedule_save(
+        session_id.clone(),
+        build_proxy_config_snapshot(&state, &session_id),
+    );
     (
         StatusCode::CREATED,
         axum::Json(serde_json::json!({ "id": id })),
@@ -3603,6 +3610,10 @@ async fn api_delete_network_rule(
     axum::extract::Path((session_id, rule_id)): axum::extract::Path<(String, String)>,
 ) -> StatusCode {
     if state.proxy.network_rules.remove_rule(&session_id, &rule_id) {
+        noaide_server::proxy::persist::schedule_save(
+            session_id.clone(),
+            build_proxy_config_snapshot(&state, &session_id),
+        );
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
@@ -3637,6 +3648,10 @@ async fn api_quick_block_domain(
         priority: 50,
     };
     let id = state.proxy.network_rules.add_rule(&session_id, rule);
+    noaide_server::proxy::persist::schedule_save(
+        session_id.clone(),
+        build_proxy_config_snapshot(&state, &session_id),
+    );
     (
         StatusCode::CREATED,
         axum::Json(serde_json::json!({ "id": id })),
@@ -3658,12 +3673,111 @@ struct SetModeRequest {
     mode: noaide_server::proxy::modes::ProxyMode,
 }
 
+fn build_proxy_config_snapshot(
+    state: &AppState,
+    session_id: &str,
+) -> noaide_server::proxy::persist::ProxyConfig {
+    noaide_server::proxy::persist::ProxyConfig {
+        mode: state.proxy.proxy_modes.get(session_id),
+        inject: state.proxy.inject_store.get(session_id),
+        rewrite: state.proxy.rewrite_store.get(session_id),
+        rules: state.proxy.network_rules.get_rules(session_id),
+    }
+}
+
+fn intercept_mode_for_proxy_mode(
+    mode: noaide_server::proxy::modes::ProxyMode,
+) -> noaide_server::proxy::InterceptMode {
+    match mode {
+        noaide_server::proxy::modes::ProxyMode::Manual => {
+            noaide_server::proxy::InterceptMode::Manual
+        }
+        _ => noaide_server::proxy::InterceptMode::Auto,
+    }
+}
+
+async fn set_session_intercept_mode(
+    state: &AppState,
+    session_id: &str,
+    mode: noaide_server::proxy::InterceptMode,
+) {
+    state
+        .proxy
+        .intercept_modes
+        .write()
+        .await
+        .insert(session_id.to_string(), mode);
+
+    if mode != noaide_server::proxy::InterceptMode::Auto {
+        return;
+    }
+
+    // Auto-forward all pending requests when switching to Auto.
+    let mut pending = state.proxy.pending_intercepts.write().await;
+    let request_ids: Vec<String> = pending
+        .iter()
+        .filter(|(_, p)| p.session_id.as_deref() == Some(session_id))
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    let mut forwarded_requests = 0;
+    for id in request_ids {
+        if let Some(p) = pending.remove(&id) {
+            let _ = p
+                .decision_tx
+                .send(noaide_server::proxy::InterceptDecision::Forward {
+                    modified_body: None,
+                    modified_headers: None,
+                });
+            forwarded_requests += 1;
+        }
+    }
+
+    // Also auto-forward all pending response intercepts for this session.
+    let mut pending_responses = state.proxy.pending_response_intercepts.write().await;
+    let response_ids: Vec<String> = pending_responses
+        .iter()
+        .filter(|(_, p)| p.session_id.as_deref() == Some(session_id))
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    let mut forwarded_responses = 0;
+    for id in response_ids {
+        if let Some(p) = pending_responses.remove(&id) {
+            let _ = p
+                .decision_tx
+                .send(noaide_server::proxy::InterceptDecision::Forward {
+                    modified_body: None,
+                    modified_headers: None,
+                });
+            forwarded_responses += 1;
+        }
+    }
+
+    info!(
+        session = %session_id,
+        forwarded_requests,
+        forwarded_responses,
+        "switched intercept mode to auto, forwarded all pending"
+    );
+}
+
 async fn api_set_proxy_mode(
     State(state): State<AppState>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     axum::Json(body): axum::Json<SetModeRequest>,
 ) -> axum::Json<serde_json::Value> {
-    state.proxy.proxy_modes.set(session_id, body.mode);
+    state.proxy.proxy_modes.set(session_id.clone(), body.mode);
+    set_session_intercept_mode(
+        &state,
+        &session_id,
+        intercept_mode_for_proxy_mode(body.mode),
+    )
+    .await;
+    noaide_server::proxy::persist::schedule_save(
+        session_id.clone(),
+        build_proxy_config_snapshot(&state, &session_id),
+    );
     axum::Json(serde_json::json!({ "ok": true }))
 }
 
@@ -3681,7 +3795,11 @@ async fn api_set_inject_config(
     axum::extract::Path(session_id): axum::extract::Path<String>,
     axum::Json(config): axum::Json<noaide_server::proxy::inject::InjectConfig>,
 ) -> axum::Json<serde_json::Value> {
-    state.proxy.inject_store.set(session_id, config);
+    state.proxy.inject_store.set(session_id.clone(), config);
+    noaide_server::proxy::persist::schedule_save(
+        session_id.clone(),
+        build_proxy_config_snapshot(&state, &session_id),
+    );
     axum::Json(serde_json::json!({ "ok": true }))
 }
 
@@ -3691,14 +3809,7 @@ async fn api_get_proxy_config(
     State(state): State<AppState>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
 ) -> axum::Json<noaide_server::proxy::persist::ProxyConfig> {
-    // Build config from current in-memory state
-    let config = noaide_server::proxy::persist::ProxyConfig {
-        mode: state.proxy.proxy_modes.get(&session_id),
-        inject: state.proxy.inject_store.get(&session_id),
-        rewrite: state.proxy.rewrite_store.get(&session_id),
-        rules: state.proxy.network_rules.get_rules(&session_id),
-    };
-    axum::Json(config)
+    axum::Json(build_proxy_config_snapshot(&state, &session_id))
 }
 
 async fn api_set_proxy_config(
@@ -3707,6 +3818,12 @@ async fn api_set_proxy_config(
     axum::Json(config): axum::Json<noaide_server::proxy::persist::ProxyConfig>,
 ) -> axum::Json<serde_json::Value> {
     state.proxy.proxy_modes.set(session_id.clone(), config.mode);
+    set_session_intercept_mode(
+        &state,
+        &session_id,
+        intercept_mode_for_proxy_mode(config.mode),
+    )
+    .await;
     state
         .proxy
         .inject_store
@@ -3715,12 +3832,10 @@ async fn api_set_proxy_config(
         .proxy
         .rewrite_store
         .set(session_id.clone(), config.rewrite.clone());
-    if !config.rules.is_empty() {
-        state
-            .proxy
-            .network_rules
-            .set_rules(&session_id, config.rules.clone());
-    }
+    state
+        .proxy
+        .network_rules
+        .set_rules(&session_id, config.rules.clone());
     // Persist to disk (debounced)
     noaide_server::proxy::persist::schedule_save(session_id, config);
     axum::Json(serde_json::json!({ "ok": true }))
@@ -3806,6 +3921,25 @@ struct AddKeyRequest {
     label: String,
 }
 
+#[derive(serde::Deserialize)]
+struct UpdateKeyRequest {
+    active: bool,
+}
+
+fn mask_key_value(encrypted: &str) -> String {
+    match noaide_server::proxy::keys::decrypt_key(encrypted) {
+        Ok(plaintext) => {
+            let prefix: String = plaintext.chars().take(7).collect();
+            if prefix.is_empty() {
+                "***".to_string()
+            } else {
+                format!("{prefix}***")
+            }
+        }
+        Err(_) => "***".to_string(),
+    }
+}
+
 async fn api_list_keys(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
     let keys: Vec<serde_json::Value> = state
         .proxy
@@ -3817,6 +3951,7 @@ async fn api_list_keys(State(state): State<AppState>) -> axum::Json<serde_json::
                 "id": k.id,
                 "provider": k.provider,
                 "label": k.label,
+                "masked_value": mask_key_value(&k.key_encrypted),
                 "active": k.active,
                 "rate_limit_5h": k.rate_limit_5h,
                 "rate_limit_7d": k.rate_limit_7d,
@@ -3836,6 +3971,9 @@ async fn api_add_key(
         .proxy
         .key_store
         .add_key(&body.provider, &body.key, &body.label);
+    if let Err(e) = noaide_server::proxy::keys::save_to_disk(&state.proxy.key_store) {
+        warn!(error = %e, key_id = %id, "failed to persist api keys after add");
+    }
     (
         StatusCode::CREATED,
         axum::Json(serde_json::json!({ "id": id })),
@@ -3847,7 +3985,26 @@ async fn api_delete_key(
     axum::extract::Path(key_id): axum::extract::Path<String>,
 ) -> axum::Json<serde_json::Value> {
     let removed = state.proxy.key_store.remove_key(&key_id);
+    if removed
+        && let Err(e) = noaide_server::proxy::keys::save_to_disk(&state.proxy.key_store)
+    {
+        warn!(error = %e, key_id = %key_id, "failed to persist api keys after delete");
+    }
     axum::Json(serde_json::json!({ "removed": removed }))
+}
+
+async fn api_update_key(
+    State(state): State<AppState>,
+    axum::extract::Path(key_id): axum::extract::Path<String>,
+    axum::Json(body): axum::Json<UpdateKeyRequest>,
+) -> axum::Json<serde_json::Value> {
+    let updated = state.proxy.key_store.set_active(&key_id, body.active);
+    if updated
+        && let Err(e) = noaide_server::proxy::keys::save_to_disk(&state.proxy.key_store)
+    {
+        warn!(error = %e, key_id = %key_id, active = body.active, "failed to persist api keys after update");
+    }
+    axum::Json(serde_json::json!({ "updated": updated }))
 }
 
 async fn api_keys_status(State(state): State<AppState>) -> axum::Json<serde_json::Value> {
@@ -3868,7 +4025,11 @@ async fn api_set_rewrite_config(
     axum::extract::Path(session_id): axum::extract::Path<String>,
     axum::Json(config): axum::Json<noaide_server::proxy::rewrite::RewriteConfig>,
 ) -> axum::Json<serde_json::Value> {
-    state.proxy.rewrite_store.set(session_id, config);
+    state.proxy.rewrite_store.set(session_id.clone(), config);
+    noaide_server::proxy::persist::schedule_save(
+        session_id.clone(),
+        build_proxy_config_snapshot(&state, &session_id),
+    );
     axum::Json(serde_json::json!({ "ok": true }))
 }
 

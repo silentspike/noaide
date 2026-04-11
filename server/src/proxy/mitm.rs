@@ -90,18 +90,7 @@ pub fn build_log(
             .as_millis() as i64,
         request_size: request_body.len(),
         response_size: response_body.len(),
-        category: {
-            // Classify reverse-proxy requests by extracting host from URL
-            let host = url
-                .strip_prefix("https://")
-                .or_else(|| url.strip_prefix("http://"))
-                .unwrap_or(url)
-                .split('/')
-                .next()
-                .unwrap_or("");
-            let cat = super::classify::classify_domain(host);
-            Some(cat.to_string())
-        },
+        category: Some(super::classify::classify_url(url).to_string()),
     }
 }
 
@@ -182,5 +171,23 @@ mod tests {
             elapsed.as_millis() < 500,
             "redaction overhead too high: {elapsed:?}"
         );
+    }
+
+    #[test]
+    fn build_log_classifies_codex_analytics_as_telemetry() {
+        let log = build_log(
+            "req-1".to_string(),
+            None,
+            "POST",
+            "https://chatgpt.com/backend-api/codex/analytics-events/events",
+            b"{}",
+            &[],
+            b"{}",
+            &[],
+            200,
+            std::time::Instant::now(),
+        );
+
+        assert_eq!(log.category.as_deref(), Some("telemetry"));
     }
 }

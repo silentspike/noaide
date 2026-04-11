@@ -145,41 +145,63 @@ pub fn inject_into_body(
             }
             true
         }
-        ApiProvider::GoogleCodeAssist | ApiProvider::Google => {
-            // Try existing system_instruction.parts or request.system_instruction.parts
-            let targets = [
-                vec!["system_instruction", "parts"],
-                vec!["request", "system_instruction", "parts"],
-            ];
-            for target in &targets {
-                let mut cursor = &mut *body;
-                let mut found = true;
-                for (i, key) in target.iter().enumerate() {
-                    if i == target.len() - 1 {
-                        if let Some(arr) = cursor.get_mut(*key).and_then(|v| v.as_array_mut()) {
-                            arr.push(serde_json::json!({"text": text}));
-                            return true;
-                        }
-                        found = false;
-                    } else if cursor.get(*key).is_some() {
-                        cursor = &mut cursor[*key];
-                    } else {
-                        found = false;
-                        break;
-                    }
-                }
-                if found {
+        ApiProvider::Google => {
+            // Google APIs commonly expose camelCase JSON names, but keep reading
+            // existing snake_case variants for backward compatibility.
+            for target in [
+                &["systemInstruction", "parts"][..],
+                &["system_instruction", "parts"][..],
+                &["request", "systemInstruction", "parts"][..],
+                &["request", "system_instruction", "parts"][..],
+            ] {
+                if append_text_part(body, target, text) {
                     return true;
                 }
             }
-            // Create system_instruction if none exists
-            body["system_instruction"] = serde_json::json!({
+
+            body["systemInstruction"] = serde_json::json!({
+                "parts": [{"text": text}]
+            });
+            true
+        }
+        ApiProvider::GoogleCodeAssist => {
+            // Gemini Code Assist uses nested request.systemInstruction with
+            // camelCase field names. Top-level snake_case breaks the request
+            // with INVALID_ARGUMENT on cloudcode-pa.googleapis.com.
+            for target in [
+                &["request", "systemInstruction", "parts"][..],
+                &["request", "system_instruction", "parts"][..],
+                &["systemInstruction", "parts"][..],
+                &["system_instruction", "parts"][..],
+            ] {
+                if append_text_part(body, target, text) {
+                    return true;
+                }
+            }
+
+            if !body.get("request").is_some_and(|value| value.is_object()) {
+                body["request"] = serde_json::json!({});
+            }
+            body["request"]["systemInstruction"] = serde_json::json!({
+                "role": "user",
                 "parts": [{"text": text}]
             });
             true
         }
         ApiProvider::OpenAI | ApiProvider::ChatGPT => {
-            // Prepend system message to messages array (or input array for Codex)
+            // Codex/Responses API keeps the system prompt in a top-level
+            // "instructions" string instead of a messages/input system block.
+            if let Some(instructions) = body.get_mut("instructions").and_then(|v| v.as_str()) {
+                let merged = if instructions.is_empty() {
+                    text.to_string()
+                } else {
+                    format!("{instructions}\n\n{text}")
+                };
+                body["instructions"] = serde_json::Value::String(merged);
+                return true;
+            }
+
+            // Otherwise prepend a system message to messages/input.
             let msg_key = if body.get("input").is_some() {
                 "input"
             } else {
@@ -199,6 +221,26 @@ pub fn inject_into_body(
             }
         }
     }
+}
+
+fn append_text_part(body: &mut serde_json::Value, path: &[&str], text: &str) -> bool {
+    let mut cursor = body;
+    for (index, key) in path.iter().enumerate() {
+        if index == path.len() - 1 {
+            if let Some(parts) = cursor.get_mut(*key).and_then(|value| value.as_array_mut()) {
+                parts.push(serde_json::json!({ "text": text }));
+                return true;
+            }
+            return false;
+        }
+
+        let Some(next) = cursor.get_mut(*key) else {
+            return false;
+        };
+        cursor = next;
+    }
+
+    false
 }
 
 /// Per-session inject config storage.
@@ -330,7 +372,50 @@ mod tests {
             "new instruction",
         );
         assert!(result);
-        assert!(body["system_instruction"]["parts"].is_array());
+        assert!(body["systemInstruction"]["parts"].is_array());
+    }
+
+    #[test]
+    fn inject_google_codeassist_creates_nested_system_instruction() {
+        let mut body = serde_json::json!({
+            "model": "gemini-2.5-flash-lite",
+            "request": {
+                "contents": []
+            }
+        });
+        let result = inject_into_body(
+            &mut body,
+            super::super::handler::ApiProvider::GoogleCodeAssist,
+            "new instruction",
+        );
+        assert!(result);
+        assert_eq!(body["request"]["systemInstruction"]["role"], "user");
+        assert!(body["request"]["systemInstruction"]["parts"].is_array());
+        assert!(body.get("system_instruction").is_none());
+    }
+
+    #[test]
+    fn inject_google_codeassist_appends_existing_nested_system_instruction() {
+        let mut body = serde_json::json!({
+            "request": {
+                "systemInstruction": {
+                    "role": "user",
+                    "parts": [{"text": "existing"}]
+                },
+                "contents": []
+            }
+        });
+        let result = inject_into_body(
+            &mut body,
+            super::super::handler::ApiProvider::GoogleCodeAssist,
+            "injected",
+        );
+        assert!(result);
+        let parts = body["request"]["systemInstruction"]["parts"]
+            .as_array()
+            .unwrap();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[1]["text"], "injected");
     }
 
     #[test]
@@ -354,6 +439,27 @@ mod tests {
                 .unwrap()
                 .contains("system text")
         );
+    }
+
+    #[test]
+    fn inject_chatgpt_appends_instructions_string() {
+        let mut body = serde_json::json!({
+            "type": "response.create",
+            "model": "gpt-5.4",
+            "instructions": "existing instructions",
+            "input": [{"role": "user", "content": "hello"}]
+        });
+        let result = inject_into_body(
+            &mut body,
+            super::super::handler::ApiProvider::ChatGPT,
+            "system text",
+        );
+        assert!(result);
+        let instructions = body["instructions"].as_str().unwrap();
+        assert!(instructions.contains("existing instructions"));
+        assert!(instructions.contains("system text"));
+        let input = body["input"].as_array().unwrap();
+        assert_eq!(input.len(), 1, "instructions path should not prepend input");
     }
 
     #[test]
