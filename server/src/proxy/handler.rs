@@ -2254,18 +2254,24 @@ mod tests {
 
         let mut anthropic_headers = vec![("authorization".to_string(), "Bearer stale".to_string())];
         apply_rotated_api_key(&mut anthropic_headers, ApiProvider::Anthropic, &store);
-        assert!(anthropic_headers
-            .iter()
-            .any(|(name, value)| name == "x-api-key" && value == "sk-ant-test-1"));
-        assert!(!anthropic_headers
-            .iter()
-            .any(|(name, _)| name == "authorization"));
+        assert!(
+            anthropic_headers
+                .iter()
+                .any(|(name, value)| name == "x-api-key" && value == "sk-ant-test-1")
+        );
+        assert!(
+            !anthropic_headers
+                .iter()
+                .any(|(name, _)| name == "authorization")
+        );
 
         let mut openai_headers = vec![("authorization".to_string(), "Bearer stale".to_string())];
         apply_rotated_api_key(&mut openai_headers, ApiProvider::OpenAI, &store);
-        assert!(openai_headers
-            .iter()
-            .any(|(name, value)| name == "authorization" && value == "Bearer sk-proj-test-1"));
+        assert!(
+            openai_headers
+                .iter()
+                .any(|(name, value)| name == "authorization" && value == "Bearer sk-proj-test-1")
+        );
 
         let mut google_headers = vec![
             (
@@ -2278,9 +2284,11 @@ mod tests {
         assert!(google_headers.iter().any(|(name, value)| {
             name == "x-goog-api-key" && value == "AIzaSyB1234567890abcdefghijklmnopqrst"
         }));
-        assert!(!google_headers
-            .iter()
-            .any(|(name, _)| name == "authorization"));
+        assert!(
+            !google_headers
+                .iter()
+                .any(|(name, _)| name == "authorization")
+        );
     }
 
     #[tokio::test]
