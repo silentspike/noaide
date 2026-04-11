@@ -362,6 +362,36 @@ export default function ChatPanel() {
     return riCache;
   });
 
+  const emptyState = createMemo(() => {
+    const activeSessionId = store.state.activeSessionId;
+    if (!activeSessionId) {
+      return {
+        title: "noaide",
+        subtitle: "Select a session to begin",
+      };
+    }
+
+    const session = store.activeSession();
+    if (!session) {
+      return {
+        title: "Loading session",
+        subtitle: "Syncing the selected session...",
+      };
+    }
+
+    if (store.state.orbState !== "idle" || session.status === "active") {
+      return {
+        title: "Session starting",
+        subtitle: "The CLI is booting. You can send the first message once the prompt is ready.",
+      };
+    }
+
+    return {
+      title: "Session ready",
+      subtitle: "Send the first message to begin this conversation.",
+    };
+  });
+
   const maxTokensInSession = createMemo(() => {
     renderItems(); // reactive dependency
     return riMaxTokens || 1;
@@ -672,7 +702,7 @@ export default function ChatPanel() {
                     "letter-spacing": "-0.02em",
                   }}
                 >
-                  noaide
+                  {emptyState().title}
                 </div>
                 <div style={{
                   "font-size": "12px",
@@ -680,7 +710,7 @@ export default function ChatPanel() {
                   color: "var(--dim, #68687a)",
                   "letter-spacing": "0.05em",
                 }}>
-                  Select a session to begin
+                  {emptyState().subtitle}
                 </div>
               </div>
             }
