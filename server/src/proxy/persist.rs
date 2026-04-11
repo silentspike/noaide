@@ -139,17 +139,24 @@ pub fn startup_cleanup() {
 
 /// Load all persisted configs into the proxy state stores.
 /// Call at server startup after cleanup.
-pub fn load_all_into_stores(
+pub async fn load_all_into_stores(
     modes: &super::modes::ProxyModeStore,
     inject: &super::inject::InjectStore,
     rewrite: &super::rewrite::RewriteStore,
     rules: &super::rules::NetworkRulesEngine,
+    intercept_modes: &tokio::sync::RwLock<
+        std::collections::HashMap<String, super::handler::InterceptMode>,
+    >,
 ) -> usize {
     let sessions = list_saved_sessions();
     let mut loaded = 0;
+    let mut intercept_modes_guard = intercept_modes.write().await;
     for sid in &sessions {
         if let Some(config) = load_config(sid) {
             modes.set(sid.clone(), config.mode);
+            if config.mode == super::modes::ProxyMode::Manual {
+                intercept_modes_guard.insert(sid.clone(), super::handler::InterceptMode::Manual);
+            }
             inject.set(sid.clone(), config.inject);
             rewrite.set(sid.clone(), config.rewrite);
             if !config.rules.is_empty() {
@@ -159,7 +166,11 @@ pub fn load_all_into_stores(
         }
     }
     if loaded > 0 {
-        info!(loaded = loaded, total = sessions.len(), "restored proxy configs from disk");
+        info!(
+            loaded = loaded,
+            total = sessions.len(),
+            "restored proxy configs from disk"
+        );
     }
     loaded
 }
