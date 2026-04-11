@@ -35,6 +35,31 @@ fn state_from_u8(v: u8) -> SessionState {
     }
 }
 
+fn build_exec_argv(
+    binary: &str,
+    auto_approve: bool,
+    codex_chatgpt_base_url: Option<&str>,
+) -> Result<(CString, Vec<CString>), SessionError> {
+    let c_binary = CString::new(binary).map_err(|e| SessionError::PtySpawn(e.to_string()))?;
+    let mut c_args = vec![c_binary.clone()];
+
+    if auto_approve && binary == "claude" {
+        c_args.push(CString::new("--dangerously-skip-permissions").unwrap());
+    }
+
+    if binary == "codex"
+        && let Some(chatgpt_base_url) = codex_chatgpt_base_url
+    {
+        c_args.push(CString::new("--config").unwrap());
+        c_args.push(
+            CString::new(format!("chatgpt_base_url=\"{chatgpt_base_url}\""))
+                .map_err(|e| SessionError::PtySpawn(e.to_string()))?,
+        );
+    }
+
+    Ok((c_binary, c_args))
+}
+
 /// PTY output patterns used to detect Breathing Orb state.
 /// Currently used in tests; will drive fine-grained state detection in WP-9.
 #[allow(dead_code)]
@@ -103,6 +128,7 @@ impl ManagedSession {
         // MAX_OUTPUT_TOKENS, AUTO_CONNECT_IDE, etc. — causing it to run
         // headless instead of showing an interactive TUI prompt.
         let mut env_vars: Vec<(String, String)> = Vec::new();
+        let mut codex_chatgpt_base_url: Option<String> = None;
         env_vars.push(("TERM".to_string(), "xterm-256color".to_string()));
         // Clear ALL Claude-related env vars to ensure fresh interactive session
         env_vars.push(("CLAUDECODE".to_string(), String::new()));
@@ -130,6 +156,11 @@ impl ManagedSession {
                 "OPENAI_BASE_URL".to_string(),
                 format!("{base}/s/{sid}/backend-api/codex"),
             ));
+            // Codex uses `chatgpt_base_url` config (not an env var) for
+            // analytics, plugins, WHAM, and other ChatGPT-backend endpoints.
+            // Route those through the same per-session reverse proxy so telemetry
+            // stays visible and proxy modes can block it.
+            codex_chatgpt_base_url = Some(format!("{base}/s/{sid}/backend-api/"));
             // Gemini CLI: per-session proxy URL for Code Assist backend
             // CODE_ASSIST_ENDPOINT covers control-plane calls (v1internal:*)
             // GOOGLE_GEMINI_BASE_URL covers the actual LLM/generative calls
@@ -190,14 +221,9 @@ impl ManagedSession {
             }
         }
 
-        // Prepare CStrings for exec (must be done before fork — no allocations after fork)
-        let c_binary = CString::new(binary).map_err(|e| SessionError::PtySpawn(e.to_string()))?;
-        let c_args: Vec<CString> = if auto_approve && binary == "claude" {
-            let flag = CString::new("--dangerously-skip-permissions").unwrap();
-            vec![c_binary.clone(), flag]
-        } else {
-            vec![c_binary.clone()]
-        };
+        // Prepare argv before fork (no heap allocation after fork).
+        let (c_binary, c_args) =
+            build_exec_argv(binary, auto_approve, codex_chatgpt_base_url.as_deref())?;
 
         let working_dir_owned = working_dir.to_path_buf();
 
@@ -607,6 +633,44 @@ mod tests {
         });
 
         (session, event_rx)
+    }
+
+    #[test]
+    fn codex_exec_argv_includes_chatgpt_base_url_override() {
+        let (_, args) = build_exec_argv(
+            "codex",
+            false,
+            Some("http://localhost:4434/s/test-session/backend-api/"),
+        )
+        .unwrap();
+
+        let rendered: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_str().unwrap().to_string())
+            .collect();
+
+        assert_eq!(rendered[0], "codex");
+        assert!(rendered.contains(&"--config".to_string()));
+        assert!(rendered.contains(
+            &"chatgpt_base_url=\"http://localhost:4434/s/test-session/backend-api/\"".to_string()
+        ));
+    }
+
+    #[test]
+    fn claude_exec_argv_preserves_auto_approve_flag() {
+        let (_, args) = build_exec_argv("claude", true, None).unwrap();
+        let rendered: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_str().unwrap().to_string())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "claude".to_string(),
+                "--dangerously-skip-permissions".to_string()
+            ]
+        );
     }
 
     #[tokio::test]

@@ -38,6 +38,7 @@ export default function BottomTabBar(props: { activeTab: TabId; onTabChange: (ta
           const isActive = () => props.activeTab === tab.id;
           return (
             <button
+              data-testid={`tab-${tab.id}`}
               onClick={() => {
                 haptic.tap();
                 props.onTabChange(tab.id);

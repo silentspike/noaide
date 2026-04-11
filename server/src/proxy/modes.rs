@@ -54,9 +54,10 @@ impl ProxyModeStore {
     /// Check if a request should be blocked based on the current mode and category.
     pub fn should_block(&self, session_id: &str, category: &str) -> bool {
         let mode = self.get(session_id);
+        let normalized = category.to_ascii_lowercase();
         match mode {
-            ProxyMode::Lockdown => category != "Api",
-            ProxyMode::Pure => category == "Telemetry",
+            ProxyMode::Lockdown => normalized != "api",
+            ProxyMode::Pure => normalized == "telemetry",
             _ => false,
         }
     }
@@ -94,28 +95,38 @@ mod tests {
     fn lockdown_blocks_non_api() {
         let store = ProxyModeStore::new();
         store.set("s1".to_string(), ProxyMode::Lockdown);
-        assert!(store.should_block("s1", "Telemetry"));
-        assert!(store.should_block("s1", "Update"));
-        assert!(store.should_block("s1", "Auth"));
-        assert!(!store.should_block("s1", "Api"));
+        assert!(store.should_block("s1", "telemetry"));
+        assert!(store.should_block("s1", "update"));
+        assert!(store.should_block("s1", "auth"));
+        assert!(!store.should_block("s1", "api"));
     }
 
     #[test]
     fn pure_blocks_telemetry_only() {
         let store = ProxyModeStore::new();
         store.set("s1".to_string(), ProxyMode::Pure);
-        assert!(store.should_block("s1", "Telemetry"));
-        assert!(!store.should_block("s1", "Api"));
-        assert!(!store.should_block("s1", "Auth"));
-        assert!(!store.should_block("s1", "Update"));
+        assert!(store.should_block("s1", "telemetry"));
+        assert!(!store.should_block("s1", "api"));
+        assert!(!store.should_block("s1", "auth"));
+        assert!(!store.should_block("s1", "update"));
     }
 
     #[test]
     fn auto_blocks_nothing() {
         let store = ProxyModeStore::new();
         store.set("s1".to_string(), ProxyMode::Auto);
-        assert!(!store.should_block("s1", "Telemetry"));
+        assert!(!store.should_block("s1", "telemetry"));
+        assert!(!store.should_block("s1", "api"));
+    }
+
+    #[test]
+    fn category_check_is_case_insensitive() {
+        let store = ProxyModeStore::new();
+        store.set("s1".to_string(), ProxyMode::Lockdown);
         assert!(!store.should_block("s1", "Api"));
+
+        store.set("s2".to_string(), ProxyMode::Pure);
+        assert!(store.should_block("s2", "Telemetry"));
     }
 
     #[test]
