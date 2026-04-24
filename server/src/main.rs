@@ -63,6 +63,161 @@ struct AppState {
     session_plan_mapping: Arc<RwLock<HashMap<Uuid, String>>>,
 }
 
+const MANAGED_SESSIONS_FILE: &str = "/data/noaide/managed-sessions.json";
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+struct PersistedManagedSession {
+    session_id: Uuid,
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    plan: String,
+}
+
+fn restore_managed_session_entries(
+    entries: &[PersistedManagedSession],
+    managed_session_paths: &mut HashMap<String, Uuid>,
+    session_plan_mapping: &mut HashMap<Uuid, String>,
+) -> (usize, usize) {
+    let mut restored_paths = 0usize;
+    let mut restored_plans = 0usize;
+
+    for entry in entries {
+        if !entry.path.is_empty() {
+            managed_session_paths.insert(entry.path.clone(), entry.session_id);
+            restored_paths += 1;
+        }
+        if !entry.plan.is_empty() {
+            session_plan_mapping.insert(entry.session_id, entry.plan.clone());
+            restored_plans += 1;
+        }
+    }
+
+    (restored_paths, restored_plans)
+}
+
+fn plan_for_encoded_session_path(
+    encoded_path: &str,
+    managed_session_paths: &HashMap<String, Uuid>,
+    session_plan_mapping: &HashMap<Uuid, String>,
+) -> Option<String> {
+    let managed_id = managed_session_paths.get(encoded_path)?;
+    session_plan_mapping.get(managed_id).cloned()
+}
+
+fn build_managed_session_persist_entries(
+    managed_session_paths: &HashMap<String, Uuid>,
+    session_plan_mapping: &HashMap<Uuid, String>,
+) -> Vec<PersistedManagedSession> {
+    let mut entries: Vec<PersistedManagedSession> = managed_session_paths
+        .iter()
+        .map(|(path, session_id)| PersistedManagedSession {
+            session_id: *session_id,
+            path: path.clone(),
+            plan: session_plan_mapping
+                .get(session_id)
+                .cloned()
+                .unwrap_or_default(),
+        })
+        .collect();
+    entries.sort_by(|a, b| a.path.cmp(&b.path).then(a.session_id.cmp(&b.session_id)));
+    entries
+}
+
+async fn persist_managed_session_entries(
+    entries: &[PersistedManagedSession],
+) -> std::io::Result<()> {
+    let path = std::path::Path::new(MANAGED_SESSIONS_FILE);
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let json = serde_json::to_string_pretty(entries).map_err(std::io::Error::other)?;
+    write_json_atomic(path, &(json + "\n")).await
+}
+
+#[cfg(test)]
+mod managed_session_persistence_tests {
+    use std::collections::HashMap;
+
+    use uuid::Uuid;
+
+    use super::{
+        PersistedManagedSession, build_managed_session_persist_entries,
+        plan_for_encoded_session_path, restore_managed_session_entries,
+    };
+
+    #[test]
+    fn managed_session_restore_loads_paths_and_plans() {
+        let managed_id = Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap();
+        let jsonl_id = Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let entries = vec![
+            PersistedManagedSession {
+                session_id: managed_id,
+                path: "-work-noaide".to_string(),
+                plan: "portfolio-website".to_string(),
+            },
+            PersistedManagedSession {
+                session_id: jsonl_id,
+                path: String::new(),
+                plan: "ignored-pathless-plan".to_string(),
+            },
+        ];
+
+        let mut paths = HashMap::new();
+        let mut plans = HashMap::new();
+        let (path_count, plan_count) =
+            restore_managed_session_entries(&entries, &mut paths, &mut plans);
+
+        assert_eq!(path_count, 1);
+        assert_eq!(plan_count, 2);
+        assert_eq!(paths.get("-work-noaide"), Some(&managed_id));
+        assert_eq!(
+            plans.get(&managed_id).map(String::as_str),
+            Some("portfolio-website")
+        );
+        assert_eq!(
+            plans.get(&jsonl_id).map(String::as_str),
+            Some("ignored-pathless-plan")
+        );
+    }
+
+    #[test]
+    fn managed_session_plan_lookup_reassociates_jsonl_encoded_path() {
+        let managed_id = Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap();
+        let mut paths = HashMap::new();
+        paths.insert("-work-noaide".to_string(), managed_id);
+        let mut plans = HashMap::new();
+        plans.insert(managed_id, "portfolio-website".to_string());
+
+        assert_eq!(
+            plan_for_encoded_session_path("-work-noaide", &paths, &plans).as_deref(),
+            Some("portfolio-website")
+        );
+        assert_eq!(
+            plan_for_encoded_session_path("-work-other", &paths, &plans),
+            None
+        );
+    }
+
+    #[test]
+    fn managed_session_persist_entries_are_stable_and_include_plan() {
+        let first = Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap();
+        let second = Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap();
+        let mut paths = HashMap::new();
+        paths.insert("-work-zeta".to_string(), second);
+        paths.insert("-work-alpha".to_string(), first);
+        let mut plans = HashMap::new();
+        plans.insert(first, "alpha-plan".to_string());
+
+        let entries = build_managed_session_persist_entries(&paths, &plans);
+
+        assert_eq!(entries[0].path, "-work-alpha");
+        assert_eq!(entries[0].plan, "alpha-plan");
+        assert_eq!(entries[1].path, "-work-zeta");
+        assert_eq!(entries[1].plan, "");
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -181,26 +336,19 @@ async fn main() -> anyhow::Result<()> {
     if !persist_dir.exists() {
         let _ = tokio::fs::create_dir_all(persist_dir).await;
     }
-    if let Ok(data) = tokio::fs::read_to_string("/data/noaide/managed-sessions.json").await
-        && let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&data)
+    if let Ok(data) = tokio::fs::read_to_string(MANAGED_SESSIONS_FILE).await
+        && let Ok(entries) = serde_json::from_str::<Vec<PersistedManagedSession>>(&data)
     {
         let mut mapping = session_plan_mapping.write().await;
-        for entry in &entries {
-            if let (Some(sid), Some(plan)) = (
-                entry["session_id"]
-                    .as_str()
-                    .and_then(|s| Uuid::parse_str(s).ok()),
-                entry["plan"].as_str(),
-            ) && !plan.is_empty()
-            {
-                mapping.insert(sid, plan.to_string());
-            }
-        }
+        let mut paths = managed_session_paths.write().await;
+        let (restored_paths, restored_plans) =
+            restore_managed_session_entries(&entries, &mut paths, &mut mapping);
         info!(
-            restored = mapping.len(),
-            "restored session→plan mappings from previous run"
+            restored_paths,
+            restored_plans, "restored managed session mappings from previous run"
         );
         drop(mapping);
+        drop(paths);
     }
 
     match noaide_server::proxy::keys::load_from_disk(&proxy_state.key_store) {
@@ -542,7 +690,21 @@ async fn main() -> anyhow::Result<()> {
         all_sessions.extend(sessions);
     }
 
+    let restored_plan_by_path: HashMap<String, String> = {
+        let managed_paths = managed_session_paths.read().await;
+        let plan_mapping = session_plan_mapping.read().await;
+        managed_paths
+            .iter()
+            .filter_map(|(encoded_path, managed_id)| {
+                plan_mapping
+                    .get(managed_id)
+                    .map(|plan| (encoded_path.clone(), plan.clone()))
+            })
+            .collect()
+    };
+
     // Phase 2: Register sessions in ECS (fast — no parsing yet)
+    let mut restored_jsonl_plan_bindings: Vec<(Uuid, String)> = Vec::new();
     {
         let mut world = ecs.write().await;
         let mut paths = session_paths.write().await;
@@ -557,6 +719,16 @@ async fn main() -> anyhow::Result<()> {
             cli_types.insert(session_id, session_info.cli_type);
             if session_info.message_count_hint > 0 {
                 hints.insert(session_id, session_info.message_count_hint);
+            }
+            if let Some(encoded_dir) = extract_encoded_project_dir(&session_info.jsonl_path)
+                && let Some(plan) = restored_plan_by_path.get(&encoded_dir)
+            {
+                restored_jsonl_plan_bindings.push((session_id, plan.clone()));
+                info!(
+                    session = %session_id,
+                    plan = %plan,
+                    "restored plan binding for discovered JSONL session"
+                );
             }
             world.spawn_session(SessionComponent {
                 id: session_id,
@@ -576,6 +748,12 @@ async fn main() -> anyhow::Result<()> {
             sessions = world.session_count(),
             "sessions registered (parsing in background)"
         );
+    }
+    if !restored_jsonl_plan_bindings.is_empty() {
+        let mut plan_mapping = session_plan_mapping.write().await;
+        for (session_id, plan) in restored_jsonl_plan_bindings {
+            plan_mapping.entry(session_id).or_insert(plan);
+        }
     }
 
     // Phase 2b: Register project directory watches for FILE_CHANGES (WP-10)
@@ -2649,12 +2827,13 @@ async fn api_create_managed_session(
             {
                 let mapping = state.session_plan_mapping.read().await;
                 let msp = state.managed_session_paths.read().await;
-                let persist: Vec<serde_json::Value> = msp.iter().map(|(path, id)| {
-                    let plan = mapping.get(id).cloned().unwrap_or_default();
-                    serde_json::json!({"session_id": id.to_string(), "path": path, "plan": plan})
-                }).collect();
-                if let Ok(json) = serde_json::to_string_pretty(&persist) {
-                    let _ = tokio::fs::write("/data/noaide/managed-sessions.json", json).await;
+                let persist = build_managed_session_persist_entries(&msp, &mapping);
+                if let Err(e) = persist_managed_session_entries(&persist).await {
+                    warn!(
+                        error = %e,
+                        session = %sid,
+                        "failed to persist managed session mappings"
+                    );
                 }
             }
             (
