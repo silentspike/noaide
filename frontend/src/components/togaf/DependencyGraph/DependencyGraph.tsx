@@ -238,7 +238,7 @@ export const DependencyGraph: Component = () => {
                 const color = STATUS_COLORS[node.status] ?? "var(--overlay0)";
                 return (
                   <g
-                    data-testid={`dep-node-${node.id}`}
+                    data-testid={`dependency-node-${node.id}`}
                     style={{ cursor: "pointer", transition: "opacity 200ms ease" }}
                     opacity={isHighlighted(node.id) ? 1 : 0.2}
                     onClick={() => {
@@ -279,6 +279,7 @@ export const DependencyGraph: Component = () => {
 
                     {/* Node rect */}
                     <rect
+                      data-testid={`dep-node-${node.id}`}
                       x={node.x - node.width / 2}
                       y={node.y - node.height / 2}
                       width={node.width}
