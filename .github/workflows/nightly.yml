@@ -39,7 +39,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
@@ -123,7 +123,7 @@ jobs:
       - name: Full dependency audit
         run: cargo audit --json > cargo-audit-full.json
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
