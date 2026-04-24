@@ -49,6 +49,17 @@ pnpm audit
 wasm-pack build wasm/jsonl-parser --target web
 ```
 
+## Commit Discipline
+
+Commits follow Conventional Commits **and** the single-concern principle: one
+logical change per commit, reviewable on its own, with a clear imperative
+subject and a body that explains the why when it is not obvious from the diff.
+
+A few multi-concern commits from the early WP-1 / WP-2 bootstrap phase are kept
+in the history for fidelity — they document the actual ramp-up velocity and
+scaffolding, not current practice. All new commits are expected to be
+single-concern.
+
 ## Commit Messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/).
