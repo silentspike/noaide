@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 use axum::Router;
@@ -105,6 +105,42 @@ fn plan_for_encoded_session_path(
     session_plan_mapping.get(managed_id).cloned()
 }
 
+fn plan_dir_matches_working_dir(
+    plan_name: &str,
+    plan_dir: &FsPath,
+    impl_plan: &FsPath,
+    working_dir: &FsPath,
+) -> bool {
+    let working_dir_name = working_dir
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_default();
+    if plan_name == working_dir_name {
+        return true;
+    }
+
+    let working_dir_canonical = std::fs::canonicalize(working_dir).ok();
+    if let Some(working_dir_canonical) = working_dir_canonical.as_deref() {
+        if std::fs::canonicalize(plan_dir)
+            .map(|path| path == working_dir_canonical)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+
+        if std::fs::canonicalize(impl_plan)
+            .ok()
+            .and_then(|path| path.parent().map(FsPath::to_path_buf))
+            .map(|parent| parent == working_dir_canonical)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn build_managed_session_persist_entries(
     managed_session_paths: &HashMap<String, Uuid>,
     session_plan_mapping: &HashMap<Uuid, String>,
@@ -143,7 +179,8 @@ mod managed_session_persistence_tests {
 
     use super::{
         PersistedManagedSession, build_managed_session_persist_entries,
-        plan_for_encoded_session_path, restore_managed_session_entries,
+        plan_dir_matches_working_dir, plan_for_encoded_session_path,
+        restore_managed_session_entries,
     };
 
     #[test]
@@ -215,6 +252,50 @@ mod managed_session_persistence_tests {
         assert_eq!(entries[0].plan, "alpha-plan");
         assert_eq!(entries[1].path, "-work-zeta");
         assert_eq!(entries[1].plan, "");
+    }
+
+    #[test]
+    fn plan_dir_match_rejects_unrelated_impl_plan_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plan_discovery = tmp.path().join("plan-discovery");
+        let issue_plan = tmp.path().join("issue-94-verification");
+        std::fs::create_dir_all(&plan_discovery).unwrap();
+        std::fs::create_dir_all(&issue_plan).unwrap();
+        std::fs::write(plan_discovery.join("IMPL-PLAN.md"), "# unrelated").unwrap();
+        std::fs::write(issue_plan.join("plan.json"), "{}").unwrap();
+
+        assert!(!plan_dir_matches_working_dir(
+            "plan-discovery",
+            &plan_discovery,
+            &plan_discovery.join("IMPL-PLAN.md"),
+            &issue_plan,
+        ));
+        assert!(plan_dir_matches_working_dir(
+            "issue-94-verification",
+            &issue_plan,
+            &issue_plan.join("IMPL-PLAN.md"),
+            &issue_plan,
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plan_dir_match_accepts_impl_plan_symlink_target_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let working_dir = tmp.path().join("project");
+        let plan_dir = tmp.path().join("external-plan");
+        std::fs::create_dir_all(&working_dir).unwrap();
+        std::fs::create_dir_all(&plan_dir).unwrap();
+        let working_impl = working_dir.join("IMPL-PLAN.md");
+        std::fs::write(&working_impl, "# linked").unwrap();
+
+        std::os::unix::fs::symlink(&working_impl, plan_dir.join("IMPL-PLAN.md")).unwrap();
+        assert!(plan_dir_matches_working_dir(
+            "external-plan",
+            &plan_dir,
+            &plan_dir.join("IMPL-PLAN.md"),
+            &working_dir,
+        ));
     }
 }
 
@@ -2789,23 +2870,18 @@ async fn api_create_managed_session(
                             && ft.is_dir()
                         {
                             let name = entry.file_name().to_string_lossy().to_string();
-                            let impl_plan = entry.path().join("IMPL-PLAN.md");
-                            let plan_json = entry.path().join("plan.json");
-                            // Check if this plan dir has an IMPL-PLAN.md and the session
-                            // working dir contains an IMPL-PLAN.md too
+                            let plan_dir = entry.path();
+                            let impl_plan = plan_dir.join("IMPL-PLAN.md");
+                            let plan_json = plan_dir.join("plan.json");
+                            // Match only the explicit plan directory, not the first unrelated
+                            // plan that happens to contain an IMPL-PLAN.md.
                             if plan_json.exists() {
-                                let _session_impl =
-                                    PathBuf::from(&body.working_dir).join("IMPL-PLAN.md");
-                                // Match by: plan dir has symlink to session dir, or
-                                // session dir name matches plan name
-                                let working_dir_name = PathBuf::from(&body.working_dir)
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().to_string())
-                                    .unwrap_or_default();
-                                if impl_plan.exists()
-                                    || name == working_dir_name
-                                    || name.contains(&working_dir_name)
-                                {
+                                if plan_dir_matches_working_dir(
+                                    &name,
+                                    &plan_dir,
+                                    &impl_plan,
+                                    &working_dir,
+                                ) {
                                     let mut mapping = state.session_plan_mapping.write().await;
                                     mapping.insert(sid, name.clone());
                                     info!(session = %sid, plan = %name, "auto-bound session to plan");
