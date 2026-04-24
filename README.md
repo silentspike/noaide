@@ -463,6 +463,20 @@ configured base-URL override when the supervisor enables the proxy, and
 [AGENTS.md §4](AGENTS.md#4-agent-contract) for per-agent integration
 paths.
 
+## Documentation
+
+| Document | Scope |
+|----------|-------|
+| [AGENTS.md](AGENTS.md) | Contract between supervisor, agent, and noaide |
+| [docs/architecture.md](docs/architecture.md) | Components, data flows, wire format, threading model |
+| [docs/api.md](docs/api.md) | HTTP endpoint reference for the control plane |
+| [docs/agent-operating-model.md](docs/agent-operating-model.md) | How noaide watches agents (JSONL, PTY, filesystem) |
+| [docs/supervision-boundaries.md](docs/supervision-boundaries.md) | Control surfaces and what noaide does vs. does not enforce |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Branch flow, commit discipline, PR checklist |
+| [SECURITY.md](SECURITY.md) | Security controls in place and on the roadmap |
+| [TESTING.md](TESTING.md) | Test gate matrix |
+| [llms.txt](llms.txt) | 11 ADRs behind the architecture decisions |
+
 ## Security
 
 API keys (`sk-ant-*`, `Bearer *`) are automatically redacted in all logs and UI via regex. The API proxy only forwards to `api.anthropic.com` (whitelist). All transport uses TLS 1.3 via QUIC. See [SECURITY.md](SECURITY.md) for vulnerability reporting.
