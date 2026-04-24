@@ -305,6 +305,7 @@ export default function SessionList() {
   const [spawning, setSpawning] = createSignal(false);
   const [memUsage, setMemUsage] = createSignal("");
   const [workingDir, setWorkingDir] = createSignal("/work");
+  const [autoApprove, setAutoApprove] = createSignal(false);
   const [browseDirs, setBrowseDirs] = createSignal<{ name: string; path: string }[]>([]);
   const [showBrowser, setShowBrowser] = createSignal(false);
   const [browseLoading, setBrowseLoading] = createSignal(false);
@@ -430,7 +431,7 @@ export default function SessionList() {
       const res = await fetch(`${base}/api/sessions/managed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ working_dir: workingDir(), cli_type: cliType }),
+        body: JSON.stringify({ working_dir: workingDir(), cli_type: cliType, auto_approve: autoApprove() }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -853,6 +854,7 @@ export default function SessionList() {
               </div>
               <div style={{ display: "flex", gap: "4px" }}>
                 <input
+                  data-testid="working-dir-input"
                   type="text"
                   value={workingDir()}
                   onInput={(e) => setWorkingDir(e.currentTarget.value)}
@@ -871,6 +873,7 @@ export default function SessionList() {
                   }}
                 />
                 <button
+                  data-testid="working-dir-browse-btn"
                   onClick={() => browseDirectory(workingDir())}
                   disabled={browseLoading()}
                   style={{
@@ -901,6 +904,7 @@ export default function SessionList() {
                   <For each={browseDirs()}>
                     {(dir) => (
                       <button
+                        data-testid={`working-dir-option-${dir.name === ".." ? "parent" : dir.name}`}
                         onClick={() => {
                           if (dir.name === "..") {
                             browseDirectory(dir.path);
@@ -938,6 +942,27 @@ export default function SessionList() {
                   </Show>
                 </div>
               </Show>
+              <label
+                style={{
+                  display: "flex",
+                  "align-items": "center",
+                  gap: "6px",
+                  "margin-top": "6px",
+                  color: "var(--ctp-overlay0)",
+                  "font-size": "10px",
+                  "font-family": "var(--font-mono)",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  data-testid="auto-approve-toggle"
+                  type="checkbox"
+                  checked={autoApprove()}
+                  onChange={(e) => setAutoApprove(e.currentTarget.checked)}
+                  style={{ cursor: "pointer" }}
+                />
+                Auto-approve Claude tool prompts
+              </label>
             </div>
 
             <For each={CLI_OPTIONS}>
