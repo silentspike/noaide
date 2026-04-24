@@ -86,11 +86,14 @@ test.describe("noaide smoke tests", () => {
     await expect(page.getByTestId("keyboard-shortcuts-overlay")).not.toBeVisible();
   });
 
-  test("welcome screen shows on first visit", async ({ page, context }) => {
-    // Clear localStorage to simulate first visit
-    await page.evaluate(() => localStorage.removeItem("noaide-welcomed"));
-    await page.reload({ waitUntil: "networkidle" });
-    await expect(page.getByTestId("welcome-screen")).toBeVisible({ timeout: 5000 });
+  test("welcome screen shows on first visit", async ({ page }) => {
+    // Simulate a fresh visit: clear storage first, then navigate. A plain
+    // reload() races the App mount in CI (networkidle gets held up by the
+    // WebTransport session) and the 5s assertion timeout can expire before
+    // the overlay renders.
+    await page.evaluate(() => localStorage.clear());
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("welcome-screen")).toBeVisible({ timeout: 15000 });
     await page.getByTestId("welcome-dismiss").click();
     await expect(page.getByTestId("welcome-screen")).not.toBeVisible();
   });
