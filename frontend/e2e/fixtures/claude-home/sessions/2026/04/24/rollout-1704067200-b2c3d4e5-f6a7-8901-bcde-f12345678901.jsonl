@@ -1,0 +1,2 @@
+{"type":"event_msg","payload":{"type":"session_configured","session_id":"b2c3d4e5-f6a7-8901-bcde-f12345678901","model":"gpt-5"},"timestamp":"2026-04-24T00:00:00.000Z"}
+{"type":"event_msg","payload":{"type":"agent_message_delta","delta":"hi from codex"},"timestamp":"2026-04-24T00:00:01.000Z"}
