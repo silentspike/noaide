@@ -108,6 +108,43 @@ cellular seamless handoff). Voice input via Web Speech API.
 </tr>
 </table>
 
+## Gallery
+
+> Screenshots captured from a local development build against seeded
+> E2E fixture sessions. Shots are representative, not marketing
+> renders — the real UI looks like this when you run it.
+
+<table>
+<tr>
+<td align="center" width="34%">
+  <a href="docs/images/hero-three-panel.png">
+    <img src="docs/images/hero-three-panel.png" alt="Three-panel layout: sessions sidebar, chat center, file explorer right" />
+  </a>
+  <br><sub><b>Three-panel overview.</b> Sessions sidebar (left), Chat
+  (center) with token budget and tabs, Files explorer (right).
+  Breathing orbs mark session state.</sub>
+</td>
+<td align="center" width="34%">
+  <a href="docs/images/session-active-chat.png">
+    <img src="docs/images/session-active-chat.png" alt="Chat panel with a user message and assistant reply" />
+  </a>
+  <br><sub><b>Live chat rendering.</b> User and assistant messages
+  from the seeded Claude demo session. Each message shows
+  timestamp, role, and a Copy action; hidden content and
+  system-reminders render in the same stream.</sub>
+</td>
+<td align="center" width="34%">
+  <a href="docs/images/welcome-screen.png">
+    <img src="docs/images/welcome-screen.png" alt="Welcome overlay on first launch" />
+  </a>
+  <br><sub><b>Welcome screen.</b> First-launch overlay
+  summarizing the four headline capabilities. Dismiss with
+  <code>Get Started</code> or press <code>?</code> for the
+  keyboard shortcut sheet.</sub>
+</td>
+</tr>
+</table>
+
 ## UI Layout
 
 ```
