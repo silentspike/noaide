@@ -1,0 +1,59 @@
+# docker-compose.yml — one-liner local development for noaide
+#
+# Usage:
+#   docker compose up           # build + start backend
+#   docker compose up -d        # detached
+#   docker compose logs -f      # follow logs
+#   docker compose down         # stop + remove containers
+#
+# The backend is packaged from the Dockerfile in this repo. The frontend
+# is served by the backend from /app/static after `pnpm build`.
+# For frontend development (HMR), run `pnpm dev` on the host in a second
+# terminal — it proxies /api/* to the backend container on :8080.
+
+services:
+  noaide:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: noaide:dev
+    container_name: noaide
+    restart: unless-stopped
+
+    # Ports:
+    #   8080 — HTTP API (health, /api/*)
+    #   4433 — WebTransport (HTTP/3 QUIC) — UDP
+    ports:
+      - "8080:8080"
+      - "4433:4433/udp"
+
+    environment:
+      NOAIDE_LOG_LEVEL: ${NOAIDE_LOG_LEVEL:-info}
+      NOAIDE_HTTP_PORT: "8080"
+      NOAIDE_PORT: "4433"
+      NOAIDE_WATCH_PATHS: "/home/noaide/.claude"
+      NOAIDE_DB_PATH: "/data/noaide/ide.db"
+      NOAIDE_TLS_CERT: "/certs/cert.pem"
+      NOAIDE_TLS_KEY: "/certs/key.pem"
+      NOAIDE_JWT_SECRET: ${NOAIDE_JWT_SECRET:-dev-insecure-change-me}
+
+    volumes:
+      # Mount the host's agent home directories read-only so noaide can
+      # watch JSONL files. Override these if your agents live elsewhere.
+      - ${HOME}/.claude:/home/noaide/.claude:ro
+      - ${HOME}/.gemini:/home/noaide/.gemini:ro
+      - ${HOME}/.codex:/home/noaide/.codex:ro
+      # Local TLS certificates (generate with `just certs` or `make certs`).
+      - ./certs:/certs:ro
+      # Persistent DB + audit log.
+      - noaide-data:/data/noaide
+
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  noaide-data:
