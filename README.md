@@ -259,29 +259,60 @@ Verify: `grep CONFIG_BPF /boot/config-$(uname -r)`
 # Clone
 git clone https://github.com/silentspike/noaide.git && cd noaide
 
-# Generate local TLS certificates (required for WebTransport)
-mkdir -p certs
-mkcert -install
-mkcert -cert-file certs/cert.pem -key-file certs/key.pem localhost 127.0.0.1
+# First-run: generate local TLS certificates (needed for WebTransport)
+just certs          # or: make certs
 
-# Build WASM modules
-for mod in jsonl-parser markdown compress; do
-  wasm-pack build wasm/$mod --target web --out-dir ../../frontend/src/wasm/$mod
-done
+# Start the backend in Docker
+just dev            # or: make dev  (=> docker compose up)
 
-# Install frontend dependencies and build
-cd frontend && pnpm install && pnpm run build && cd ..
-
-# Build and run server
-cargo build --release
-./target/release/noaide-server
-
-# Start frontend dev server (separate terminal)
-cd frontend && pnpm dev
+# Start the frontend dev server in a second terminal (HMR)
+just dev-front      # or: make dev-front  (=> cd frontend && pnpm dev)
 
 # Open in browser
-# http://localhost:9999/noaide/
+#   http://localhost:9999/noaide/
 ```
+
+<details>
+<summary><b>Alternative: native (no Docker) workflow</b></summary>
+
+```bash
+# Generate certificates
+just certs
+
+# Build the WASM modules
+just wasm
+
+# Run the backend natively
+just dev-backend-native
+
+# Run the frontend natively in a second terminal
+just dev-front-native
+```
+
+All recipes are in [`justfile`](justfile); a `Makefile` mirror exists
+for users without `just`.
+
+</details>
+
+<details>
+<summary><b>All available tasks</b></summary>
+
+Run `just` (or `just -l`) to list every recipe. The most common ones:
+
+| Task | Description |
+|------|-------------|
+| `just dev` | Start the backend via `docker compose up` |
+| `just dev-front` | Start the frontend dev server (HMR) |
+| `just test` | `cargo test --workspace` + `pnpm test` |
+| `just test-e2e` | Playwright smoke suite |
+| `just fmt` / `just lint` | Formatters and linters |
+| `just audit` | `cargo audit` + `pnpm audit --audit-level=high` |
+| `just bench` | `cargo bench` — performance design goals |
+| `just wasm` | Build all three WASM modules |
+| `just certs` | Generate local TLS certificates |
+| `just demo` | Start everything + seed fixtures + open browser |
+
+</details>
 
 ## Configuration
 
