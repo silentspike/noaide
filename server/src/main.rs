@@ -2086,7 +2086,94 @@ async fn api_get_plan_json(
     }
 }
 
-/// POST /api/plans/{name}/edits — Write plan-edits.json for the session to pick up.
+fn append_incoming_edit_values(target: &mut Vec<serde_json::Value>, value: serde_json::Value) {
+    match value {
+        serde_json::Value::Array(items) => target.extend(items),
+        serde_json::Value::Null => {}
+        other => target.push(other),
+    }
+}
+
+fn append_existing_edit_values(
+    target: &mut Vec<serde_json::Value>,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    match value {
+        serde_json::Value::Array(items) => {
+            target.extend(items);
+            Ok(())
+        }
+        serde_json::Value::Null => Ok(()),
+        _ => Err("existing plan-edits.json `edits` field must be an array".to_string()),
+    }
+}
+
+fn merge_plan_edit_payloads(
+    existing: Option<serde_json::Value>,
+    incoming: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let mut base = serde_json::Map::new();
+    let mut edits = Vec::new();
+
+    match existing {
+        Some(serde_json::Value::Object(mut object)) => {
+            if let Some(existing_edits) = object.remove("edits") {
+                append_existing_edit_values(&mut edits, existing_edits)?;
+            }
+            base = object;
+        }
+        Some(serde_json::Value::Array(items)) => edits.extend(items),
+        Some(serde_json::Value::Null) | None => {}
+        Some(_) => {
+            return Err("existing plan-edits.json must be a JSON object or array".to_string());
+        }
+    }
+
+    match incoming {
+        serde_json::Value::Object(mut object) => {
+            if let Some(incoming_edits) = object.remove("edits") {
+                append_incoming_edit_values(&mut edits, incoming_edits);
+                for (key, value) in object {
+                    base.insert(key, value);
+                }
+            } else {
+                edits.push(serde_json::Value::Object(object));
+            }
+        }
+        serde_json::Value::Array(items) => edits.extend(items),
+        serde_json::Value::Null => {}
+        other => edits.push(other),
+    }
+
+    base.insert("edits".to_string(), serde_json::Value::Array(edits));
+    Ok(serde_json::Value::Object(base))
+}
+
+fn atomic_json_tmp_path(path: &std::path::Path) -> PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("plan-edits.json");
+    path.with_file_name(format!("{file_name}.tmp-{}-{stamp}", std::process::id()))
+}
+
+async fn write_json_atomic(path: &std::path::Path, json: &str) -> std::io::Result<()> {
+    let tmp_path = atomic_json_tmp_path(path);
+    tokio::fs::write(&tmp_path, json).await?;
+    match tokio::fs::rename(&tmp_path, path).await {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            Err(err)
+        }
+    }
+}
+
+/// POST /api/plans/{name}/edits — Append plan-edits.json for the session to pick up.
 async fn api_post_plan_edits(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -2110,13 +2197,50 @@ async fn api_post_plan_edits(
         return axum::Json(serde_json::json!({"error": "failed to create directory"}));
     }
 
-    match serde_json::to_string_pretty(&edits) {
+    let existing = match tokio::fs::read_to_string(&edits_path).await {
+        Ok(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
+            Ok(value) => Some(value),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    plan = %name,
+                    "refusing to overwrite invalid plan-edits.json"
+                );
+                return axum::Json(serde_json::json!({"error": "existing edits invalid"}));
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            tracing::warn!(error = %e, plan = %name, "failed to read plan-edits.json");
+            return axum::Json(serde_json::json!({"error": "read failed"}));
+        }
+    };
+
+    let merged_edits = match merge_plan_edit_payloads(existing, edits) {
+        Ok(value) => value,
+        Err(e) => {
+            tracing::warn!(error = %e, plan = %name, "failed to merge plan-edits payload");
+            return axum::Json(serde_json::json!({"error": e}));
+        }
+    };
+    let edit_count = merged_edits
+        .get("edits")
+        .and_then(|value| value.as_array())
+        .map(|items| items.len())
+        .unwrap_or_default();
+
+    match serde_json::to_string_pretty(&merged_edits) {
         Ok(json_str) => {
-            if let Err(e) = tokio::fs::write(&edits_path, &json_str).await {
+            if let Err(e) = write_json_atomic(&edits_path, &json_str).await {
                 tracing::warn!(error = %e, plan = %name, "failed to write plan-edits.json");
                 return axum::Json(serde_json::json!({"error": "write failed"}));
             }
-            info!(plan = %name, path = %edits_path.display(), "wrote plan-edits.json");
+            info!(
+                plan = %name,
+                path = %edits_path.display(),
+                edits = edit_count,
+                "wrote plan-edits.json"
+            );
 
             // Publish plan update via WebTransport bus so connected clients
             // receive the change instantly without polling.
@@ -2128,9 +2252,84 @@ async fn api_post_plan_edits(
                 info!(plan = %name, "published plan update via WebTransport");
             }
 
-            axum::Json(serde_json::json!({"ok": true, "plan": name}))
+            axum::Json(serde_json::json!({"ok": true, "plan": name, "edits": edit_count}))
         }
         Err(e) => axum::Json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+#[cfg(test)]
+mod plan_edits_tests {
+    use serde_json::json;
+
+    use super::{merge_plan_edit_payloads, write_json_atomic};
+
+    #[test]
+    fn plan_edits_merge_appends_incoming_edits_without_dropping_existing() {
+        let existing = json!({
+            "version": 1,
+            "edits": [
+                {"type": "gate_status", "id": 1, "status": "pending"}
+            ]
+        });
+        let incoming = json!({
+            "source": "ui",
+            "edits": [
+                {"type": "gate_status", "id": 1, "status": "pass"}
+            ]
+        });
+
+        let merged = merge_plan_edit_payloads(Some(existing), incoming).unwrap();
+        assert_eq!(merged["version"], json!(1));
+        assert_eq!(merged["source"], json!("ui"));
+        assert_eq!(merged["edits"].as_array().unwrap().len(), 2);
+        assert_eq!(merged["edits"][0]["status"], json!("pending"));
+        assert_eq!(merged["edits"][1]["status"], json!("pass"));
+    }
+
+    #[test]
+    fn plan_edits_merge_accepts_legacy_array_and_single_edit_payloads() {
+        let existing = json!([
+            {"type": "wp_status", "id": "wp-1", "status": "todo"}
+        ]);
+        let incoming = json!({"type": "section_status", "id": "b-1", "status": "done"});
+
+        let merged = merge_plan_edit_payloads(Some(existing), incoming).unwrap();
+        assert_eq!(merged["edits"].as_array().unwrap().len(), 2);
+        assert_eq!(merged["edits"][0]["type"], json!("wp_status"));
+        assert_eq!(merged["edits"][1]["type"], json!("section_status"));
+    }
+
+    #[test]
+    fn plan_edits_merge_rejects_invalid_existing_edit_shape() {
+        let existing = json!({"edits": "not-an-array"});
+        let incoming = json!({"edits": []});
+
+        assert!(merge_plan_edit_payloads(Some(existing), incoming).is_err());
+    }
+
+    #[tokio::test]
+    async fn plan_edits_atomic_write_replaces_target_and_removes_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plan-edits.json");
+        tokio::fs::write(&path, r#"{"edits":[{"id":1}]}"#)
+            .await
+            .unwrap();
+
+        write_json_atomic(&path, r#"{"edits":[{"id":2}]}"#)
+            .await
+            .unwrap();
+
+        let raw = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(raw, r#"{"edits":[{"id":2}]}"#);
+
+        let mut entries = tokio::fs::read_dir(dir.path()).await.unwrap();
+        let mut file_count = 0;
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            file_count += 1;
+            assert_eq!(entry.file_name().to_string_lossy(), "plan-edits.json");
+        }
+        assert_eq!(file_count, 1);
     }
 }
 
