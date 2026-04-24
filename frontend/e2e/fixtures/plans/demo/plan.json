@@ -1,0 +1,85 @@
+{
+  "$schema": "togaf-plan/1.0",
+  "meta": {
+    "title": "Demo plan for E2E smoke tests",
+    "version": "v1.0",
+    "tailoring": "M",
+    "scope": "scope:full",
+    "status": "In Progress",
+    "confidence": 80,
+    "date": "2026-04-24",
+    "wip_limit": 3,
+    "critical_path": "WP-1 -> WP-2 -> WP-3",
+    "footer_stats": "3 WPs | 0 Risks | 0 ADRs",
+    "adm_iteration": 1,
+    "last_updated": "2026-04-24T00:00:00Z",
+    "github_repo": "silentspike/noaide"
+  },
+  "gates": {
+    "0": "pass",
+    "1": "pass",
+    "2": "pass",
+    "3": "pass",
+    "4": "pass"
+  },
+  "sections": {},
+  "work_packages": [
+    {
+      "id": "WP-1",
+      "title": "Foundation",
+      "status": "done",
+      "size": "M",
+      "sprint": 1,
+      "dependencies": [],
+      "assignee": "claude",
+      "scope_files": [],
+      "gate_required": false,
+      "verify_checks": [],
+      "complexity": "Simple"
+    },
+    {
+      "id": "WP-2",
+      "title": "Implementation",
+      "status": "in_progress",
+      "size": "L",
+      "sprint": 1,
+      "dependencies": ["WP-1"],
+      "assignee": "claude",
+      "scope_files": [],
+      "gate_required": false,
+      "verify_checks": [],
+      "complexity": "Medium"
+    },
+    {
+      "id": "WP-3",
+      "title": "Verification",
+      "status": "backlog",
+      "size": "S",
+      "sprint": 2,
+      "dependencies": ["WP-2"],
+      "assignee": "codex",
+      "scope_files": [],
+      "gate_required": false,
+      "verify_checks": [],
+      "complexity": "Simple"
+    }
+  ],
+  "risks": [],
+  "adrs": [],
+  "requirements": [],
+  "dependency_graph": {
+    "nodes": [
+      { "id": "WP-1" },
+      { "id": "WP-2" },
+      { "id": "WP-3" }
+    ],
+    "edges": [
+      { "from": "WP-1", "to": "WP-2" },
+      { "from": "WP-2", "to": "WP-3" }
+    ]
+  },
+  "sprints": [
+    { "id": "S1", "name": "Sprint 1", "work_packages": ["WP-1", "WP-2"] },
+    { "id": "S2", "name": "Sprint 2", "work_packages": ["WP-3"] }
+  ]
+}
