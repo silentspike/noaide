@@ -34,15 +34,35 @@ If you discover a security vulnerability, please report it responsibly:
 
 ## Security Measures
 
-- GitHub Actions dependencies updated via Dependabot (Cargo and npm will be enabled once application code exists)
+The project is in pre-alpha. This section only lists controls that are
+actually implemented in the current codebase. Items on the roadmap but
+not yet in place are listed separately below.
+
+### In Place
+
+- GitHub Actions dependencies updated via Dependabot
 - CodeQL SAST scanning on every push/PR
-- `cargo audit` and `npm audit` in CI pipeline
-- Secret scanning enabled
-- TLS 1.3 enforced for all transport (QUIC/WebTransport)
+- `cargo audit` in the nightly CI workflow
+- Secret scanning enabled on the repository
+- TLS 1.3 via QUIC/WebTransport for the dev server (self-signed local CA)
 - API key redaction (`sk-ant-*`, `Bearer *`) via regex in logs and UI
-- CSP strict policy, SolidJS auto-escapes output
-- PTY input sanitized, no `shell=true`
-- API proxy whitelists only `api.anthropic.com`
-- CORS strict same-origin
-- COOP/COEP for cross-origin isolation (SharedArrayBuffer)
-- eBPF programs pre-verified, no dynamic loading
+- PTY input handling does not spawn shells with `shell=true`
+- API proxy forwards only to `api.anthropic.com`, `cloudcode-pa.googleapis.com`, `chatgpt.com`
+- CORS same-origin enforcement in the dev server
+- COOP/COEP headers set by the Vite dev server for cross-origin isolation
+  (required for SharedArrayBuffer in WASM workers); production headers
+  depend on the eventual deployment target
+- SolidJS auto-escapes interpolated output in templates
+
+### Roadmap (not yet in place)
+
+- [ ] Strict Content-Security-Policy on a production server
+      (tracked in issue: "Enforce strict CSP on production server")
+- [ ] `npm audit` in the CI workflow (currently only `cargo audit` runs
+      nightly — tracked in issue: "Re-enable npm audit in nightly CI")
+- [ ] COOP/COEP as production HTTP response headers (currently only set
+      by the Vite dev server — tracked in issue: "Enable COOP/COEP in
+      production HTTP response headers")
+- [ ] Pre-verified eBPF programs with dynamic-loading disabled in
+      documentation (eBPF is already load-time-verified by the kernel;
+      a formal hardening note is pending)
