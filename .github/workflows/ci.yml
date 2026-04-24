@@ -473,11 +473,19 @@ jobs:
       - name: Build frontend
         run: cd frontend && pnpm run build
 
+      - name: Seed E2E fixtures
+        run: |
+          mkdir -p /tmp/noaide-ci/data
+          cp -r frontend/e2e/fixtures/claude-home /tmp/noaide-ci/claude-home
+          cp -r frontend/e2e/fixtures/plans /tmp/noaide-ci/plans
+          echo "Seeded sessions:"; find /tmp/noaide-ci/claude-home -type f
+          echo "Seeded plans:"; find /tmp/noaide-ci/plans -name plan.json
+
       - name: Start backend server
         run: |
-          mkdir -p /tmp/noaide-ci/data /tmp/noaide-ci/plans
           NOAIDE_DB_PATH=/tmp/noaide-ci/data/ide.db \
           NOAIDE_PLAN_DIR=/tmp/noaide-ci/plans \
+          NOAIDE_WATCH_PATHS=/tmp/noaide-ci/claude-home \
           NOAIDE_LOG_LEVEL=info \
           nohup ./target/release/noaide-server > /tmp/noaide-ci/server.log 2>&1 &
           echo "server_pid=$!" >> "$GITHUB_ENV"
@@ -489,6 +497,14 @@ jobs:
             sleep 1
           done
           curl -sf http://localhost:8080/health || (echo "Backend not responding:"; cat /tmp/noaide-ci/server.log; exit 1)
+          # Give discovery scanner time to index the seeded fixtures
+          for i in $(seq 1 15); do
+            count=$(curl -sf http://localhost:8080/api/sessions | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
+            if [ "$count" -ge 3 ]; then
+              echo "Discovery indexed $count sessions after ${i}s"; break
+            fi
+            sleep 1
+          done
 
       - name: Run E2E smoke tests
         run: cd frontend && pnpm run e2e
