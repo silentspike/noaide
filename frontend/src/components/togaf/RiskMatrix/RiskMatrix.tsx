@@ -75,6 +75,7 @@ export const RiskMatrix: Component = () => {
                     return (
                       <div
                         class={`risk-cell ${risks().length > 0 ? cellClass : ""}`}
+                        data-testid={`risk-cell-${likelihood}-${severity}`}
                         style={{
                           opacity: risks().length > 0 ? "1" : "0.3",
                           background: risks().length === 0 ? "var(--surface0)" : undefined,
