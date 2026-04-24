@@ -6,12 +6,9 @@
  */
 import { test, expect } from "@playwright/test";
 
-const BASE = "https://localhost:9999";
-
 test.describe("noaide smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    // Ignore TLS cert errors for self-signed dev cert
-    await page.goto(BASE, { waitUntil: "networkidle" });
+    await page.goto("/", { waitUntil: "networkidle" });
     // Dismiss welcome screen if shown
     const welcome = page.getByTestId("welcome-dismiss");
     if (await welcome.isVisible({ timeout: 2000 }).catch(() => false)) {
