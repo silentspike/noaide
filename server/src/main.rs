@@ -2876,18 +2876,18 @@ async fn api_create_managed_session(
                             let plan_json = plan_dir.join("plan.json");
                             // Match only the explicit plan directory, not the first unrelated
                             // plan that happens to contain an IMPL-PLAN.md.
-                            if plan_json.exists() {
-                                if plan_dir_matches_working_dir(
+                            if plan_json.exists()
+                                && plan_dir_matches_working_dir(
                                     &name,
                                     &plan_dir,
                                     &impl_plan,
                                     &working_dir,
-                                ) {
-                                    let mut mapping = state.session_plan_mapping.write().await;
-                                    mapping.insert(sid, name.clone());
-                                    info!(session = %sid, plan = %name, "auto-bound session to plan");
-                                    break;
-                                }
+                                )
+                            {
+                                let mut mapping = state.session_plan_mapping.write().await;
+                                mapping.insert(sid, name.clone());
+                                info!(session = %sid, plan = %name, "auto-bound session to plan");
+                                break;
                             }
                         }
                     }
