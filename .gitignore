@@ -125,7 +125,6 @@ traces/
 IMPL-PLAN-AUDIT.md
 TESTING-PROXY-ENGINE.md
 PROGRESS.md
-AGENTS.md
 
 # ── Dev-only scripts (kept locally, not part of public workflow) ──
 # Documented in scripts/README.md — only setup-runner.sh is tracked.
