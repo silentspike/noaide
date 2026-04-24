@@ -50,6 +50,21 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    port: 4173,
+    strictPort: true,
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        ws: true,
+      },
+    },
+  },
   build: {
     target: "esnext",
     rollupOptions: {

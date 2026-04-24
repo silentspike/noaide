@@ -5,15 +5,16 @@ export default defineConfig({
   timeout: 30_000,
   retries: 1,
   use: {
-    baseURL: "http://localhost:4173",
+    baseURL: "http://localhost:4173/noaide/",
     headless: true,
     screenshot: "only-on-failure",
+    ignoreHTTPSErrors: true,
   },
   webServer: {
     command: "pnpm preview",
     port: 4173,
     reuseExistingServer: !process.env.CI,
-    timeout: 15_000,
+    timeout: 30_000,
   },
   projects: [
     {
