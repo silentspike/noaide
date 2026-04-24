@@ -1,0 +1,15 @@
+{
+  "sessionId": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+  "startTime": "2026-04-24T00:00:00.000Z",
+  "lastUpdated": "2026-04-24T00:00:02.000Z",
+  "messages": [
+    {
+      "role": "user",
+      "parts": [{ "text": "hello from gemini" }]
+    },
+    {
+      "role": "model",
+      "parts": [{ "text": "hi" }]
+    }
+  ]
+}

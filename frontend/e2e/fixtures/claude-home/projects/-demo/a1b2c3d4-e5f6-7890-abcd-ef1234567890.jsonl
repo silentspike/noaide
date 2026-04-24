@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"hello from claude demo session"},"uuid":"msg-1","parentUuid":null,"sessionId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","timestamp":"2026-04-24T00:00:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]},"uuid":"msg-2","parentUuid":"msg-1","sessionId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","timestamp":"2026-04-24T00:00:01.000Z"}
