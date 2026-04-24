@@ -673,6 +673,41 @@ mod tests {
         );
     }
 
+    #[test]
+    fn claude_exec_argv_omits_auto_approve_flag_by_default() {
+        let (_, args) = build_exec_argv("claude", false, None).unwrap();
+        let rendered: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_str().unwrap().to_string())
+            .collect();
+
+        assert_eq!(rendered, vec!["claude".to_string()]);
+    }
+
+    #[test]
+    fn auto_approve_flag_is_claude_only() {
+        let (_, codex_args) = build_exec_argv(
+            "codex",
+            true,
+            Some("http://localhost:4434/s/test-session/backend-api/"),
+        )
+        .unwrap();
+        let codex_rendered: Vec<String> = codex_args
+            .iter()
+            .map(|arg| arg.to_str().unwrap().to_string())
+            .collect();
+
+        assert!(!codex_rendered.contains(&"--dangerously-skip-permissions".to_string()));
+
+        let (_, gemini_args) = build_exec_argv("gemini", true, None).unwrap();
+        let gemini_rendered: Vec<String> = gemini_args
+            .iter()
+            .map(|arg| arg.to_str().unwrap().to_string())
+            .collect();
+
+        assert_eq!(gemini_rendered, vec!["gemini".to_string()]);
+    }
+
     #[tokio::test]
     async fn spawn_echo_session() {
         // Spawn a simple echo command instead of claude (which may not be installed)
