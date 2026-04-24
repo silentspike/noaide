@@ -854,6 +854,7 @@ export default function SessionList() {
               </div>
               <div style={{ display: "flex", gap: "4px" }}>
                 <input
+                  data-testid="working-dir-input"
                   type="text"
                   value={workingDir()}
                   onInput={(e) => setWorkingDir(e.currentTarget.value)}
@@ -872,6 +873,7 @@ export default function SessionList() {
                   }}
                 />
                 <button
+                  data-testid="working-dir-browse-btn"
                   onClick={() => browseDirectory(workingDir())}
                   disabled={browseLoading()}
                   style={{
@@ -902,6 +904,7 @@ export default function SessionList() {
                   <For each={browseDirs()}>
                     {(dir) => (
                       <button
+                        data-testid={`working-dir-option-${dir.name === ".." ? "parent" : dir.name}`}
                         onClick={() => {
                           if (dir.name === "..") {
                             browseDirectory(dir.path);
