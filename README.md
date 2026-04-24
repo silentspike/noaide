@@ -25,7 +25,7 @@ Requires your AI coding agent running in the background. Not included — you kn
 [![Status: Pre-Alpha](https://img.shields.io/badge/Status-Pre--Alpha-orange.svg)](#project-status)
 [![Rust](https://img.shields.io/badge/Rust-1.87+-dea584.svg)](https://www.rust-lang.org/)
 [![SolidJS](https://img.shields.io/badge/SolidJS-1.9+-4f88c6.svg)](https://www.solidjs.com/)
-[![WebTransport](https://img.shields.io/badge/Transport-HTTP%2F3%20QUIC-8b5cf6.svg)](#tech-stack)
+[![Transport](https://img.shields.io/badge/Transport-HTTP%2F3%20QUIC%20(dev)-8b5cf6.svg)](#tech-stack)
 
 <br>
 
@@ -201,7 +201,7 @@ command palette.</sup>
 <tr><th align="left">Layer</th><th align="left">Choice</th><th align="left">Rationale</th></tr>
 <tr><td><b>Backend</b></td><td>Rust + tokio + io_uring</td><td>Zero-cost abstractions, memory safety, async I/O</td></tr>
 <tr><td><b>Frontend</b></td><td>SolidJS + Vite 6</td><td>Fine-grained reactivity without Virtual DOM overhead</td></tr>
-<tr><td><b>Transport</b></td><td>WebTransport (HTTP/3, QUIC)</td><td>0-RTT reconnect, multiplexed streams, connection migration</td></tr>
+<tr><td><b>Transport</b></td><td>WebTransport (HTTP/3, QUIC) — dev-server only</td><td>0-RTT reconnect, multiplexed streams, connection migration. Requires a Chromium-based browser; production deployment story is open.</td></tr>
 <tr><td><b>State</b></td><td>hecs ECS (struct-of-arrays)</td><td>Cache-friendly iteration over 100+ concurrent entities</td></tr>
 <tr><td><b>Database</b></td><td>Limbo (async SQLite, io_uring)</td><td>FTS5 full-text search, JSONL remains source of truth</td></tr>
 <tr><td><b>File Watch</b></td><td>eBPF via aya</td><td>Kernel-level PID attribution for conflict detection</td></tr>
@@ -214,7 +214,12 @@ command palette.</sup>
 
 Architectural decisions are documented as [11 ADRs in llms.txt](llms.txt). Each records the context, decision, alternatives considered, and trade-offs accepted.
 
-## Performance Targets
+## Performance — Design Goals
+
+These are the target numbers the architecture is designed around.
+A full benchmark suite is planned (`criterion` for Rust hot paths,
+Playwright traces for end-to-end latency) but not in place yet;
+treat the bars as design goals, not measured results.
 
 ```
 File event to browser       ████████████████████████████░░  < 50ms p99
@@ -336,22 +341,25 @@ flatc --rust --ts -o generated/ schemas/messages.fbs
 See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, commit style, and PR process.
 See [TESTING.md](TESTING.md) for the full test gate matrix and benchmark commands.
 
-## Features (RC2)
+## Features
 
-| Feature | Status | Description |
+Each row points to the primary module that implements it, so the
+description is easy to cross-check against the code.
+
+| Feature | Source | Description |
 |---------|--------|-------------|
-| **Message Cache** | Done | ECS-backed in-memory cache with incremental JSONL parsing. <5ms cached responses. |
-| **Pagination** | Done | Infinite scroll with scroll-anchor preservation. Loads 200 messages at a time. |
-| **Thinking Blocks** | Done | Animated collapse/expand with measured `scrollHeight`. Token count estimate. |
-| **Session Pinning** | Done | Star sessions, sorted pinned-first. Persisted in localStorage. |
-| **Profiler Metrics** | Done | Real-time FPS, heap usage, events/sec, render time, DOM nodes, transport RTT. |
-| **Command Palette** | Done | Cmd+K with scope prefixes (`>` commands, `#` sessions, `@` tabs). Fuzzy matching with highlights. |
-| **Session Search** | Done | Cmd+F in-chat search with match counter and prev/next navigation. |
-| **Notifications** | Done | Glassmorphism toasts (max 3 stack), Browser Notification API, Web Audio cues. |
-| **Cost Dashboard** | Done | Per-model token breakdown, cost bars, session ranking, input/output/cache ratios. |
-| **Export** | Done | Markdown, JSON, or HTML export with configurable options. Mobile Web Share API support. |
-| **Session Stats** | Done | Backend `/api/sessions/{id}/stats` endpoint with token counts, model breakdown, duration. |
-| **Subagent Tree** | Done | Tree visualization of `agentId`/`parentUuid` hierarchies in the Teams panel. |
+| **Message Cache** | [`server/src/cache/mod.rs`](server/src/cache/mod.rs) | ECS-backed in-memory cache with incremental JSONL parsing. Designed for <5 ms cached responses (see [Performance — Design Goals](#performance--design-goals)). |
+| **Pagination** | [`server/src/cache/mod.rs`](server/src/cache/mod.rs) + [`VirtualScroller.tsx`](frontend/src/components/chat/VirtualScroller.tsx) | Infinite scroll with scroll-anchor preservation. Loads 200 messages at a time. |
+| **Thinking Blocks** | [`components/chat/ThinkingBlock.tsx`](frontend/src/components/chat/ThinkingBlock.tsx) | Animated collapse/expand with measured `scrollHeight`. Token count estimate. |
+| **Session Pinning** | [`stores/session.ts`](frontend/src/stores/session.ts) + [`components/sessions/SessionList.tsx`](frontend/src/components/sessions/SessionList.tsx) | Star sessions, sorted pinned-first. Persisted in localStorage. |
+| **Profiler Metrics** | [`components/profiler/ProfilerPanel.tsx`](frontend/src/components/profiler/ProfilerPanel.tsx) | Real-time FPS, heap usage, events/sec, render time, DOM nodes, transport RTT. |
+| **Command Palette** | [`components/shared/CommandPalette.tsx`](frontend/src/components/shared/CommandPalette.tsx) | Cmd+K with scope prefixes (`>` commands, `#` sessions, `@` tabs). Fuzzy matching with highlights. |
+| **Session Search** | [`components/chat/SearchBar.tsx`](frontend/src/components/chat/SearchBar.tsx) | Cmd+F in-chat search with match counter and prev/next navigation. |
+| **Notifications** | [`lib/notifications.ts`](frontend/src/lib/notifications.ts) | Toasts, Browser Notification API, optional Web Audio cues (gated by `ENABLE_AUDIO`). |
+| **Cost Dashboard** | [`components/cost/CostDashboard.tsx`](frontend/src/components/cost/CostDashboard.tsx) | Per-model token breakdown, cost bars, session ranking, input/output/cache ratios. |
+| **Export** | [`lib/export.ts`](frontend/src/lib/export.ts) + [`components/shared/ExportDialog.tsx`](frontend/src/components/shared/ExportDialog.tsx) | Markdown, JSON, or HTML export with configurable options. Mobile Web Share API support. |
+| **Session Stats API** | [`server/src/main.rs`](server/src/main.rs) | HTTP endpoint with token counts, model breakdown, duration. |
+| **Subagent Tree** | [`components/teams/SubagentTree.tsx`](frontend/src/components/teams/SubagentTree.tsx) | Tree visualization of `agentId`/`parentUuid` hierarchies in the Teams panel. |
 
 ### Keyboard Shortcuts
 
@@ -390,7 +398,7 @@ RC2     ── Cache + UX Polish                       ████████�
 ```
 
 <details>
-<summary><b>Backend (203 tests passing)</b></summary>
+<summary><b>Backend modules (see CI for current test count)</b></summary>
 
 - ECS state engine with session, message, file, task, agent components
 - Incremental JSONL parser with byte-offset caching
