@@ -105,3 +105,42 @@ __pycache__/
 *.pyc
 /tmp/
 .cache/
+
+# ── Proxy / API trace samples (private, may contain session IDs) ──
+# Raw captures from manual MITM sessions; see /work/noaide-private/proxy-samples/
+intercepted-request.md
+intercepted-request.json
+intercepted-response.md
+outgoing-request-2.md
+incoming-response.md
+codex-incoming.md
+codex-outgoing.md
+gemini-incoming.md
+gemini-outgoing.md
+.pki-backup/
+traces/
+
+# ── Internal audit / progress notes (not for public repo) ─────
+# Workbench files from the hygiene sprint; not code, not docs.
+IMPL-PLAN-AUDIT.md
+TESTING-PROXY-ENGINE.md
+PROGRESS.md
+AGENTS.md
+
+# ── Dev-only scripts (kept locally, not part of public workflow) ──
+# Documented in scripts/README.md — only setup-runner.sh is tracked.
+scripts/check-pki-health.sh
+scripts/net-trace.sh
+scripts/renew-certs.sh
+scripts/start-gui.sh
+
+# ── Local test + debug artifacts ──────────────────────────────
+frontend/.playwright/
+frontend/test-results/
+frontend/test-blue-square.png
+frontend/test-red-square.png
+test.txt
+.codex
+
+# ── Sprint infrastructure (temporary coordination files) ──────
+.sprint-freeze-*.lock
