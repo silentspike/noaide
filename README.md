@@ -425,6 +425,44 @@ noaide supports multiple AI coding agents out of the box:
 
 The JSONL parser and session manager use pluggable format adapters. Core UI components (chat panel, editor, network tab) are agent-agnostic.
 
+## Operating an Agent
+
+These four short sections describe the supervisor experience. For the
+full contract between the supervisor, the agent, and noaide, see
+[AGENTS.md](AGENTS.md).
+
+### Agent Operating Model
+
+noaide watches agents — it does not run them. The agent (Claude Code,
+Gemini CLI, Codex) is a separate process. noaide reads its JSONL log,
+watches the filesystem with eBPF, hosts its PTY, and proxies its API
+calls. See [AGENTS.md §1](AGENTS.md#1-operating-model).
+
+### Supervision Boundaries
+
+The supervisor controls session lifecycle, keyboard/text input, tool
+approval, the API proxy gate (auto vs. manual), and file-edit locks
+during 3-way merges. noaide enforces an API whitelist, redacts secrets,
+and never spawns shells for PTY input. See
+[AGENTS.md §2](AGENTS.md#2-supervision-boundaries).
+
+### Evidence and Audit Loop
+
+Every event crossing a component boundary is wrapped in an envelope
+carrying a Lamport clock, source, PID, and session ID. JSONL is the
+source of truth; the Limbo DB and ECS world are regeneratable caches.
+Network, file, and git activity are rendered in place so they can be
+correlated with the conversation. See
+[AGENTS.md §3](AGENTS.md#3-evidence-and-audit-loop).
+
+### Agent Contract
+
+Agents integrate by (1) writing JSONL as they run, (2) honouring the
+configured base-URL override when the supervisor enables the proxy, and
+(3) accepting PTY or tmux send-keys input. See
+[AGENTS.md §4](AGENTS.md#4-agent-contract) for per-agent integration
+paths.
+
 ## Security
 
 API keys (`sk-ant-*`, `Bearer *`) are automatically redacted in all logs and UI via regex. The API proxy only forwards to `api.anthropic.com` (whitelist). All transport uses TLS 1.3 via QUIC. See [SECURITY.md](SECURITY.md) for vulnerability reporting.
