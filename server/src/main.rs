@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 use axum::Router;
@@ -61,6 +61,243 @@ struct AppState {
     plan_base_dir: Arc<PathBuf>,
     /// Maps session UUID → plan name (for auto-selecting plan in Plan tab).
     session_plan_mapping: Arc<RwLock<HashMap<Uuid, String>>>,
+}
+
+const MANAGED_SESSIONS_FILE: &str = "/data/noaide/managed-sessions.json";
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+struct PersistedManagedSession {
+    session_id: Uuid,
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    plan: String,
+}
+
+fn restore_managed_session_entries(
+    entries: &[PersistedManagedSession],
+    managed_session_paths: &mut HashMap<String, Uuid>,
+    session_plan_mapping: &mut HashMap<Uuid, String>,
+) -> (usize, usize) {
+    let mut restored_paths = 0usize;
+    let mut restored_plans = 0usize;
+
+    for entry in entries {
+        if !entry.path.is_empty() {
+            managed_session_paths.insert(entry.path.clone(), entry.session_id);
+            restored_paths += 1;
+        }
+        if !entry.plan.is_empty() {
+            session_plan_mapping.insert(entry.session_id, entry.plan.clone());
+            restored_plans += 1;
+        }
+    }
+
+    (restored_paths, restored_plans)
+}
+
+#[cfg(test)]
+fn plan_for_encoded_session_path(
+    encoded_path: &str,
+    managed_session_paths: &HashMap<String, Uuid>,
+    session_plan_mapping: &HashMap<Uuid, String>,
+) -> Option<String> {
+    let managed_id = managed_session_paths.get(encoded_path)?;
+    session_plan_mapping.get(managed_id).cloned()
+}
+
+fn plan_dir_matches_working_dir(
+    plan_name: &str,
+    plan_dir: &FsPath,
+    impl_plan: &FsPath,
+    working_dir: &FsPath,
+) -> bool {
+    let working_dir_name = working_dir
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_default();
+    if plan_name == working_dir_name {
+        return true;
+    }
+
+    let working_dir_canonical = std::fs::canonicalize(working_dir).ok();
+    if let Some(working_dir_canonical) = working_dir_canonical.as_deref() {
+        if std::fs::canonicalize(plan_dir)
+            .map(|path| path == working_dir_canonical)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+
+        if std::fs::canonicalize(impl_plan)
+            .ok()
+            .and_then(|path| path.parent().map(FsPath::to_path_buf))
+            .map(|parent| parent == working_dir_canonical)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn build_managed_session_persist_entries(
+    managed_session_paths: &HashMap<String, Uuid>,
+    session_plan_mapping: &HashMap<Uuid, String>,
+) -> Vec<PersistedManagedSession> {
+    let mut entries: Vec<PersistedManagedSession> = managed_session_paths
+        .iter()
+        .map(|(path, session_id)| PersistedManagedSession {
+            session_id: *session_id,
+            path: path.clone(),
+            plan: session_plan_mapping
+                .get(session_id)
+                .cloned()
+                .unwrap_or_default(),
+        })
+        .collect();
+    entries.sort_by(|a, b| a.path.cmp(&b.path).then(a.session_id.cmp(&b.session_id)));
+    entries
+}
+
+async fn persist_managed_session_entries(
+    entries: &[PersistedManagedSession],
+) -> std::io::Result<()> {
+    let path = std::path::Path::new(MANAGED_SESSIONS_FILE);
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let json = serde_json::to_string_pretty(entries).map_err(std::io::Error::other)?;
+    write_json_atomic(path, &(json + "\n")).await
+}
+
+#[cfg(test)]
+mod managed_session_persistence_tests {
+    use std::collections::HashMap;
+
+    use uuid::Uuid;
+
+    use super::{
+        PersistedManagedSession, build_managed_session_persist_entries,
+        plan_dir_matches_working_dir, plan_for_encoded_session_path,
+        restore_managed_session_entries,
+    };
+
+    #[test]
+    fn managed_session_restore_loads_paths_and_plans() {
+        let managed_id = Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap();
+        let jsonl_id = Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let entries = vec![
+            PersistedManagedSession {
+                session_id: managed_id,
+                path: "-work-noaide".to_string(),
+                plan: "portfolio-website".to_string(),
+            },
+            PersistedManagedSession {
+                session_id: jsonl_id,
+                path: String::new(),
+                plan: "ignored-pathless-plan".to_string(),
+            },
+        ];
+
+        let mut paths = HashMap::new();
+        let mut plans = HashMap::new();
+        let (path_count, plan_count) =
+            restore_managed_session_entries(&entries, &mut paths, &mut plans);
+
+        assert_eq!(path_count, 1);
+        assert_eq!(plan_count, 2);
+        assert_eq!(paths.get("-work-noaide"), Some(&managed_id));
+        assert_eq!(
+            plans.get(&managed_id).map(String::as_str),
+            Some("portfolio-website")
+        );
+        assert_eq!(
+            plans.get(&jsonl_id).map(String::as_str),
+            Some("ignored-pathless-plan")
+        );
+    }
+
+    #[test]
+    fn managed_session_plan_lookup_reassociates_jsonl_encoded_path() {
+        let managed_id = Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap();
+        let mut paths = HashMap::new();
+        paths.insert("-work-noaide".to_string(), managed_id);
+        let mut plans = HashMap::new();
+        plans.insert(managed_id, "portfolio-website".to_string());
+
+        assert_eq!(
+            plan_for_encoded_session_path("-work-noaide", &paths, &plans).as_deref(),
+            Some("portfolio-website")
+        );
+        assert_eq!(
+            plan_for_encoded_session_path("-work-other", &paths, &plans),
+            None
+        );
+    }
+
+    #[test]
+    fn managed_session_persist_entries_are_stable_and_include_plan() {
+        let first = Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap();
+        let second = Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap();
+        let mut paths = HashMap::new();
+        paths.insert("-work-zeta".to_string(), second);
+        paths.insert("-work-alpha".to_string(), first);
+        let mut plans = HashMap::new();
+        plans.insert(first, "alpha-plan".to_string());
+
+        let entries = build_managed_session_persist_entries(&paths, &plans);
+
+        assert_eq!(entries[0].path, "-work-alpha");
+        assert_eq!(entries[0].plan, "alpha-plan");
+        assert_eq!(entries[1].path, "-work-zeta");
+        assert_eq!(entries[1].plan, "");
+    }
+
+    #[test]
+    fn plan_dir_match_rejects_unrelated_impl_plan_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plan_discovery = tmp.path().join("plan-discovery");
+        let issue_plan = tmp.path().join("issue-94-verification");
+        std::fs::create_dir_all(&plan_discovery).unwrap();
+        std::fs::create_dir_all(&issue_plan).unwrap();
+        std::fs::write(plan_discovery.join("IMPL-PLAN.md"), "# unrelated").unwrap();
+        std::fs::write(issue_plan.join("plan.json"), "{}").unwrap();
+
+        assert!(!plan_dir_matches_working_dir(
+            "plan-discovery",
+            &plan_discovery,
+            &plan_discovery.join("IMPL-PLAN.md"),
+            &issue_plan,
+        ));
+        assert!(plan_dir_matches_working_dir(
+            "issue-94-verification",
+            &issue_plan,
+            &issue_plan.join("IMPL-PLAN.md"),
+            &issue_plan,
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plan_dir_match_accepts_impl_plan_symlink_target_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let working_dir = tmp.path().join("project");
+        let plan_dir = tmp.path().join("external-plan");
+        std::fs::create_dir_all(&working_dir).unwrap();
+        std::fs::create_dir_all(&plan_dir).unwrap();
+        let working_impl = working_dir.join("IMPL-PLAN.md");
+        std::fs::write(&working_impl, "# linked").unwrap();
+
+        std::os::unix::fs::symlink(&working_impl, plan_dir.join("IMPL-PLAN.md")).unwrap();
+        assert!(plan_dir_matches_working_dir(
+            "external-plan",
+            &plan_dir,
+            &plan_dir.join("IMPL-PLAN.md"),
+            &working_dir,
+        ));
+    }
 }
 
 #[tokio::main]
@@ -181,26 +418,19 @@ async fn main() -> anyhow::Result<()> {
     if !persist_dir.exists() {
         let _ = tokio::fs::create_dir_all(persist_dir).await;
     }
-    if let Ok(data) = tokio::fs::read_to_string("/data/noaide/managed-sessions.json").await
-        && let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&data)
+    if let Ok(data) = tokio::fs::read_to_string(MANAGED_SESSIONS_FILE).await
+        && let Ok(entries) = serde_json::from_str::<Vec<PersistedManagedSession>>(&data)
     {
         let mut mapping = session_plan_mapping.write().await;
-        for entry in &entries {
-            if let (Some(sid), Some(plan)) = (
-                entry["session_id"]
-                    .as_str()
-                    .and_then(|s| Uuid::parse_str(s).ok()),
-                entry["plan"].as_str(),
-            ) && !plan.is_empty()
-            {
-                mapping.insert(sid, plan.to_string());
-            }
-        }
+        let mut paths = managed_session_paths.write().await;
+        let (restored_paths, restored_plans) =
+            restore_managed_session_entries(&entries, &mut paths, &mut mapping);
         info!(
-            restored = mapping.len(),
-            "restored session→plan mappings from previous run"
+            restored_paths,
+            restored_plans, "restored managed session mappings from previous run"
         );
         drop(mapping);
+        drop(paths);
     }
 
     match noaide_server::proxy::keys::load_from_disk(&proxy_state.key_store) {
@@ -542,7 +772,21 @@ async fn main() -> anyhow::Result<()> {
         all_sessions.extend(sessions);
     }
 
+    let restored_plan_by_path: HashMap<String, String> = {
+        let managed_paths = managed_session_paths.read().await;
+        let plan_mapping = session_plan_mapping.read().await;
+        managed_paths
+            .iter()
+            .filter_map(|(encoded_path, managed_id)| {
+                plan_mapping
+                    .get(managed_id)
+                    .map(|plan| (encoded_path.clone(), plan.clone()))
+            })
+            .collect()
+    };
+
     // Phase 2: Register sessions in ECS (fast — no parsing yet)
+    let mut restored_jsonl_plan_bindings: Vec<(Uuid, String)> = Vec::new();
     {
         let mut world = ecs.write().await;
         let mut paths = session_paths.write().await;
@@ -557,6 +801,16 @@ async fn main() -> anyhow::Result<()> {
             cli_types.insert(session_id, session_info.cli_type);
             if session_info.message_count_hint > 0 {
                 hints.insert(session_id, session_info.message_count_hint);
+            }
+            if let Some(encoded_dir) = extract_encoded_project_dir(&session_info.jsonl_path)
+                && let Some(plan) = restored_plan_by_path.get(&encoded_dir)
+            {
+                restored_jsonl_plan_bindings.push((session_id, plan.clone()));
+                info!(
+                    session = %session_id,
+                    plan = %plan,
+                    "restored plan binding for discovered JSONL session"
+                );
             }
             world.spawn_session(SessionComponent {
                 id: session_id,
@@ -576,6 +830,12 @@ async fn main() -> anyhow::Result<()> {
             sessions = world.session_count(),
             "sessions registered (parsing in background)"
         );
+    }
+    if !restored_jsonl_plan_bindings.is_empty() {
+        let mut plan_mapping = session_plan_mapping.write().await;
+        for (session_id, plan) in restored_jsonl_plan_bindings {
+            plan_mapping.entry(session_id).or_insert(plan);
+        }
     }
 
     // Phase 2b: Register project directory watches for FILE_CHANGES (WP-10)
@@ -2086,7 +2346,94 @@ async fn api_get_plan_json(
     }
 }
 
-/// POST /api/plans/{name}/edits — Write plan-edits.json for the session to pick up.
+fn append_incoming_edit_values(target: &mut Vec<serde_json::Value>, value: serde_json::Value) {
+    match value {
+        serde_json::Value::Array(items) => target.extend(items),
+        serde_json::Value::Null => {}
+        other => target.push(other),
+    }
+}
+
+fn append_existing_edit_values(
+    target: &mut Vec<serde_json::Value>,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    match value {
+        serde_json::Value::Array(items) => {
+            target.extend(items);
+            Ok(())
+        }
+        serde_json::Value::Null => Ok(()),
+        _ => Err("existing plan-edits.json `edits` field must be an array".to_string()),
+    }
+}
+
+fn merge_plan_edit_payloads(
+    existing: Option<serde_json::Value>,
+    incoming: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let mut base = serde_json::Map::new();
+    let mut edits = Vec::new();
+
+    match existing {
+        Some(serde_json::Value::Object(mut object)) => {
+            if let Some(existing_edits) = object.remove("edits") {
+                append_existing_edit_values(&mut edits, existing_edits)?;
+            }
+            base = object;
+        }
+        Some(serde_json::Value::Array(items)) => edits.extend(items),
+        Some(serde_json::Value::Null) | None => {}
+        Some(_) => {
+            return Err("existing plan-edits.json must be a JSON object or array".to_string());
+        }
+    }
+
+    match incoming {
+        serde_json::Value::Object(mut object) => {
+            if let Some(incoming_edits) = object.remove("edits") {
+                append_incoming_edit_values(&mut edits, incoming_edits);
+                for (key, value) in object {
+                    base.insert(key, value);
+                }
+            } else {
+                edits.push(serde_json::Value::Object(object));
+            }
+        }
+        serde_json::Value::Array(items) => edits.extend(items),
+        serde_json::Value::Null => {}
+        other => edits.push(other),
+    }
+
+    base.insert("edits".to_string(), serde_json::Value::Array(edits));
+    Ok(serde_json::Value::Object(base))
+}
+
+fn atomic_json_tmp_path(path: &std::path::Path) -> PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("plan-edits.json");
+    path.with_file_name(format!("{file_name}.tmp-{}-{stamp}", std::process::id()))
+}
+
+async fn write_json_atomic(path: &std::path::Path, json: &str) -> std::io::Result<()> {
+    let tmp_path = atomic_json_tmp_path(path);
+    tokio::fs::write(&tmp_path, json).await?;
+    match tokio::fs::rename(&tmp_path, path).await {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            Err(err)
+        }
+    }
+}
+
+/// POST /api/plans/{name}/edits — Append plan-edits.json for the session to pick up.
 async fn api_post_plan_edits(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -2110,13 +2457,50 @@ async fn api_post_plan_edits(
         return axum::Json(serde_json::json!({"error": "failed to create directory"}));
     }
 
-    match serde_json::to_string_pretty(&edits) {
+    let existing = match tokio::fs::read_to_string(&edits_path).await {
+        Ok(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
+            Ok(value) => Some(value),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    plan = %name,
+                    "refusing to overwrite invalid plan-edits.json"
+                );
+                return axum::Json(serde_json::json!({"error": "existing edits invalid"}));
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            tracing::warn!(error = %e, plan = %name, "failed to read plan-edits.json");
+            return axum::Json(serde_json::json!({"error": "read failed"}));
+        }
+    };
+
+    let merged_edits = match merge_plan_edit_payloads(existing, edits) {
+        Ok(value) => value,
+        Err(e) => {
+            tracing::warn!(error = %e, plan = %name, "failed to merge plan-edits payload");
+            return axum::Json(serde_json::json!({"error": e}));
+        }
+    };
+    let edit_count = merged_edits
+        .get("edits")
+        .and_then(|value| value.as_array())
+        .map(|items| items.len())
+        .unwrap_or_default();
+
+    match serde_json::to_string_pretty(&merged_edits) {
         Ok(json_str) => {
-            if let Err(e) = tokio::fs::write(&edits_path, &json_str).await {
+            if let Err(e) = write_json_atomic(&edits_path, &json_str).await {
                 tracing::warn!(error = %e, plan = %name, "failed to write plan-edits.json");
                 return axum::Json(serde_json::json!({"error": "write failed"}));
             }
-            info!(plan = %name, path = %edits_path.display(), "wrote plan-edits.json");
+            info!(
+                plan = %name,
+                path = %edits_path.display(),
+                edits = edit_count,
+                "wrote plan-edits.json"
+            );
 
             // Publish plan update via WebTransport bus so connected clients
             // receive the change instantly without polling.
@@ -2128,9 +2512,84 @@ async fn api_post_plan_edits(
                 info!(plan = %name, "published plan update via WebTransport");
             }
 
-            axum::Json(serde_json::json!({"ok": true, "plan": name}))
+            axum::Json(serde_json::json!({"ok": true, "plan": name, "edits": edit_count}))
         }
         Err(e) => axum::Json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+#[cfg(test)]
+mod plan_edits_tests {
+    use serde_json::json;
+
+    use super::{merge_plan_edit_payloads, write_json_atomic};
+
+    #[test]
+    fn plan_edits_merge_appends_incoming_edits_without_dropping_existing() {
+        let existing = json!({
+            "version": 1,
+            "edits": [
+                {"type": "gate_status", "id": 1, "status": "pending"}
+            ]
+        });
+        let incoming = json!({
+            "source": "ui",
+            "edits": [
+                {"type": "gate_status", "id": 1, "status": "pass"}
+            ]
+        });
+
+        let merged = merge_plan_edit_payloads(Some(existing), incoming).unwrap();
+        assert_eq!(merged["version"], json!(1));
+        assert_eq!(merged["source"], json!("ui"));
+        assert_eq!(merged["edits"].as_array().unwrap().len(), 2);
+        assert_eq!(merged["edits"][0]["status"], json!("pending"));
+        assert_eq!(merged["edits"][1]["status"], json!("pass"));
+    }
+
+    #[test]
+    fn plan_edits_merge_accepts_legacy_array_and_single_edit_payloads() {
+        let existing = json!([
+            {"type": "wp_status", "id": "wp-1", "status": "todo"}
+        ]);
+        let incoming = json!({"type": "section_status", "id": "b-1", "status": "done"});
+
+        let merged = merge_plan_edit_payloads(Some(existing), incoming).unwrap();
+        assert_eq!(merged["edits"].as_array().unwrap().len(), 2);
+        assert_eq!(merged["edits"][0]["type"], json!("wp_status"));
+        assert_eq!(merged["edits"][1]["type"], json!("section_status"));
+    }
+
+    #[test]
+    fn plan_edits_merge_rejects_invalid_existing_edit_shape() {
+        let existing = json!({"edits": "not-an-array"});
+        let incoming = json!({"edits": []});
+
+        assert!(merge_plan_edit_payloads(Some(existing), incoming).is_err());
+    }
+
+    #[tokio::test]
+    async fn plan_edits_atomic_write_replaces_target_and_removes_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plan-edits.json");
+        tokio::fs::write(&path, r#"{"edits":[{"id":1}]}"#)
+            .await
+            .unwrap();
+
+        write_json_atomic(&path, r#"{"edits":[{"id":2}]}"#)
+            .await
+            .unwrap();
+
+        let raw = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(raw, r#"{"edits":[{"id":2}]}"#);
+
+        let mut entries = tokio::fs::read_dir(dir.path()).await.unwrap();
+        let mut file_count = 0;
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            file_count += 1;
+            assert_eq!(entry.file_name().to_string_lossy(), "plan-edits.json");
+        }
+        assert_eq!(file_count, 1);
     }
 }
 
@@ -2412,28 +2871,23 @@ async fn api_create_managed_session(
                             && ft.is_dir()
                         {
                             let name = entry.file_name().to_string_lossy().to_string();
-                            let impl_plan = entry.path().join("IMPL-PLAN.md");
-                            let plan_json = entry.path().join("plan.json");
-                            // Check if this plan dir has an IMPL-PLAN.md and the session
-                            // working dir contains an IMPL-PLAN.md too
-                            if plan_json.exists() {
-                                let _session_impl =
-                                    PathBuf::from(&body.working_dir).join("IMPL-PLAN.md");
-                                // Match by: plan dir has symlink to session dir, or
-                                // session dir name matches plan name
-                                let working_dir_name = PathBuf::from(&body.working_dir)
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().to_string())
-                                    .unwrap_or_default();
-                                if impl_plan.exists()
-                                    || name == working_dir_name
-                                    || name.contains(&working_dir_name)
-                                {
-                                    let mut mapping = state.session_plan_mapping.write().await;
-                                    mapping.insert(sid, name.clone());
-                                    info!(session = %sid, plan = %name, "auto-bound session to plan");
-                                    break;
-                                }
+                            let plan_dir = entry.path();
+                            let impl_plan = plan_dir.join("IMPL-PLAN.md");
+                            let plan_json = plan_dir.join("plan.json");
+                            // Match only the explicit plan directory, not the first unrelated
+                            // plan that happens to contain an IMPL-PLAN.md.
+                            if plan_json.exists()
+                                && plan_dir_matches_working_dir(
+                                    &name,
+                                    &plan_dir,
+                                    &impl_plan,
+                                    &working_dir,
+                                )
+                            {
+                                let mut mapping = state.session_plan_mapping.write().await;
+                                mapping.insert(sid, name.clone());
+                                info!(session = %sid, plan = %name, "auto-bound session to plan");
+                                break;
                             }
                         }
                     }
@@ -2450,12 +2904,13 @@ async fn api_create_managed_session(
             {
                 let mapping = state.session_plan_mapping.read().await;
                 let msp = state.managed_session_paths.read().await;
-                let persist: Vec<serde_json::Value> = msp.iter().map(|(path, id)| {
-                    let plan = mapping.get(id).cloned().unwrap_or_default();
-                    serde_json::json!({"session_id": id.to_string(), "path": path, "plan": plan})
-                }).collect();
-                if let Ok(json) = serde_json::to_string_pretty(&persist) {
-                    let _ = tokio::fs::write("/data/noaide/managed-sessions.json", json).await;
+                let persist = build_managed_session_persist_entries(&msp, &mapping);
+                if let Err(e) = persist_managed_session_entries(&persist).await {
+                    warn!(
+                        error = %e,
+                        session = %sid,
+                        "failed to persist managed session mappings"
+                    );
                 }
             }
             (
