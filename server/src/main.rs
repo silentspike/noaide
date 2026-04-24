@@ -96,6 +96,7 @@ fn restore_managed_session_entries(
     (restored_paths, restored_plans)
 }
 
+#[cfg(test)]
 fn plan_for_encoded_session_path(
     encoded_path: &str,
     managed_session_paths: &HashMap<String, Uuid>,
