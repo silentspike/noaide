@@ -8,7 +8,7 @@ test.describe("mobile layout (375x812)", () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
   test.beforeEach(async ({ page }) => {
-    await page.goto("https://localhost:9999/", { waitUntil: "networkidle" });
+    await page.goto("/", { waitUntil: "networkidle" });
     const welcome = page.getByTestId("welcome-dismiss");
     if (await welcome.isVisible({ timeout: 2000 }).catch(() => false)) {
       await welcome.click();
