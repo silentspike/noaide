@@ -63,7 +63,7 @@ test.describe("noaide smoke tests", () => {
   test("dependency graph has clickable nodes", async ({ page }) => {
     await page.getByTestId("tab-plan").click();
     await page.getByTestId("sidebar-view-dependencies").click();
-    const node = page.locator("[data-testid^='dep-node-']").first();
+    const node = page.locator("[data-testid^='dependency-node-']").first();
     await expect(node).toBeVisible({ timeout: 5000 });
     // Click should change opacity of non-downstream nodes
     await node.dispatchEvent("click");
