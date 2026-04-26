@@ -43,6 +43,7 @@ not yet in place are listed separately below.
 - GitHub Actions dependencies updated via Dependabot
 - CodeQL SAST scanning on every push/PR
 - `cargo audit` in the nightly CI workflow
+- `pnpm audit --audit-level=high` in the nightly CI workflow (fails on high+)
 - Secret scanning enabled on the repository
 - TLS 1.3 via QUIC/WebTransport for the dev server (self-signed local CA)
 - API key redaction (`sk-ant-*`, `Bearer *`) via regex in logs and UI
@@ -58,8 +59,6 @@ not yet in place are listed separately below.
 
 - [ ] Strict Content-Security-Policy on a production server
       (tracked in issue: "Enforce strict CSP on production server")
-- [ ] `npm audit` in the CI workflow (currently only `cargo audit` runs
-      nightly — tracked in issue: "Re-enable npm audit in nightly CI")
 - [ ] COOP/COEP as production HTTP response headers (currently only set
       by the Vite dev server — tracked in issue: "Enable COOP/COEP in
       production HTTP response headers")
