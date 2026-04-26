@@ -168,8 +168,14 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Full pnpm audit
-        run: cd frontend && pnpm install --frozen-lockfile && pnpm audit --json > ../pnpm-audit-full.json || true
+      - name: Install frontend dependencies for audit
+        run: cd frontend && pnpm install --frozen-lockfile
+
+      - name: pnpm audit (full report — never fails)
+        run: cd frontend && pnpm audit --json > ../pnpm-audit-full.json || true
+
+      - name: pnpm audit (high+ severity — fails the job)
+        run: cd frontend && pnpm audit --audit-level=high
 
       - name: Gitleaks full scan
         run: |
