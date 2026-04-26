@@ -146,10 +146,41 @@ benchmark, etc.). Each row is one assertion. Status:
 
 ## 5. Performance benchmarks (#142 actually measured)
 
-- [ ] **`cargo bench -p noaide-server` runs both benches to completion** — Evidence: `target/criterion/*/report/index.html` exists with measurements
-- [ ] **`parse_line` median is in line with the README design goal (>10k lines/s)** — Evidence: bencher output `parse_line/user_message ... ns/iter`, computed parse rate
-- [ ] **`component_to_api_json` 200-message page completes in <5ms** — Evidence: bencher output for `pagination_window/200_message_page`
-- [ ] **Nightly artefact `benchmark-results-*` contains both reports** — Evidence: `gh run download <id> -n benchmark-results-N` followed by `ls`
+- [x] **`cargo bench -p noaide-server` runs both benches to completion** — Evidence:
+  ```
+  $ cargo remote -c -- bench -p noaide-server
+  $ ssh root@buildhost "ls /tmp/builds/*/target/criterion/"
+  component_to_api_json
+  pagination_window
+  parse_line
+  parse_line_mixed
+  report
+  ```
+- [x] **`parse_line` median substantially beats the >10k lines/s goal** — Evidence (mean from `estimates.json`):
+  ```
+  parse_line/user_message      : 2190 ns/line  →  456,534 lines/sec
+  parse_line/assistant_message : 3655 ns/line  →  273,532 lines/sec
+  parse_line/tool_use_message  : 4013 ns/line  →  249,144 lines/sec
+  parse_line/thinking_message  : 3071 ns/line  →  325,583 lines/sec
+  ```
+  Slowest variant (tool_use, 249k lines/s) beats the >10k design goal by ~25×.
+- [x] **`component_to_api_json` 200-message page completes well under 5 ms** — Evidence:
+  ```
+  pagination_window/200_message_page : 240,000 ns = 0.24 ms
+  ```
+  Design goal of <5 ms beaten by ~20×.
+- [x] **Per-message conversion times** — Evidence:
+  ```
+  component_to_api_json/user_text       : 937 ns
+  component_to_api_json/assistant_text  : 955 ns
+  component_to_api_json/tool_use        : 1524 ns
+  ```
+- [ ] **Nightly artefact `benchmark-results-*` contains both reports** — Will be verified after the next nightly run on main (PR #157 already wired the upload)
+
+### 5.1 Roadmap (not bench-covered yet)
+
+- [~] File event end-to-end p99 < 50ms — Playwright trace not implemented (tracked in #142 follow-up if needed)
+- [~] FPS at 1000+ messages — same
 
 ### 5.1 Roadmap (not bench-covered yet)
 
