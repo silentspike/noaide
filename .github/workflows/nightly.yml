@@ -49,9 +49,6 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Build server
-        run: cargo build --release
-
       - name: Install wasm-pack
         uses: taiki-e/install-action@v2
         with:
@@ -63,26 +60,64 @@ jobs:
             wasm-pack build wasm/$mod --target web --out-dir ../../frontend/src/wasm/$mod
           done
 
-      - name: Build frontend
-        run: cd frontend && pnpm install --frozen-lockfile && pnpm run build
+      - name: Build backend server
+        run: cargo build --release --bin noaide-server
 
-      - name: Start server
+      - name: Install frontend dependencies
+        run: cd frontend && pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: cd frontend && pnpm exec playwright install chromium --with-deps
+
+      - name: Build frontend
+        run: cd frontend && pnpm run build
+
+      - name: Seed E2E fixtures
         run: |
-          ./target/release/noaide-server &
-          sleep 5
-          curl -sk https://localhost:4433/health || echo "Health check pending"
+          mkdir -p /tmp/noaide-nightly/data
+          cp -r frontend/e2e/fixtures/claude-home /tmp/noaide-nightly/claude-home
+          cp -r frontend/e2e/fixtures/plans /tmp/noaide-nightly/plans
+
+      - name: Start backend server
+        run: |
+          NOAIDE_DB_PATH=/tmp/noaide-nightly/data/ide.db \
+          NOAIDE_PLAN_DIR=/tmp/noaide-nightly/plans \
+          NOAIDE_WATCH_PATHS=/tmp/noaide-nightly/claude-home \
+          NOAIDE_LOG_LEVEL=info \
+          nohup ./target/release/noaide-server > /tmp/noaide-nightly/server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Backend ready after ${i}s"; break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:8080/health || (echo "Backend not responding:"; cat /tmp/noaide-nightly/server.log; exit 1)
+          for i in $(seq 1 15); do
+            count=$(curl -sf http://localhost:8080/api/sessions | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
+            if [ "$count" -ge 3 ]; then
+              echo "Discovery indexed $count sessions after ${i}s"; break
+            fi
+            sleep 1
+          done
 
       - name: Run E2E tests
-        run: |
-          npx playwright install --with-deps chromium
-          npx playwright test tests/e2e/smoke.spec.ts --reporter=html
+        run: cd frontend && pnpm run e2e
 
-      - name: Upload E2E artifacts
-        if: always()
+      - name: Backend log on failure
+        if: failure()
+        run: |
+          echo "=== Backend log ==="
+          cat /tmp/noaide-nightly/server.log || true
+
+      - name: Upload Playwright report on failure
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-results-${{ github.run_number }}
-          path: tests/e2e/results/
+          name: nightly-playwright-report-${{ github.run_number }}
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
 
   benchmarks:
     name: Performance Benchmarks
