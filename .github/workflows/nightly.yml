@@ -137,9 +137,10 @@ jobs:
         run: cd frontend && pnpm install --frozen-lockfile && pnpm audit --json > ../pnpm-audit-full.json || true
 
       - name: Gitleaks full scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          GITLEAKS_VERSION="8.24.3"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz
+          ./gitleaks detect --source=. --verbose --redact --log-opts="--all"
 
       - name: Upload security reports
         if: always()
