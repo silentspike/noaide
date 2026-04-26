@@ -58,9 +58,13 @@ jobs:
             CHANGELOG.md > release_notes.md
 
       - name: Install FlatBuffers compiler
-        uses: taiki-e/install-action@v2
-        with:
-          tool: flatc
+        run: |
+          FLATC_VERSION="25.2.10"
+          curl -sSfL "https://github.com/google/flatbuffers/releases/download/v${FLATC_VERSION}/Linux.flatc.binary.g++-13.zip" -o /tmp/flatc.zip
+          unzip -o /tmp/flatc.zip -d /tmp flatc
+          chmod +x /tmp/flatc
+          sudo mv /tmp/flatc /usr/local/bin/
+          flatc --version
 
       - name: Generate FlatBuffers
         run: flatc --rust --ts -o generated/ schemas/messages.fbs
