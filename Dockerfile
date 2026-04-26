@@ -26,12 +26,15 @@ RUN pnpm build
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
-RUN useradd -m -s /bin/bash noaide
+RUN useradd -m -s /bin/bash noaide && \
+    mkdir -p /data/noaide && \
+    chown -R noaide:noaide /data
 WORKDIR /app
 COPY --from=rust-builder /build/noaide-server /app/noaide-server
 # /app/static contains the full Vite output (index.html, assets/, fonts/, etc.).
 COPY --from=frontend-builder /build/dist /app/static
 USER noaide
+VOLUME ["/data/noaide"]
 ENV NOAIDE_HTTP_PORT=8080
 ENV NOAIDE_PORT=4433
 ENV NOAIDE_STATIC_DIR=/app/static
