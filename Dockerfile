@@ -24,8 +24,9 @@ RUN pnpm build
 
 # Stage 3: Runtime
 FROM debian:bookworm-slim
+# wget is used by the docker-compose healthcheck.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+    ca-certificates libssl3 wget && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -s /bin/bash noaide && \
     mkdir -p /data/noaide && \
     chown -R noaide:noaide /data
