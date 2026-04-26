@@ -132,13 +132,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run benchmarks
-        run: cargo bench -- --output-format bencher | tee benchmark-results.txt
+        run: cargo bench -p noaide-server -- --output-format bencher | tee benchmark-results.txt
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-${{ github.run_number }}
-          path: benchmark-results.txt
+          path: |
+            benchmark-results.txt
+            target/criterion/**/report/index.html
+            target/criterion/**/base/estimates.json
+          if-no-files-found: warn
 
   extended-security:
     name: Extended Security Scan

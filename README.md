@@ -254,9 +254,15 @@ Architectural decisions are documented as [11 ADRs in llms.txt](llms.txt). Each 
 ## Performance — Design Goals
 
 These are the target numbers the architecture is designed around.
-A full benchmark suite is planned (`criterion` for Rust hot paths,
-Playwright traces for end-to-end latency) but not in place yet;
-treat the bars as design goals, not measured results.
+The `criterion` suite under `server/benches/` covers two hot paths
+(JSONL `parse_line` and ECS-cache `component_to_api_json`) and runs
+nightly — fetch the latest measurements from the **`benchmark-results-*`**
+artefact on the most recent
+[Nightly run](https://github.com/silentspike/noaide/actions/workflows/nightly.yml).
+End-to-end latency benchmarks (Playwright traces for the file event
+→ browser path, FPS at 1000+ messages) are still on the roadmap;
+treat any bar without a matching bench as a design goal, not a
+measurement.
 
 ```
 File event to browser       ████████████████████████████░░  < 50ms p99
