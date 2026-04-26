@@ -58,3 +58,12 @@ togaf-parser = { path = "../crates/togaf-parser" }
 
 [dev-dependencies]
 tempfile = "3"
+criterion = { version = "0.7", features = ["html_reports"] }
+
+[[bench]]
+name = "jsonl_parser"
+harness = false
+
+[[bench]]
+name = "ecs_cache"
+harness = false
