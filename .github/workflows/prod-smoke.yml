@@ -1,0 +1,103 @@
+name: Production Smoke Test
+
+# Closes #143 (production deployment), #139 (CSP header), #140 (COOP/COEP).
+# Builds the production Docker image, brings up the prod compose stack,
+# and asserts that the hardened response headers and the static frontend
+# are actually served.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "docker-compose.prod.yml"
+      - "server/**"
+      - "frontend/**"
+      - "wasm/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/prod-smoke.yml"
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "docker-compose.prod.yml"
+      - "server/**"
+      - "frontend/**"
+      - "wasm/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/prod-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Production smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Generate a self-signed cert pair for the smoke test
+        run: |
+          mkdir -p certs
+          openssl genrsa -out certs/key.pem 2048
+          openssl req -x509 -new -nodes -key certs/key.pem -sha256 -days 3650 \
+            -out certs/cert.pem \
+            -subj "/CN=localhost" \
+            -addext "subjectAltName = DNS:localhost,IP:127.0.0.1"
+
+      - name: Prepare .env (JWT secret only)
+        run: echo "NOAIDE_JWT_SECRET=$(openssl rand -hex 32)" > .env
+
+      - name: Build production image
+        run: docker compose -f docker-compose.prod.yml build
+
+      - name: Start production stack
+        run: docker compose -f docker-compose.prod.yml up -d
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Production server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Production server did not become ready"
+          docker compose -f docker-compose.prod.yml logs noaide
+          exit 1
+
+      - name: Assert hardened headers (closes #139, #140)
+        run: |
+          set -e
+          headers=$(curl -sI http://localhost:8080/)
+          echo "$headers"
+          echo "$headers" | grep -i "^Content-Security-Policy:" | grep -q "script-src 'self'"
+          echo "$headers" | grep -i "^Cross-Origin-Opener-Policy:.*same-origin"
+          echo "$headers" | grep -i "^Cross-Origin-Embedder-Policy:.*require-corp"
+          echo "$headers" | grep -i "^Cross-Origin-Resource-Policy:.*same-origin"
+          echo "$headers" | grep -i "^Strict-Transport-Security:"
+          echo "$headers" | grep -i "^X-Content-Type-Options:.*nosniff"
+          echo "$headers" | grep -i "^Referrer-Policy:.*no-referrer"
+          echo "All hardened headers present."
+
+      - name: Assert frontend bundle is served
+        run: |
+          body=$(curl -s http://localhost:8080/)
+          echo "$body" | head -20
+          echo "$body" | grep -qi "<title>noaide</title>" || (echo "<title>noaide</title> not found"; exit 1)
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml logs noaide
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v

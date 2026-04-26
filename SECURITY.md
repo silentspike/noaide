@@ -45,23 +45,18 @@ not yet in place are listed separately below.
 - `cargo audit` in the nightly CI workflow
 - `pnpm audit --audit-level=high` in the nightly CI workflow (fails on high+)
 - Secret scanning enabled on the repository
-- TLS 1.3 via QUIC/WebTransport for the dev server (self-signed local CA)
+- TLS 1.3 via QUIC/WebTransport (dev: self-signed local CA; production: bring-your-own per [ADR-001](docs/adr/001-production-deployment.md))
 - API key redaction (`sk-ant-*`, `Bearer *`) via regex in logs and UI
 - PTY input handling does not spawn shells with `shell=true`
 - API proxy forwards only to `api.anthropic.com`, `cloudcode-pa.googleapis.com`, `chatgpt.com`
 - CORS same-origin enforcement in the dev server
-- COOP/COEP headers set by the Vite dev server for cross-origin isolation
-  (required for SharedArrayBuffer in WASM workers); production headers
-  depend on the eventual deployment target
+- Strict Content-Security-Policy on the production server (`script-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`, restricted `connect-src`) — see [ADR-001](docs/adr/001-production-deployment.md). Asserted by the production smoke test in CI.
+- COOP / COEP / CORP headers — Vite dev server sets COOP+COEP for SharedArrayBuffer; production server (when `NOAIDE_STATIC_DIR` is set) emits `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`, and `Cross-Origin-Resource-Policy: same-origin`
+- Strict-Transport-Security, X-Content-Type-Options `nosniff`, and Referrer-Policy `no-referrer` on the production server
 - SolidJS auto-escapes interpolated output in templates
 
 ### Roadmap (not yet in place)
 
-- [ ] Strict Content-Security-Policy on a production server
-      (tracked in issue: "Enforce strict CSP on production server")
-- [ ] COOP/COEP as production HTTP response headers (currently only set
-      by the Vite dev server — tracked in issue: "Enable COOP/COEP in
-      production HTTP response headers")
 - [ ] Pre-verified eBPF programs with dynamic-loading disabled in
       documentation (eBPF is already load-time-verified by the kernel;
       a formal hardening note is pending)
