@@ -10,6 +10,7 @@ use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{delete, get, post};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -465,7 +466,7 @@ async fn main() -> anyhow::Result<()> {
         plan_base_dir: plan_base_dir.clone(),
         session_plan_mapping: session_plan_mapping.clone(),
     };
-    let app = Router::new()
+    let mut app = Router::new()
         .route(
             "/api/cert-hash",
             get(move || {
@@ -611,12 +612,77 @@ async fn main() -> anyhow::Result<()> {
                 }
             }),
         )
-        .with_state(app_state)
+        .with_state(app_state);
+
+    // Production mode: serve the prebuilt frontend bundle and emit
+    // hardened security headers. Triggered by NOAIDE_STATIC_DIR being
+    // set (the Dockerfile sets it; the dev workflow does not).
+    let static_dir = std::env::var("NOAIDE_STATIC_DIR").ok();
+    let production_mode = static_dir.is_some();
+
+    if let Some(dir) = static_dir {
+        info!(static_dir = %dir, "production mode: serving static frontend");
+        app = app.fallback_service(ServeDir::new(dir));
+    }
+
+    let mut app = app
         .layer(CorsLayer::permissive())
         .layer(SetResponseHeaderLayer::overriding(
             axum::http::header::HeaderName::from_static("cross-origin-resource-policy"),
             HeaderValue::from_static("cross-origin"),
         ));
+
+    if production_mode {
+        // Hardened headers for the production HTTP server. Closes
+        // #139 (strict CSP), #140 (COOP/COEP/CORP).
+        //
+        // CSP rationale:
+        //   - script-src 'self'                : no inline / eval / external scripts
+        //   - style-src 'self' 'unsafe-inline' : SolidJS uses inline component styles
+        //   - connect-src 'self' wss: https:   : WebTransport (wss) + LLM upstreams
+        //   - object-src 'none', base-uri 'self', frame-ancestors 'none'
+        let csp = "default-src 'self'; \
+                   script-src 'self'; \
+                   style-src 'self' 'unsafe-inline'; \
+                   img-src 'self' data: blob:; \
+                   font-src 'self'; \
+                   connect-src 'self' wss: https://api.anthropic.com https://cloudcode-pa.googleapis.com https://chatgpt.com; \
+                   worker-src 'self' blob:; \
+                   object-src 'none'; \
+                   base-uri 'self'; \
+                   frame-ancestors 'none'";
+        app = app
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("content-security-policy"),
+                HeaderValue::from_str(csp).expect("static CSP string"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("cross-origin-opener-policy"),
+                HeaderValue::from_static("same-origin"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("cross-origin-embedder-policy"),
+                HeaderValue::from_static("require-corp"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                axum::http::header::HeaderName::from_static("cross-origin-resource-policy"),
+                HeaderValue::from_static("same-origin"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("strict-transport-security"),
+                HeaderValue::from_static("max-age=31536000"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("x-content-type-options"),
+                HeaderValue::from_static("nosniff"),
+            ))
+            .layer(SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("referrer-policy"),
+                HeaderValue::from_static("no-referrer"),
+            ));
+    }
+
+    let app = app;
 
     let http_addr: SocketAddr = format!("0.0.0.0:{http_port}").parse()?;
     let listener = tokio::net::TcpListener::bind(http_addr).await?;

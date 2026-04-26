@@ -25,7 +25,7 @@ Requires your AI coding agent running in the background. Not included — you kn
 [![Status: Pre-Alpha](https://img.shields.io/badge/Status-Pre--Alpha-orange.svg)](#project-status)
 [![Rust](https://img.shields.io/badge/Rust-1.87+-dea584.svg)](https://www.rust-lang.org/)
 [![SolidJS](https://img.shields.io/badge/SolidJS-1.9+-4f88c6.svg)](https://www.solidjs.com/)
-[![Transport](https://img.shields.io/badge/Transport-HTTP%2F3%20QUIC%20(dev)-8b5cf6.svg)](#tech-stack)
+[![Transport](https://img.shields.io/badge/Transport-HTTP%2F3%20QUIC-8b5cf6.svg)](#tech-stack)
 
 <br>
 
@@ -238,7 +238,7 @@ command palette.</sup>
 <tr><th align="left">Layer</th><th align="left">Choice</th><th align="left">Rationale</th></tr>
 <tr><td><b>Backend</b></td><td>Rust + tokio + io_uring</td><td>Zero-cost abstractions, memory safety, async I/O</td></tr>
 <tr><td><b>Frontend</b></td><td>SolidJS + Vite 6</td><td>Fine-grained reactivity without Virtual DOM overhead</td></tr>
-<tr><td><b>Transport</b></td><td>WebTransport (HTTP/3, QUIC) — dev-server only</td><td>0-RTT reconnect, multiplexed streams, connection migration. Requires a Chromium-based browser; production deployment story is open.</td></tr>
+<tr><td><b>Transport</b></td><td>WebTransport (HTTP/3, QUIC)</td><td>0-RTT reconnect, multiplexed streams, connection migration. Requires a Chromium-based browser. Production deployment is documented in <a href="docs/adr/001-production-deployment.md">ADR-001</a>.</td></tr>
 <tr><td><b>State</b></td><td>hecs ECS (struct-of-arrays)</td><td>Cache-friendly iteration over 100+ concurrent entities</td></tr>
 <tr><td><b>Database</b></td><td>Limbo (async SQLite, io_uring)</td><td>FTS5 full-text search, JSONL remains source of truth</td></tr>
 <tr><td><b>File Watch</b></td><td>eBPF via aya</td><td>Kernel-level PID attribution for conflict detection</td></tr>
@@ -540,6 +540,11 @@ paths.
 | [docs/api.md](docs/api.md) | HTTP endpoint reference for the control plane |
 | [docs/agent-operating-model.md](docs/agent-operating-model.md) | How noaide watches agents (JSONL, PTY, filesystem) |
 | [docs/supervision-boundaries.md](docs/supervision-boundaries.md) | Control surfaces and what noaide does vs. does not enforce |
+| [docs/security-deep-dive.md](docs/security-deep-dive.md) | Threat model, redaction rules, eBPF trust model, header rationale |
+| [docs/evidence-loop-details.md](docs/evidence-loop-details.md) | EventEnvelope, Lamport clock, persistence layers, audit-log NDJSON schema |
+| [docs/component-reference.md](docs/component-reference.md) | Per-module reference: what each crate/module owns, what it publishes, where its config lives |
+| [docs/deployment-guide.md](docs/deployment-guide.md) | Operator guide: Docker compose, systemd, TLS, browser support |
+| [docs/adr/001-production-deployment.md](docs/adr/001-production-deployment.md) | ADR-001: production deployment is single-process container, Chromium-only |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branch flow, commit discipline, PR checklist |
 | [SECURITY.md](SECURITY.md) | Security controls in place and on the roadmap |
 | [TESTING.md](TESTING.md) | Test gate matrix |

@@ -1,0 +1,58 @@
+# docker-compose.prod.yml — production deployment for noaide
+#
+# This is the canonical artefact described in docs/adr/001-production-deployment.md.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d         # start
+#   docker compose -f docker-compose.prod.yml logs -f       # follow logs
+#   docker compose -f docker-compose.prod.yml down          # stop
+#
+# Required volumes:
+#   ./certs/cert.pem + ./certs/key.pem — your TLS pair (LetsEncrypt, mkcert, corp CA)
+#   ./agent-home  — your agent home directory (Claude/Gemini/Codex JSONL files)
+#
+# The container expects you to bring your own certificate. See
+# docs/deployment-guide.md for how to obtain one (LetsEncrypt, mkcert,
+# or corporate CA).
+
+services:
+  noaide:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: noaide:prod
+    container_name: noaide
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+      - "4433:4433/udp"
+
+    environment:
+      # Production-mode flag: presence of NOAIDE_STATIC_DIR makes the
+      # backend serve the prebuilt frontend bundle and emit hardened
+      # security headers (CSP, COOP, COEP, CORP, HSTS).
+      NOAIDE_STATIC_DIR: "/app/static"
+      NOAIDE_HTTP_PORT: "8080"
+      NOAIDE_PORT: "4433"
+      NOAIDE_LOG_LEVEL: ${NOAIDE_LOG_LEVEL:-info}
+      NOAIDE_TLS_CERT: /certs/cert.pem
+      NOAIDE_TLS_KEY: /certs/key.pem
+      NOAIDE_DB_PATH: /data/noaide/ide.db
+      NOAIDE_WATCH_PATHS: /home/noaide/.claude
+      NOAIDE_JWT_SECRET: ${NOAIDE_JWT_SECRET:?NOAIDE_JWT_SECRET must be set in .env}
+
+    volumes:
+      - ./certs:/certs:ro
+      - ${AGENT_HOME:-./agent-home}:/home/noaide/.claude:ro
+      - noaide-data:/data/noaide
+
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  noaide-data:
