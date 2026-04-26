@@ -29,9 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd -m -s /bin/bash noaide
 WORKDIR /app
 COPY --from=rust-builder /build/noaide-server /app/noaide-server
+# /app/static contains the full Vite output (index.html, assets/, fonts/, etc.).
 COPY --from=frontend-builder /build/dist /app/static
-# WASM artifacts (if pre-built)
-COPY --from=frontend-builder /build/dist/assets/ /app/static/assets/ 2>/dev/null || true
 USER noaide
 ENV NOAIDE_HTTP_PORT=8080
 ENV NOAIDE_PORT=4433
