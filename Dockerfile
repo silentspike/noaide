@@ -1,13 +1,15 @@
 # noaide — Multi-stage Docker build
 # Stage 1: Build Rust backend
-FROM rust:1.87-slim AS rust-builder
+FROM rust:1.89-slim AS rust-builder
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev protobuf-compiler && rm -rf /var/lib/apt/lists/*
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo/ .cargo/
 COPY server/ server/
 COPY crates/ crates/
 COPY wasm/ wasm/
+COPY xtask/ xtask/
 RUN cargo build --release -p noaide-server && \
     cp target/release/noaide-server /build/noaide-server
 
