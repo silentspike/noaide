@@ -648,7 +648,7 @@ pub fn extract_gemini_uuid(filename: &str) -> Option<String> {
 ///
 /// Examples:
 /// - `-work-noaide` → `/work/noaide`
-/// - `-home-jan` → `/home/jan`
+/// - `-home-user` → `/home/user`
 /// - `-work-company--sentinel-tools` → `/work/company/-sentinel-tools`
 ///
 /// Double dashes represent a literal dash in the original path component.
@@ -689,7 +689,7 @@ mod tests {
 
     #[test]
     fn decode_home_path() {
-        assert_eq!(decode_project_dir("-home-jan"), "/home/jan");
+        assert_eq!(decode_project_dir("-home-user"), "/home/user");
     }
 
     #[test]
