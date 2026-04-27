@@ -117,6 +117,7 @@ will move as the project matures.
 | Audit export endpoint (NDJSON) | Partial |
 | Conflict resolution (OT buffer + 3-way merge UI) | Partial |
 | Cost dashboard (token tracking; real-dollar costs pending) | Partial |
+| Multi-session orchestration (topology + swimlane UI; live sub-agent wiring pending) | Partial ([#105](https://github.com/silentspike/noaide/issues/105)) |
 | Multi-account control plane | Roadmap ([#108](https://github.com/silentspike/noaide/issues/108)) |
 | Onboarding, keyboard help, ARIA, custom themes | Roadmap ([#107](https://github.com/silentspike/noaide/issues/107)) |
 
