@@ -1,22 +1,10 @@
 <div align="center">
 
-```
-                        $$\       $$\
-                        \__|      $$ |
- $$$$$$$\   $$$$$$\  $$\ $$$$$$\  $$$$$$\   $$$$$$\
-$$  __$$\ $$  __$$\ $$ |$$  __$$\ $$  __$$\ $$  __$$\
-$$ |  $$ |$$ /  $$ |$$ |$$ /  $$ |$$$$$$$$ |$$$$$$$$ |
-$$ |  $$ |$$ |  $$ |$$ |$$ |  $$ |$$   ____|$$   ____|
-$$ |  $$ |\$$$$$$  |$$ |\$$$$$$  |\$$$$$$$\ \$$$$$$$\
-\__|  \__| \______/ \__| \______/  \_______| \_______|
-```
+# noaide
 
 **Browser-based real-time IDE for AI coding agents**
 
-See everything your AI writes. Control every session. Catch every API call.
-
-Requires your AI coding agent running in the background. Not included — you know who's watching. 👀
-<br>The Truman Show × Westworld × The Sims — fully under your control.
+Operator console for AI coding agents. Observe Codex / Claude Code / Gemini CLI sessions, inspect API and tool activity, gate risky requests, and export evidence.
 
 <br>
 
@@ -107,6 +95,31 @@ cellular seamless handoff). Voice input via Web Speech API.
 </td>
 </tr>
 </table>
+
+## Status
+
+What works today versus what is on the roadmap. Pre-alpha — the buckets
+will move as the project matures.
+
+| Bucket | Definition |
+|---|---|
+| **Implemented** | Code on `main` and exercised by tests in CI. |
+| **Demo-backed** | Code on `main` plus a screenshot or E2E fixture under `docs/images/` or `frontend/e2e/fixtures/`. |
+| **Partial** | Code on `main` but with a UI gap or pending polish. |
+| **Roadmap** | An open issue, no code yet. |
+
+| Capability | Status |
+|---|---|
+| JSONL parser (Claude Code / Codex / Gemini CLI) | Implemented |
+| Codex session spawn with `OPENAI_BASE_URL` proxy routing | Implemented |
+| API proxy with provider detection (Anthropic / OpenAI / Google) | Implemented |
+| eBPF file watcher with PID attribution (inotify fallback) | Implemented |
+| Manual intercept gate (auto / manual / forward / drop / drain) | Demo-backed |
+| Audit export endpoint (NDJSON) | Partial |
+| Conflict resolution (OT buffer + 3-way merge UI) | Partial |
+| Cost dashboard (token tracking; real-dollar costs pending) | Partial |
+| Multi-account control plane | Roadmap ([#108](https://github.com/silentspike/noaide/issues/108)) |
+| Onboarding, keyboard help, ARIA, custom themes | Roadmap ([#107](https://github.com/silentspike/noaide/issues/107)) |
 
 ## Gallery
 
