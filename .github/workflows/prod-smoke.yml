@@ -74,10 +74,19 @@ jobs:
           docker compose -f docker-compose.prod.yml logs noaide
           exit 1
 
-      - name: Assert hardened headers (closes #139, #140)
+      - name: Assert root redirects to /noaide/
         run: |
           set -e
-          headers=$(curl -sI http://localhost:8080/)
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/)
+          location=$(curl -sI http://localhost:8080/ | grep -i "^location:" | tr -d '\r' | awk '{print $2}')
+          echo "GET / → $status, Location: $location"
+          [ "$status" = "308" ] || [ "$status" = "301" ] || (echo "expected redirect, got $status"; exit 1)
+          [ "$location" = "/noaide/" ] || (echo "expected Location: /noaide/, got $location"; exit 1)
+
+      - name: Assert hardened headers on /noaide/ (closes #139, #140)
+        run: |
+          set -e
+          headers=$(curl -sI -L http://localhost:8080/)
           echo "$headers"
           echo "$headers" | grep -i "^Content-Security-Policy:" | grep -q "script-src 'self'"
           echo "$headers" | grep -i "^Cross-Origin-Opener-Policy:.*same-origin"
@@ -86,13 +95,25 @@ jobs:
           echo "$headers" | grep -i "^Strict-Transport-Security:"
           echo "$headers" | grep -i "^X-Content-Type-Options:.*nosniff"
           echo "$headers" | grep -i "^Referrer-Policy:.*no-referrer"
-          echo "All hardened headers present."
+          echo "All hardened headers present on /noaide/."
 
-      - name: Assert frontend bundle is served
+      - name: Assert frontend bundle is served at /noaide/
         run: |
-          body=$(curl -s http://localhost:8080/)
+          set -e
+          body=$(curl -sL http://localhost:8080/noaide/)
           echo "$body" | head -20
           echo "$body" | grep -qi "<title>noaide</title>" || (echo "<title>noaide</title> not found"; exit 1)
+          # The Vite bundle references its assets under /noaide/. Pick one
+          # asset path out of the rendered HTML and confirm it resolves with 200.
+          asset=$(echo "$body" | grep -oE '/noaide/assets/[A-Za-z0-9_\.-]+\.(js|css)' | head -1)
+          if [ -z "$asset" ]; then
+            echo "no /noaide/assets/* path found in HTML"
+            exit 1
+          fi
+          echo "Probing asset: $asset"
+          asset_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080$asset")
+          [ "$asset_status" = "200" ] || (echo "asset $asset returned $asset_status"; exit 1)
+          echo "Bundle and asset both 200."
 
       - name: Container logs on failure
         if: failure()

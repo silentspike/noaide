@@ -121,6 +121,10 @@ Environment=NOAIDE_DB_PATH=/var/lib/noaide/data/ide.db
 Environment=NOAIDE_TLS_CERT=/etc/noaide/certs/cert.pem
 Environment=NOAIDE_TLS_KEY=/etc/noaide/certs/key.pem
 Environment=NOAIDE_WATCH_PATHS=/home/noaide/.claude
+# Public hostname users hit in the browser. The CSP allows the
+# WebTransport endpoint at `https://${NOAIDE_PUBLIC_WT_HOST}:${NOAIDE_PORT}`,
+# so this must match the host the browser sees. Defaults to localhost.
+Environment=NOAIDE_PUBLIC_WT_HOST=noaide.example.com
 EnvironmentFile=/etc/noaide/noaide.env
 
 # Hardening
