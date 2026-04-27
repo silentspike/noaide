@@ -123,11 +123,42 @@ will move as the project matures.
 
 ## Gallery
 
-> Screenshots captured from a local development build against seeded
-> E2E fixture sessions. Shots are representative, not marketing
-> renders — the real UI looks like this when you run it.
+> Screenshots captured from a local development build against the
+> seeded E2E fixtures under `frontend/e2e/fixtures/claude-home/`.
+> Reproduce: run the backend with
+> `NOAIDE_WATCH_PATHS=$(pwd)/frontend/e2e/fixtures/claude-home`,
+> start `pnpm dev`, then open `https://localhost:9999/noaide/`.
 
 <table>
+<tr>
+<td align="center" width="34%">
+  <a href="docs/images/codex-session.png">
+    <img src="docs/images/codex-session.png" alt="Codex session selected, chat panel rendering the seeded rollout" />
+  </a>
+  <br><sub><b>Codex rollout, end to end.</b> The seeded Codex fixture
+  loaded into the chat panel: turn_context, agent_reasoning,
+  agent_message, response_item with output_text, and a top-level
+  compacted summary all surface in the same stream.</sub>
+</td>
+<td align="center" width="34%">
+  <a href="docs/images/codex-network-capture.png">
+    <img src="docs/images/codex-network-capture.png" alt="Network tab with intercept-mode controls and provider filters" />
+  </a>
+  <br><sub><b>Network tab — intercept gate.</b> Auto / Manual / Custom
+  / Pure / Lock modes, provider filter pills (Api / Telemetry / Auth /
+  Update / Git), and the request waterfall populate as live Codex
+  traffic routes through <code>OPENAI_BASE_URL</code>.</sub>
+</td>
+<td align="center" width="34%">
+  <a href="docs/images/audit-export.png">
+    <img src="docs/images/audit-export.png" alt="Audit log table with CSV and JSON export controls" />
+  </a>
+  <br><sub><b>Audit log export.</b> Per-request audit table with
+  Time / Model / Input / Output / Cost / Latency columns, plus CSV
+  and JSON download buttons backed by
+  <code>/api/proxy/audit/export</code>.</sub>
+</td>
+</tr>
 <tr>
 <td align="center" width="34%">
   <a href="docs/images/hero-three-panel.png">
@@ -143,8 +174,8 @@ will move as the project matures.
   </a>
   <br><sub><b>Live chat rendering.</b> User and assistant messages
   from the seeded Claude demo session. Each message shows
-  timestamp, role, and a Copy action; hidden content and
-  system-reminders render in the same stream.</sub>
+  timestamp, role, and a Copy action; system-reminders render in
+  the same stream.</sub>
 </td>
 <td align="center" width="34%">
   <a href="docs/images/welcome-screen.png">
