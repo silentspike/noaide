@@ -26,7 +26,7 @@ Operator console for AI coding agents. Observe Codex / Claude Code / Gemini CLI 
 
 ## The Problem
 
-AI coding agents like [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), and [Codex](https://github.com/openai/codex) generate rich conversation logs (JSONL) containing system prompts, hidden instructions, thinking blocks, tool calls, and results. Their terminal UIs show roughly **60% of this data** — the rest is suppressed.
+AI coding agents like [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), and [Codex](https://github.com/openai/codex) generate rich conversation logs (JSONL) containing system prompts, provider transcript fields the official UI does not surface, intermediate transcript events, tool calls, and results. Their terminal UIs show roughly **60% of this data** — the rest is suppressed.
 
 noaide makes 100% visible.
 
@@ -39,7 +39,7 @@ noaide makes 100% visible.
 ### Full JSONL Transparency
 
 Every message rendered — including `system-reminder`,
-thinking blocks, and content marked "don't display."
+intermediate transcript events, and content marked "don't display."
 Compressed messages shown as ghost messages at 30%
 opacity. Nothing hidden, nothing filtered.
 
@@ -415,7 +415,7 @@ docker compose -f docker-compose.prod.yml up -d --build
    Claude Code / Gemini / Codex session and reload — the watcher
    picks it up live.
 4. Click a session → the chat panel renders the full conversation
-   (system reminders, thinking blocks, tool calls included).
+   (system reminders, intermediate transcript events, tool calls included).
 5. The bottom tab bar switches between Chat, Files, Network, Teams,
    Tasks, Plan, Git, Cost, and Settings.
 
