@@ -9,6 +9,13 @@ explains *how* to actually deploy it.
 > **Status**: production target was decided in ADR-001 on 2026-04-26.
 > The smoke test in CI exercises this exact path on every push to main.
 
+> **No pre-built image yet.** noaide does not publish a Docker Hub or
+> GHCR image at this stage. Both deployment paths build from source:
+> Path A runs `docker compose build` (≈ 4–6 min on a recent x86 box),
+> Path B runs `cargo build --release` (≈ 6–10 min). When the project
+> moves out of pre-alpha we will publish a signed image and update
+> this guide.
+
 ## Prerequisites
 
 - Linux host with Docker (or Podman with `docker-compose` shim)
