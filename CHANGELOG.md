@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0-alpha.1] - 2026-04-24
 
 First alpha release. The application builds, runs, and provides a
-functional UI for watching AI coding agents (Claude Code, Gemini CLI,
+functional UI for observing AI coding agents (Claude Code, Gemini CLI,
 Codex) in real time. Pre-alpha by any production definition — no
 deployment story, no browser beyond Chromium, no benchmark suite —
 but the end-to-end loop works against seeded fixtures and real
