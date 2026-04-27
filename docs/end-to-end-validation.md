@@ -170,8 +170,8 @@ benchmark, etc.). Each row is one assertion. Status:
 - [~] **Spawn a managed Claude session via `/api/sessions/managed`** — UNTESTED in this run (would consume real API calls); managed-session code path was verified separately during the prior sprints
 - [x] **JSONL discovery + parse against real `~/.claude/projects/...`** — Evidence:
   ```
-  $ env -i HOME=/home/jan PATH=... \
-      NOAIDE_WATCH_PATHS=/home/jan/.claude \
+  $ env -i HOME="$HOME" PATH=... \
+      NOAIDE_WATCH_PATHS="$HOME/.claude" \
       target/release/noaide-server &
   $ wget -q -O - http://localhost:8080/api/sessions | python3 -c \
       "import json,sys; print(len(json.load(sys.stdin)))"
