@@ -1,22 +1,10 @@
 <div align="center">
 
-```
-                        $$\       $$\
-                        \__|      $$ |
- $$$$$$$\   $$$$$$\  $$\ $$$$$$\  $$$$$$\   $$$$$$\
-$$  __$$\ $$  __$$\ $$ |$$  __$$\ $$  __$$\ $$  __$$\
-$$ |  $$ |$$ /  $$ |$$ |$$ /  $$ |$$$$$$$$ |$$$$$$$$ |
-$$ |  $$ |$$ |  $$ |$$ |$$ |  $$ |$$   ____|$$   ____|
-$$ |  $$ |\$$$$$$  |$$ |\$$$$$$  |\$$$$$$$\ \$$$$$$$\
-\__|  \__| \______/ \__| \______/  \_______| \_______|
-```
+# noaide
 
 **Browser-based real-time IDE for AI coding agents**
 
-See everything your AI writes. Control every session. Catch every API call.
-
-Requires your AI coding agent running in the background. Not included — you know who's watching. 👀
-<br>The Truman Show × Westworld × The Sims — fully under your control.
+Operator console for AI coding agents. Observe Codex / Claude Code / Gemini CLI sessions, inspect API and tool activity, gate risky requests, and export evidence.
 
 <br>
 
