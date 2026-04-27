@@ -622,7 +622,16 @@ async fn main() -> anyhow::Result<()> {
 
     if let Some(dir) = static_dir {
         info!(static_dir = %dir, "production mode: serving static frontend");
-        app = app.fallback_service(ServeDir::new(dir));
+        // The Vite build sets `base: "/noaide/"` so the bundled
+        // index.html references assets at /noaide/assets/...,
+        // /noaide/fonts/..., etc. Mount the static directory at
+        // the same `/noaide` prefix so those URLs resolve.
+        // Also redirect `/` to `/noaide/` so a fresh visitor
+        // landing on the root gets the app.
+        app = app.nest_service("/noaide", ServeDir::new(&dir)).route(
+            "/",
+            get(|| async { axum::response::Redirect::permanent("/noaide/") }),
+        );
     }
 
     let mut app = app
@@ -639,22 +648,33 @@ async fn main() -> anyhow::Result<()> {
         // CSP rationale:
         //   - script-src 'self'                : no inline / eval / external scripts
         //   - style-src 'self' 'unsafe-inline' : SolidJS uses inline component styles
-        //   - connect-src 'self' wss: https:   : WebTransport (wss) + LLM upstreams
+        //   - connect-src includes the WebTransport endpoint (https URL,
+        //     not wss) plus the three LLM upstreams the proxy forwards to
         //   - object-src 'none', base-uri 'self', frame-ancestors 'none'
-        let csp = "default-src 'self'; \
-                   script-src 'self'; \
-                   style-src 'self' 'unsafe-inline'; \
-                   img-src 'self' data: blob:; \
-                   font-src 'self'; \
-                   connect-src 'self' wss: https://api.anthropic.com https://cloudcode-pa.googleapis.com https://chatgpt.com; \
-                   worker-src 'self' blob:; \
-                   object-src 'none'; \
-                   base-uri 'self'; \
-                   frame-ancestors 'none'";
+        //
+        // The WebTransport endpoint is `https://<host>:<NOAIDE_PORT>`. The
+        // browser sees the URL as `https:` (HTTP/3 over QUIC). Operators
+        // override the host via NOAIDE_PUBLIC_WT_HOST (default localhost).
+        let wt_port = std::env::var("NOAIDE_PORT").unwrap_or_else(|_| "4433".to_string());
+        let wt_host =
+            std::env::var("NOAIDE_PUBLIC_WT_HOST").unwrap_or_else(|_| "localhost".to_string());
+        let wt_origin = format!("https://{wt_host}:{wt_port}");
+        let csp = format!(
+            "default-src 'self'; \
+             script-src 'self'; \
+             style-src 'self' 'unsafe-inline'; \
+             img-src 'self' data: blob:; \
+             font-src 'self'; \
+             connect-src 'self' {wt_origin} https://api.anthropic.com https://cloudcode-pa.googleapis.com https://chatgpt.com; \
+             worker-src 'self' blob:; \
+             object-src 'none'; \
+             base-uri 'self'; \
+             frame-ancestors 'none'"
+        );
         app = app
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("content-security-policy"),
-                HeaderValue::from_str(csp).expect("static CSP string"),
+                HeaderValue::from_str(&csp).expect("static CSP string"),
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("cross-origin-opener-policy"),
