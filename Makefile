@@ -31,7 +31,7 @@ help:
 	@echo "  demo                — build + seed fixtures + open browser"
 
 dev:
-	docker compose up
+	docker compose up --build
 
 dev-stop:
 	docker compose down

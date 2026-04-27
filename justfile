@@ -14,8 +14,10 @@ default:
 
 # ── Local dev servers ─────────────────────────────────────────────
 # Bring up the whole thing in Docker (backend only; start `just dev-front` for HMR frontend).
+# `--build` forces the image to be built locally on first run; without it
+# `docker compose up` tries to pull `noaide:dev` from Docker Hub.
 dev:
-    docker compose up
+    docker compose up --build
 
 # Stop docker compose and remove containers.
 dev-stop:
