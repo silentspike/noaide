@@ -633,6 +633,7 @@ paths.
 | [docs/deployment-guide.md](docs/deployment-guide.md) | Operator guide: Docker compose, systemd, TLS, browser support |
 | [docs/voice-setup.md](docs/voice-setup.md) | Optional Whisper sidecar setup for the microphone input |
 | [docs/workshop-ai-coding-rollout.md](docs/workshop-ai-coding-rollout.md) | 45-minute tool-agnostic workshop (Codex / Claude Code / Gemini CLI): observe, intercept, rehearse failure modes, export the audit log |
+| [examples/](examples/) | Cookbook walkthroughs: spawn a session, intercept a request, export the audit log |
 | [docs/adr/001-production-deployment.md](docs/adr/001-production-deployment.md) | ADR-001: production deployment is single-process container, Chromium-only |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branch flow, commit discipline, PR checklist |
 | [SECURITY.md](SECURITY.md) | Security controls in place and on the roadmap |
