@@ -72,12 +72,12 @@ Full request/response bodies, timing waterfall, token
 usage — all in a browser Network tab. API keys
 automatically redacted.
 
-### Multi-Agent Teams
+### Multi-Session Orchestration
 
-Force-directed topology graph showing agent hierarchies.
-Animated message bubbles on edges. Swimlane timeline
-for parallel agent activity. Gantt charts with per-agent
-time tracking.
+Track parallel agent sessions across feature branches.
+Force-directed topology shows session relationships and
+message flow; a swimlane timeline gives a single view of
+multiple agents running on the same project.
 
 ### Mobile Access
 
