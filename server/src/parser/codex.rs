@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn parse_codex_turn_context_extracts_model() {
-        let line = r#"{"timestamp":"2025-10-26T11:55:00Z","type":"turn_context","payload":{"model":"gpt-5.2-codex","cwd":"/home/jan"}}"#;
+        let line = r#"{"timestamp":"2025-10-26T11:55:00Z","type":"turn_context","payload":{"model":"gpt-5.2-codex","cwd":"/home/user"}}"#;
         let entry: CodexLine = serde_json::from_str(line).unwrap();
         let msg = codex_turn_context(&entry);
         assert_eq!(msg.model, Some("gpt-5.2-codex".to_string()));
