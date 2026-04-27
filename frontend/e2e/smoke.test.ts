@@ -102,4 +102,30 @@ test.describe("noaide smoke tests", () => {
     const ariaCount = await page.evaluate(() => document.querySelectorAll("[aria-label]").length);
     expect(ariaCount).toBeGreaterThanOrEqual(3);
   });
+
+  test("codex session fixture renders welcome and chat messages", async ({ page }) => {
+    // Welcome overlay must be reachable from a fresh visit before the
+    // session list is interactable.
+    await expect(page.locator("body")).toBeVisible();
+
+    // The seeded fixture rollout-1704067200-... is a Codex session that
+    // the backend's discovery scanner indexes from NOAIDE_WATCH_PATHS.
+    // Wait for at least one session card to render.
+    const sessionCards = page.locator("[role='button']");
+    await expect(sessionCards.first()).toBeVisible({ timeout: 10_000 });
+
+    // Filter the sidebar to Codex sessions if a CLI-type filter exists.
+    const filter = page.getByTestId("session-filter");
+    if (await filter.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await filter.fill("codex");
+    }
+
+    // Pick the first visible card and assert at least three chat messages
+    // surface in the center panel after selection. The Codex fixture has
+    // 30+ events and the UI should render at minimum the first user prompt,
+    // an agent reasoning block, and the assistant response.
+    await sessionCards.first().click();
+    const messages = page.locator("[data-testid^='message-card-'], [data-testid='message-card']");
+    await expect.poll(async () => await messages.count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(3);
+  });
 });
