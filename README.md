@@ -72,25 +72,24 @@ Full request/response bodies, timing waterfall, token
 usage — all in a browser Network tab. API keys
 automatically redacted.
 
-### Multi-Agent Teams
+### Multi-Session Orchestration
 
-Force-directed topology graph showing agent hierarchies.
-Animated message bubbles on edges. Swimlane timeline
-for parallel agent activity. Gantt charts with per-agent
-time tracking.
-
-### 120 Hz Rendering
-
-SolidJS fine-grained reactivity (no Virtual DOM). Virtual
-scroller renders ~25 DOM nodes regardless of message count.
-WASM workers for JSONL parsing and Markdown rendering.
-Spring-physics animations.
+Track parallel agent sessions across feature branches.
+Force-directed topology shows session relationships and
+message flow; a swimlane timeline gives a single view of
+multiple agents running on the same project.
 
 ### Mobile Access
 
 Responsive layout with bottom tab bar and swipe navigation.
-WebTransport QUIC with connection migration (WiFi to
-cellular seamless handoff). Voice input via Web Speech API.
+The browser stays attached when the network switches between
+WiFi and cellular. Voice input via Web Speech API.
+
+### Built for the operator
+
+Performance details — design goals, measured numbers,
+transport, rendering — live in [docs/performance.md](docs/performance.md).
+The hero stays focused on the operator-console story.
 
 </td>
 </tr>
@@ -243,9 +242,6 @@ command palette.</sup>
                   │          WebTransport Client (codec.ts)          │
                   └──────────────────────┬──────────────────────────┘
                                          │
-                              HTTP/3 QUIC │ TLS 1.3
-                              0-RTT       │ Multiplexed
-                              Zstd ~70%   │ Adaptive Quality
                                          │
                   ┌──────────────────────┴──────────────────────────┐
                   │             Rust Server  (tokio + io_uring)     │
@@ -295,42 +291,13 @@ command palette.</sup>
 
 Architectural decisions are documented as [11 ADRs in llms.txt](llms.txt). Each records the context, decision, alternatives considered, and trade-offs accepted.
 
-## Performance — Design Goals
+## Performance
 
-These are the target numbers the architecture is designed around.
-The `criterion` suite under `server/benches/` covers two hot paths
-(JSONL `parse_line` and ECS-cache `component_to_api_json`) and runs
-nightly — fetch the latest measurements from the **`benchmark-results-*`**
-artefact on the most recent
-[Nightly run](https://github.com/silentspike/noaide/actions/workflows/nightly.yml).
-
-**Latest measurements** (2026-04-26, on the build server, release
-profile):
-
-```
-parse_line/user_message       2.19 µs/line   →   456k lines/sec     (goal: > 10k)
-parse_line/tool_use_message   4.01 µs/line   →   249k lines/sec
-component_to_api_json (text)    955 ns/msg
-pagination_window/200 msgs    240   µs       =     0.24 ms          (goal: < 5 ms)
-```
-
-Both bench-covered hot paths beat their design goals by 20–45×.
-End-to-end latency benchmarks (Playwright traces for the file
-event → browser path, FPS at 1000+ messages) are still on the
-roadmap; treat any bar without a matching bench as a design goal,
-not a measurement.
-
-```
-File event to browser       ████████████████████████████░░  < 50ms p99
-Message fetch (cached)      ██████████████████████████████  < 5ms
-Rendering (1000+ msgs)      ██████████████████████████████  120 Hz
-Server RSS (10 sessions)    █████████████░░░░░░░░░░░░░░░░░  < 200 MB
-Browser memory              ████████████████░░░░░░░░░░░░░░  < 500 MB
-JSONL parse rate            ██████████████████████████████  > 10k lines/s
-Zenoh SHM latency           ██████████████████████████████  ~1 us
-API proxy overhead          ██████████████████████████████  < 5 ms
-Zstd bandwidth reduction    █████████████████████░░░░░░░░░  ~70%
-```
+Design goals, latest criterion measurements, the 120 Hz rendering
+stack, the WebTransport / wire-format details, adaptive quality, and
+the backpressure strategy live in [docs/performance.md](docs/performance.md).
+Both bench-covered hot paths currently beat their design goals by
+20–45×; the rest of the table is a design target, not a measurement.
 
 ## Prerequisites
 
@@ -536,7 +503,7 @@ description is easy to cross-check against the code.
 
 | Feature | Source | Description |
 |---------|--------|-------------|
-| **Message Cache** | [`server/src/cache/mod.rs`](server/src/cache/mod.rs) | ECS-backed in-memory cache with incremental JSONL parsing. Designed for <5 ms cached responses (see [Performance — Design Goals](#performance--design-goals)). |
+| **Message Cache** | [`server/src/cache/mod.rs`](server/src/cache/mod.rs) | ECS-backed in-memory cache with incremental JSONL parsing. Designed for <5 ms cached responses (see [docs/performance.md](docs/performance.md)). |
 | **Pagination** | [`server/src/cache/mod.rs`](server/src/cache/mod.rs) + [`VirtualScroller.tsx`](frontend/src/components/chat/VirtualScroller.tsx) | Infinite scroll with scroll-anchor preservation. Loads 200 messages at a time. |
 | **Thinking Blocks** | [`components/chat/ThinkingBlock.tsx`](frontend/src/components/chat/ThinkingBlock.tsx) | Animated collapse/expand with measured `scrollHeight`. Token count estimate. |
 | **Session Pinning** | [`stores/session.ts`](frontend/src/stores/session.ts) + [`components/sessions/SessionList.tsx`](frontend/src/components/sessions/SessionList.tsx) | Star sessions, sorted pinned-first. Persisted in localStorage. |
