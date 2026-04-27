@@ -665,6 +665,7 @@ paths.
 | [docs/component-reference.md](docs/component-reference.md) | Per-module reference: what each crate/module owns, what it publishes, where its config lives |
 | [docs/deployment-guide.md](docs/deployment-guide.md) | Operator guide: Docker compose, systemd, TLS, browser support |
 | [docs/voice-setup.md](docs/voice-setup.md) | Optional Whisper sidecar setup for the microphone input |
+| [docs/workshop-codex-rollout.md](docs/workshop-codex-rollout.md) | 45-minute hands-on workshop: observe, intercept, rehearse failure modes, export the audit log |
 | [docs/adr/001-production-deployment.md](docs/adr/001-production-deployment.md) | ADR-001: production deployment is single-process container, Chromium-only |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branch flow, commit discipline, PR checklist |
 | [SECURITY.md](SECURITY.md) | Security controls in place and on the roadmap |
