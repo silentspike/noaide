@@ -51,18 +51,21 @@ https://github.com/silentspike/noaide
 > [llms.txt](https://github.com/silentspike/noaide/blob/main/llms.txt).
 >
 > This is a pre-alpha. The end-to-end loop works against seeded
-> fixtures and live agent sessions, but the production deployment is
-> Chromium-only (no SSE/WebSocket fallback — see
-> [ADR-001](https://github.com/silentspike/noaide/blob/main/docs/adr/001-production-deployment.md))
-> and the performance numbers in the README are labelled as design
-> goals, not measurements. The benchmark suite is tracked in
-> [#142](https://github.com/silentspike/noaide/issues/142). Other
-> things that are intentionally not done yet:
-> [strict CSP](https://github.com/silentspike/noaide/issues/139),
-> [production COOP/COEP](https://github.com/silentspike/noaide/issues/140)
-> (CSP and COOP/COEP are now in place — those issues are about the
-> production HTTP server pattern), and
-> [the docs deep-dives](https://github.com/silentspike/noaide/issues/146).
+> fixtures and live agent sessions. Production is documented in
+> [ADR-001](https://github.com/silentspike/noaide/blob/main/docs/adr/001-production-deployment.md):
+> a single-process container with bring-your-own TLS, Chromium-only
+> (no SSE/WebSocket fallback). Hardened headers — strict CSP,
+> COOP/COEP/CORP, HSTS — are emitted by the production server and
+> asserted on every push by `prod-smoke.yml`. Criterion benches
+> cover the two hot paths (`parse_line`, `component_to_api_json`)
+> and run nightly; their measurements are uploaded as a CI artefact
+> the README links to.
+>
+> What is *not* done yet, honestly: end-to-end latency benchmarks
+> (Playwright traces for file event → browser p99, FPS at 1000+
+> messages), a fallback transport for non-Chromium browsers, and a
+> formal multi-tenant story. Those are roadmap, not blockers for
+> the alpha.
 >
 > Quick start:
 >
@@ -113,9 +116,9 @@ Each claim in the draft is checked against the current repo state:
 | "11 ADRs in llms.txt" | `llms.txt` exists in repo root | ✅ |
 | "Chromium-only, ADR-001" | `docs/adr/001-production-deployment.md` exists | ✅ |
 | "performance numbers as design goals" | `README.md` "## Performance — Design Goals" section | ✅ |
-| "benchmark suite tracked in #142" | `gh issue view 142 --json state` | ✅ OPEN |
-| "CSP, COOP, COEP issues" | #139, #140 exist | ✅ |
-| "docs deep-dives in #146" | #146 exists | ✅ |
+| "Hardened headers + benches landed" | #139, #140, #142 are CLOSED with `status:verified` + AC Audit | ✅ |
+| "ADR-001 documents the deployment" | `docs/adr/001-production-deployment.md` exists | ✅ |
+| "Roadmap items honestly listed" | end-to-end latency benches, non-Chromium fallback, multi-tenant story all explicitly *not* done | ✅ |
 | "just certs / just dev / just dev-front" | `justfile` has these recipes | ✅ |
 | "docker-compose.prod.yml" | file exists | ✅ |
 

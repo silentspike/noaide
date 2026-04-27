@@ -259,10 +259,22 @@ The `criterion` suite under `server/benches/` covers two hot paths
 nightly — fetch the latest measurements from the **`benchmark-results-*`**
 artefact on the most recent
 [Nightly run](https://github.com/silentspike/noaide/actions/workflows/nightly.yml).
-End-to-end latency benchmarks (Playwright traces for the file event
-→ browser path, FPS at 1000+ messages) are still on the roadmap;
-treat any bar without a matching bench as a design goal, not a
-measurement.
+
+**Latest measurements** (2026-04-26, on the build server, release
+profile):
+
+```
+parse_line/user_message       2.19 µs/line   →   456k lines/sec     (goal: > 10k)
+parse_line/tool_use_message   4.01 µs/line   →   249k lines/sec
+component_to_api_json (text)    955 ns/msg
+pagination_window/200 msgs    240   µs       =     0.24 ms          (goal: < 5 ms)
+```
+
+Both bench-covered hot paths beat their design goals by 20–45×.
+End-to-end latency benchmarks (Playwright traces for the file
+event → browser path, FPS at 1000+ messages) are still on the
+roadmap; treat any bar without a matching bench as a design goal,
+not a measurement.
 
 ```
 File event to browser       ████████████████████████████░░  < 50ms p99
