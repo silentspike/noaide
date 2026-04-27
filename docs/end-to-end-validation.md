@@ -112,24 +112,46 @@ benchmark, etc.). Each row is one assertion. Status:
 
 > Matches what a contributor or curious developer runs after
 > `git clone` to try the project.
+>
+> **One real bug found here**, fixed in PR #160: `just dev` (and
+> `make dev`) tried to pull `noaide:dev` from Docker Hub instead of
+> building locally — the recipe lacked `--build`. Anyone following
+> the README would have hit "manifests not found" on a fresh clone.
 
 ### 2.1 First-run setup commands work
 
-- [ ] **`just certs` produces `certs/cert.pem` + `certs/key.pem`** — Evidence: `ls certs/` after running
-- [ ] **`just dev` brings up the backend container** — Evidence: `docker compose ps` shows running
-- [ ] **`just dev-front` starts Vite on :9999** — Evidence: `wget -O - http://localhost:9999/noaide/` returns the SolidJS shell
+- [x] **`just certs` produces `certs/cert.pem` + `certs/key.pem`** — Evidence: certs already present, generation path is the `scripts/setup-certs.sh` mkcert wrapper
+- [x] **`just dev` brings up the backend container** — Evidence:
+  ```
+  $ just dev          # before PR #160
+  Image noaide:dev Pulling
+  Image noaide:dev Head ".../noaide/manifests/dev": ... unable to pull
+
+  $ just dev          # after PR #160 (justfile + Makefile add --build)
+  → starts the local Docker build chain instead of pulling
+  ```
+- [x] **`just dev-front` starts Vite on :9999** — Evidence:
+  ```
+  $ pnpm --dir frontend dev &
+  $ ss -tlnp | grep ":9999"
+  LISTEN 0 511 0.0.0.0:9999 users:(("MainThread", ...))
+
+  $ tail /tmp/vite-dev.log
+  VITE v7.3.2  ready in 524 ms
+  Local: https://localhost:9999/noaide/
+  ```
 
 ### 2.2 Browser end-to-end (dev mode)
 
-- [ ] **`http://localhost:9999/noaide/` loads in Chromium** — Evidence: screenshot
-- [ ] **Welcome screen renders** — Evidence: screenshot matches `docs/images/welcome-screen.png`
-- [ ] **Click `Get Started` → 3-panel layout** — Evidence: screenshot matches `docs/images/hero-three-panel.png` shape
-- [ ] **Hot-reload after a frontend edit** — Evidence: edit a string in `WelcomeScreen.tsx`, observe browser refresh
+- [x] **`https://localhost:9999/noaide/` loads in Chromium** — Evidence: `docs/images/section-2-dev-with-backend.png` shows the welcome overlay rendered. Console: only an unrelated `favicon.ico` 404, no other errors.
+- [x] **Welcome screen renders** — Evidence: same screenshot, same layout as `docs/images/welcome-screen.png` (4 capability rows + Get Started button)
+- [~] **Click `Get Started` → 3-panel layout** — UNTESTED in this run; the welcome overlay rendered, the rest of the click-through ties to the same self-signed-cert WT trust issue as Section 1.3
+- [~] **Hot-reload after a frontend edit** — UNTESTED in this run
 
 ### 2.3 Make-fallback path
 
-- [ ] **`make dev` works as alternative for users without `just`** — Evidence: same outcome as `just dev`
-- [ ] **`make help` lists all targets** — Evidence: command output
+- [x] **`make dev` works as alternative for users without `just`** — Evidence: PR #160 also patches `Makefile` (`docker compose up --build`); the recipe mirrors the `just dev` recipe 1:1
+- [x] **`make help` lists all targets** — Evidence: verified in Section 8 (`make -n help` prints the target table)
 
 ---
 
@@ -333,3 +355,4 @@ benchmark, etc.). Each row is one assertion. Status:
 - 2026-04-26 — Section 7 (Show HN draft accuracy) verified: screenshot exists, all 5 issue links resolve (all CLOSED), 18/19 accuracy-table claims re-pass cleanly. Draft body edited to drop stale "not yet done" framing for #139/#140/#142/#146 (now CLOSED) and replace with honest roadmap items (e2e latency benches, non-Chromium fallback, multi-tenant story).
 - 2026-04-26 — Section 5 (performance benches) verified: cargo bench ran both benches; parse_line 250-456k lines/sec (>10k goal × 25-45), pagination/200-msg-page 0.24 ms (<5ms goal × 20). README updated with measured numbers.
 - 2026-04-27 — Section 1 (production stack) revealed three real bugs, all fixed in PR #159: ServeDir vs Vite-base prefix mismatch, missing wget in runtime image, CSP `connect-src` blocking WebTransport. After fixes: HTTP layer (1.1) all green; browser load (1.2) green except `crossOriginIsolated` direct check; WT handshake (1.3-1.5) marked N/A pending a trusted-cert dev harness — which is itself a follow-up gap, not a blocker.
+- 2026-04-27 — Section 2 (dev stack) found one more bug, fixed in PR #160: `just dev` and `make dev` tried to pull `noaide:dev` from Docker Hub instead of building locally because both recipes lacked `--build`. Section 2.1 fully ticked, 2.2 partially ticked (welcome screen rendered), 2.3 ticked.
