@@ -310,6 +310,24 @@ Verify: `grep CONFIG_BPF /boot/config-$(uname -r)`
 
 ## Quick Start
 
+There is no published Docker image yet — both paths below build
+from source. First build takes ≈ 4–10 min depending on the path
+and your machine.
+
+### What you also need (outside noaide)
+
+noaide watches an AI coding agent — it does not ship one. Install
+at least one of these and run it the way you normally would:
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- [OpenAI Codex](https://github.com/openai/codex)
+
+noaide reads the JSONL session files these tools write under
+`~/.claude/`, `~/.gemini/`, or `~/.codex/`.
+
+### Try it (development, hot-reload)
+
 ```bash
 # Clone
 git clone https://github.com/silentspike/noaide.git && cd noaide
@@ -317,8 +335,8 @@ git clone https://github.com/silentspike/noaide.git && cd noaide
 # First-run: generate local TLS certificates (needed for WebTransport)
 just certs          # or: make certs
 
-# Start the backend in Docker
-just dev            # or: make dev  (=> docker compose up)
+# Start the backend in Docker (builds the image on first run)
+just dev            # or: make dev  (=> docker compose up --build)
 
 # Start the frontend dev server in a second terminal (HMR)
 just dev-front      # or: make dev-front  (=> cd frontend && pnpm dev)
@@ -326,6 +344,36 @@ just dev-front      # or: make dev-front  (=> cd frontend && pnpm dev)
 # Open in browser
 #   http://localhost:9999/noaide/
 ```
+
+### Deploy it (production, single container)
+
+The dev workflow above is for hacking on noaide itself. To run a
+production-shaped deployment (single hardened container, prebuilt
+frontend bundle, BYO TLS), follow
+[docs/deployment-guide.md](docs/deployment-guide.md). Short version:
+
+```bash
+# Bring your own TLS chain into ./certs/{cert.pem,key.pem}
+# (LetsEncrypt, corporate CA, or mkcert for localhost — see deployment-guide)
+echo "NOAIDE_JWT_SECRET=$(openssl rand -hex 32)" > .env
+docker compose -f docker-compose.prod.yml up -d --build
+# UI: https://<your-host>:4433/noaide/  (Chromium-only, see ADR-001)
+```
+
+### First launch — what to expect
+
+1. Browser opens on `http://localhost:9999/noaide/` (dev) or
+   `https://<host>:4433/noaide/` (prod).
+2. A **welcome overlay** introduces the four headline capabilities;
+   dismiss with `Get Started` or press `?` for the shortcut sheet.
+3. The **session sidebar** populates with whatever JSONL files exist
+   under your watched paths (default `~/.claude/`). Empty? Run any
+   Claude Code / Gemini / Codex session and reload — the watcher
+   picks it up live.
+4. Click a session → the chat panel renders the full conversation
+   (system reminders, thinking blocks, tool calls included).
+5. The bottom tab bar switches between Chat, Files, Network, Teams,
+   Tasks, Plan, Git, Cost, and Settings.
 
 <details>
 <summary><b>Alternative: native (no Docker) workflow</b></summary>
@@ -346,6 +394,16 @@ just dev-front-native
 
 All recipes are in [`justfile`](justfile); a `Makefile` mirror exists
 for users without `just`.
+
+</details>
+
+<details>
+<summary><b>Optional: voice input (Whisper sidecar)</b></summary>
+
+The microphone button in the chat input is wired to a local Whisper
+sidecar that runs as a separate Python process. It is **opt-in**;
+nothing else in noaide depends on it. Setup, env vars, and disable
+flags are documented in [docs/voice-setup.md](docs/voice-setup.md).
 
 </details>
 
@@ -562,6 +620,7 @@ paths.
 | [docs/evidence-loop-details.md](docs/evidence-loop-details.md) | EventEnvelope, Lamport clock, persistence layers, audit-log NDJSON schema |
 | [docs/component-reference.md](docs/component-reference.md) | Per-module reference: what each crate/module owns, what it publishes, where its config lives |
 | [docs/deployment-guide.md](docs/deployment-guide.md) | Operator guide: Docker compose, systemd, TLS, browser support |
+| [docs/voice-setup.md](docs/voice-setup.md) | Optional Whisper sidecar setup for the microphone input |
 | [docs/adr/001-production-deployment.md](docs/adr/001-production-deployment.md) | ADR-001: production deployment is single-process container, Chromium-only |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branch flow, commit discipline, PR checklist |
 | [SECURITY.md](SECURITY.md) | Security controls in place and on the roadmap |
