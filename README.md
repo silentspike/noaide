@@ -652,5 +652,5 @@ API keys (`sk-ant-*`, `Bearer *`) are automatically redacted in all logs and UI 
 ---
 
 <div align="center">
-<sub>Built with Rust, SolidJS, and too many late nights reading JSONL files.</sub>
+<sub>Built with Rust, SolidJS, and AI coding agents (Codex, Claude Code, Gemini CLI) — the same tools this repository observes and serves.</sub>
 </div>
