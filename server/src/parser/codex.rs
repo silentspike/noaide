@@ -477,10 +477,18 @@ mod tests {
             messages.len()
         );
         // The rollout must surface a turn_context that propagates the model.
-        let saw_model = messages.iter().any(|m| m.model.as_deref() == Some("gpt-5.2-codex"));
-        assert!(saw_model, "no message carries the gpt-5.2-codex model from turn_context");
+        let saw_model = messages
+            .iter()
+            .any(|m| m.model.as_deref() == Some("gpt-5.2-codex"));
+        assert!(
+            saw_model,
+            "no message carries the gpt-5.2-codex model from turn_context"
+        );
         // The rollout includes a `compacted` summary.
         let saw_summary = messages.iter().any(|m| m.message_type == "summary");
-        assert!(saw_summary, "no summary message produced from compacted event");
+        assert!(
+            saw_summary,
+            "no summary message produced from compacted event"
+        );
     }
 }
