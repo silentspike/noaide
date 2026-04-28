@@ -13,7 +13,6 @@ Operator console for AI coding agents. Observe Codex / Claude Code / Gemini CLI 
 [![Status: Pre-Alpha](https://img.shields.io/badge/Status-Pre--Alpha-orange.svg)](#project-status)
 [![Rust](https://img.shields.io/badge/Rust-1.87+-dea584.svg)](https://www.rust-lang.org/)
 [![SolidJS](https://img.shields.io/badge/SolidJS-1.9+-4f88c6.svg)](https://www.solidjs.com/)
-[![Transport](https://img.shields.io/badge/Transport-HTTP%2F3%20QUIC-8b5cf6.svg)](#tech-stack)
 
 <br>
 
