@@ -2,9 +2,9 @@
 
 # noaide
 
-**Browser-based real-time IDE for AI coding agents**
+**Operator console / supervision layer for AI coding agents**
 
-Operator console for AI coding agents. Observe Codex / Claude Code / Gemini CLI sessions, inspect API and tool activity, gate risky requests, and export evidence.
+Browser-based real-time IDE: observe Codex / Claude Code / Gemini CLI sessions, inspect API and tool activity, gate risky requests, and export evidence.
 
 <br>
 
@@ -25,7 +25,7 @@ Operator console for AI coding agents. Observe Codex / Claude Code / Gemini CLI 
 
 ## The Problem
 
-AI coding agents like [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), and [Codex](https://github.com/openai/codex) generate rich conversation logs (JSONL) containing system prompts, provider transcript fields the official UI does not surface, intermediate transcript events, tool calls, and results. Their terminal UIs show roughly **60% of this data** — the rest is suppressed.
+AI coding agents like [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), and [Codex](https://github.com/openai/codex) generate rich conversation logs (JSONL) containing system prompts, provider transcript fields the official UI does not surface, intermediate transcript events, tool calls, and results. Their terminal UIs show a curated subset — system reminders, intermediate transcript events, and provider-specific transcript artifacts are suppressed by default.
 
 noaide makes 100% visible.
 
@@ -94,6 +94,32 @@ The hero stays focused on the operator-console story.
 </tr>
 </table>
 
+## 5-minute supervision demo
+
+> A complete supervised Codex session: spawn, observe, intercept one
+> request, export the audit log. Run from a fresh checkout in roughly
+> five minutes.
+
+**Setup:**
+
+```bash
+git clone https://github.com/silentspike/noaide
+cd noaide
+NOAIDE_WATCH_PATHS=$(pwd)/frontend/e2e/fixtures/claude-home pnpm dev
+```
+
+Then in a second shell:
+
+```bash
+export OPENAI_BASE_URL=http://localhost:4434/s/<session-id>/backend-api/codex
+codex "<your task>"
+```
+
+Open `https://localhost:9999/noaide/` to watch the session, intercept
+network requests, and export the audit trail as NDJSON.
+
+Full walkthrough: [`docs/workshop-ai-coding-rollout.md`](docs/workshop-ai-coding-rollout.md).
+
 ## Status
 
 What works today versus what is on the roadmap. Pre-alpha — the buckets
@@ -131,15 +157,6 @@ will move as the project matures.
 <table>
 <tr>
 <td align="center" width="34%">
-  <a href="docs/images/codex-session.png">
-    <img src="docs/images/codex-session.png" alt="Codex session selected, chat panel rendering the seeded rollout" />
-  </a>
-  <br><sub><b>Codex rollout, end to end.</b> The seeded Codex fixture
-  loaded into the chat panel: turn_context, agent_reasoning,
-  agent_message, response_item with output_text, and a top-level
-  compacted summary all surface in the same stream.</sub>
-</td>
-<td align="center" width="34%">
   <a href="docs/images/codex-network-capture.png">
     <img src="docs/images/codex-network-capture.png" alt="Network tab with intercept-mode controls and provider filters" />
   </a>
@@ -157,8 +174,6 @@ will move as the project matures.
   and JSON download buttons backed by
   <code>/api/proxy/audit/export</code>.</sub>
 </td>
-</tr>
-<tr>
 <td align="center" width="34%">
   <a href="docs/images/hero-three-panel.png">
     <img src="docs/images/hero-three-panel.png" alt="Three-panel layout: sessions sidebar, chat center, file explorer right" />
@@ -166,6 +181,17 @@ will move as the project matures.
   <br><sub><b>Three-panel overview.</b> Sessions sidebar (left), Chat
   (center) with token budget and tabs, Files explorer (right).
   Breathing orbs mark session state.</sub>
+</td>
+</tr>
+<tr>
+<td align="center" width="34%">
+  <a href="docs/images/codex-session.png">
+    <img src="docs/images/codex-session.png" alt="Codex session selected, chat panel rendering the seeded rollout" />
+  </a>
+  <br><sub><b>Codex rollout, end to end.</b> The seeded Codex fixture
+  loaded into the chat panel: turn_context, agent_reasoning,
+  agent_message, response_item with output_text, and a top-level
+  compacted summary all surface in the same stream.</sub>
 </td>
 <td align="center" width="34%">
   <a href="docs/images/session-active-chat.png">
