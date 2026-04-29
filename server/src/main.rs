@@ -1838,7 +1838,7 @@ fn extract_project_path_from_jsonl(jsonl_path: &std::path::Path) -> Option<Strin
 /// Decode a Claude Code project directory name back to a filesystem path.
 ///
 /// `-work-noaide` → `/work/noaide`
-/// `-home-jan` → `/home/jan`
+/// `-home-user` → `/home/user`
 ///
 /// WARNING: This decoding is lossy! Claude Code encodes `/` → `-` without
 /// escaping literal hyphens. So `-tmp-test-session` could be either
