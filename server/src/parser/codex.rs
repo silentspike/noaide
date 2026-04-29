@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn parse_codex_turn_context_extracts_model() {
-        let line = r#"{"timestamp":"2025-10-26T11:55:00Z","type":"turn_context","payload":{"model":"gpt-5.2-codex","cwd":"/home/jan"}}"#;
+        let line = r#"{"timestamp":"2025-10-26T11:55:00Z","type":"turn_context","payload":{"model":"gpt-5.2-codex","cwd":"/home/user"}}"#;
         let entry: CodexLine = serde_json::from_str(line).unwrap();
         let msg = codex_turn_context(&entry);
         assert_eq!(msg.model, Some("gpt-5.2-codex".to_string()));
@@ -463,6 +463,32 @@ mod tests {
                 .as_text()
                 .unwrap_or("")
                 .contains("replacement_history")
+        );
+    }
+
+    #[tokio::test]
+    async fn parse_codex_e2e_fixture_rollout() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../frontend/e2e/fixtures/claude-home/sessions/2026/04/24/rollout-1704067200-b2c3d4e5-f6a7-8901-bcde-f12345678901.jsonl");
+        let messages = parse_codex_file(&fixture).await.expect("fixture parses");
+        assert!(
+            messages.len() >= 25,
+            "expected the demo Codex rollout to yield at least 25 messages, got {}",
+            messages.len()
+        );
+        // The rollout must surface a turn_context that propagates the model.
+        let saw_model = messages
+            .iter()
+            .any(|m| m.model.as_deref() == Some("gpt-5.2-codex"));
+        assert!(
+            saw_model,
+            "no message carries the gpt-5.2-codex model from turn_context"
+        );
+        // The rollout includes a `compacted` summary.
+        let saw_summary = messages.iter().any(|m| m.message_type == "summary");
+        assert!(
+            saw_summary,
+            "no summary message produced from compacted event"
         );
     }
 }

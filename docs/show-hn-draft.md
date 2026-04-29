@@ -21,12 +21,13 @@ https://github.com/silentspike/noaide
 
 ## First comment (the one HN expects from the OP)
 
-> noaide is a self-hosted, browser-based IDE for watching AI coding
-> agents (Claude Code, Gemini CLI, Codex) live as they work. The agent
-> stays in your terminal where you started it; noaide attaches and
-> renders every JSONL log line — including the parts the agent's
-> own UI suppresses (system-reminders, hidden instructions, thinking
-> blocks, tool-use envelopes).
+> noaide is a self-hosted, browser-based operator console for AI coding
+> agents (Claude Code, Gemini CLI, Codex) — an observation surface and
+> supervision boundary while they work. The agent stays in your
+> terminal where you started it; noaide attaches and renders every
+> JSONL log line — including the parts the agent's own UI suppresses
+> (system-reminders, system prompts and provider transcript fields,
+> intermediate transcript events, tool-use envelopes).
 >
 > What it gives you:
 >
