@@ -91,6 +91,31 @@ disagreement. This is why the transitions sometimes skip a frame:
 the PTY was ahead, the JSONL caught up, the reconcile collapsed the
 difference.
 
+## Failure modes the supervisor sees
+
+Three failure modes show up in the operator console rather than in
+the agent's terminal, and are worth naming because they shape the
+runbook:
+
+- **JSONL writer falls behind the PTY.** The agent has typed several
+  characters, but the JSONL append for the current turn is still
+  buffered. The Breathing Orb sticks on `STREAMING` longer than the
+  visible cursor would suggest. Resolution is automatic when the
+  JSONL line lands.
+- **eBPF unavailable.** Kernel does not expose `CAP_BPF`, container
+  does not get the capability, or the kernel is too old. noaide
+  falls back to inotify and logs the downgrade. PID attribution is
+  lost; everything else still works.
+- **Provider extends its JSONL schema.** A new top-level `type` shows
+  up in a fresh transcript. The parser preserves it as a generic
+  meta event rather than dropping the line. The UI shows it as
+  unstyled raw payload until an adapter branch is added in
+  `server/src/parser/{jsonl,codex,gemini}.rs`.
+
+The other two — proxy bypass and TLS chain breaks — are operator-side
+issues rather than observation issues, and live in
+[supervision-boundaries.md](supervision-boundaries.md).
+
 ## Related docs
 
 - [AGENTS.md](../AGENTS.md) — the supervisor contract

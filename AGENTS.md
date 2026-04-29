@@ -48,8 +48,9 @@ noaide never executes or invokes them.
   command, it runs on the host — noaide records it but does not sit in
   between.
 - It does not mask or filter agent output. Everything the JSONL
-  contains — including `system-reminder`, hidden instructions,
-  thinking blocks, and compressed replies — is rendered.
+  contains — including `system-reminder`, system prompts and provider
+  transcript fields the official UI does not surface, intermediate
+  transcript events, and compressed replies — is rendered.
 
 ## 2. Supervision Boundaries
 
