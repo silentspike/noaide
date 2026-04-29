@@ -229,7 +229,7 @@ noaide ist eine Browser-basierte IDE die Claude Code Sessions in Echtzeit visual
 
 | Stakeholder | Rolle | Concern | Einfluss |
 |------------|-------|---------|----------|
-| Jan (User/Dev) | Primaer-Nutzer, Allein-Entwickler | Volle Transparenz, Performance, Mobile-Zugang | High |
+| Operator (User/Dev) | Primaer-Nutzer, Allein-Entwickler | Volle Transparenz, Performance, Mobile-Zugang | High |
 | Claude Code | AI Agent (wird gesteuert) | Session-Stabilitaet, kein Session-Neustart | High |
 | Anthropic API | Externer Service | Rate Limits, API-Kompatibilitaet | Medium |
 | Browser (Chrome/Firefox) | Runtime-Umgebung | WebTransport Support, SharedArrayBuffer, COOP/COEP | Medium |
@@ -239,10 +239,10 @@ noaide ist eine Browser-basierte IDE die Claude Code Sessions in Echtzeit visual
 
 | Aktivitaet | Responsible | Accountable | Consulted | Informed |
 |-----------|------------|-------------|-----------|----------|
-| Architecture | Claude (LLM) | Jan | Peer-Review LLMs | - |
-| Implementation | Claude (LLM) | Jan | - | - |
-| Testing | Claude (LLM) | Jan | - | - |
-| Deployment | Jan | Jan | - | - |
+| Architecture | Claude (LLM) | Operator | Peer-Review LLMs | - |
+| Implementation | Claude (LLM) | Operator | - | - |
+| Testing | Claude (LLM) | Operator | - | - |
+| Deployment | Operator | Operator | - | - |
 
 ---
 
@@ -292,14 +292,14 @@ noaide ist eine Browser-basierte IDE die Claude Code Sessions in Echtzeit visual
 
 | ID | Requirement | Typ | Prioritaet | Source |
 |----|------------|-----|-----------|--------|
-| REQ-1 | ALLE JSONL-Inhalte anzeigen (inkl. hidden, system-reminder, thinking) | Functional | Must | Jan |
+| REQ-1 | ALLE JSONL-Inhalte anzeigen (inkl. hidden, system-reminder, thinking) | Functional | Must | Operator |
 | REQ-2 | File-Event-to-Browser Latenz < 50ms (p99) | Non-Functional | Must | Tech-Philosophie |
 | REQ-3 | 120Hz Rendering bei 1000+ Messages | Non-Functional | Must | Tech-Philosophie |
-| REQ-4 | Bidirektionale Session-Steuerung (PTY stdin + tmux send-keys) | Functional | Must | Jan |
-| REQ-5 | API Proxy mit vollstaendigem Request/Response Logging | Functional | Must | Jan |
-| REQ-6 | Multi-Agent Topology Graph mit animierten Message-Bubbles | Functional | Must | Jan |
-| REQ-7 | Interactive Gantt mit Time-Tracking pro Agent | Functional | Should | Jan |
-| REQ-8 | Mobile Layout mit Bottom Tab Bar und Swipe | Functional | Should | Jan |
+| REQ-4 | Bidirektionale Session-Steuerung (PTY stdin + tmux send-keys) | Functional | Must | Operator |
+| REQ-5 | API Proxy mit vollstaendigem Request/Response Logging | Functional | Must | Operator |
+| REQ-6 | Multi-Agent Topology Graph mit animierten Message-Bubbles | Functional | Must | Operator |
+| REQ-7 | Interactive Gantt mit Time-Tracking pro Agent | Functional | Should | Operator |
+| REQ-8 | Mobile Layout mit Bottom Tab Bar und Swipe | Functional | Should | Operator |
 | REQ-9 | Server < 200MB RSS, Browser < 500MB | Non-Functional | Must | Hardware |
 | REQ-10 | WebTransport mit Adaptive Quality (RTT-basiert) | Functional | Must | Mobile-First |
 | REQ-11 | eBPF File Watching mit PID-Tracing (welcher Prozess schreibt) | Functional | Must | Conflict Resolution |
@@ -852,7 +852,7 @@ Bei Reconnect: Server sendet Snapshot des aktuellen States + Delta der verpasste
 | R-5 | 120Hz Rendering-Performance | High | Medium | UI ruckelt, schlechte UX | SolidJS fine-grained; Virtual Scroller; Web Workers; GPU CSS | Claude |
 | R-6 | JSONL-Files >100MB | Medium | High | Langsamer Start, OOM | Streaming Parser, nur sichtbare Messages im DOM, Limbo Indexing | Claude |
 | R-7 | PTY-Management Komplexitaet | Medium | Medium | Session-Instabilitaet | portable-pty crate; tmux als Fallback | Claude |
-| R-8 | Scope Creep | High | High | Projekt nicht fertig | Strikte Phase 1 Scope-Grenze; Out of Scope klar definiert | Jan |
+| R-8 | Scope Creep | High | High | Projekt nicht fertig | Strikte Phase 1 Scope-Grenze; Out of Scope klar definiert | Operator |
 | R-9 | WebTransport Self-Signed Cert Rejection | High | High | Browser lehnt QUIC ab | mkcert lokale CA + Trust Store (WP-0) | Claude |
 | R-10 | Event-Ordering Race Conditions | Medium | Medium | UI-Inkonsistenzen, Doubles | EventEnvelope mit Lamport Clock + Dedup | Claude |
 | R-11 | Backpressure bei Event-Spikes | Medium | Medium | Queue-Overflow, Lag | Bounded channels + Drop-Policy (C.2) | Claude |
@@ -1506,7 +1506,7 @@ WP-0 → WP-1 → WP-2 → WP-4 → WP-5 → WP-7 → WP-8 → WP-9 → WP-19
 | **Contract/API** | **N/A** — keine externen API-Consumer | - | - |
 | **System/Artifact** | Binary black-box | Main | Server starten + Health Check |
 | **E2E/Smoke** | Kritische User-Journeys | Nightly | Playwright |
-| **UAT** | Fachliche Freigabe | Release | Jan's manuelle Pruefung |
+| **UAT** | Fachliche Freigabe | Release | Operator's manuelle Pruefung |
 | **Non-Functional** | Performance/Resilienz | Nightly | `cargo bench` + FPS Profiler |
 
 ### Unit Tests
@@ -1710,7 +1710,7 @@ WP-0 → WP-1 → WP-2 → WP-4 → WP-5 → WP-7 → WP-8 → WP-9 → WP-19
 - [ ] `/work/noaide/.claude/CLAUDE.md` — Projekt-spezifische Instructions
 - [ ] `/work/noaide/docs/architecture.md` — Detaillierte Architektur
 - [ ] `/work/noaide/docs/api.md` — WebTransport API Docs
-- [ ] `/home/jan/.claude/CLAUDE.md` — noaide Verweis ergaenzen
+- [ ] `~/.claude/CLAUDE.md` — noaide Verweis ergaenzen
 
 ### HTML-Dashboard: Lebendes Dokument (PFLICHT!)
 
@@ -1803,14 +1803,14 @@ _Noch keine Lessons — werden waehrend VERIFY geschrieben und hier referenziert
 
 | ID | Requirement | Typ | Quelle | Status | Prioritaet | Phase |
 |----|------------|-----|--------|--------|-----------|-------|
-| REQ-1 | ALLE JSONL-Inhalte anzeigen | Func | Jan | Accepted | Must | A |
+| REQ-1 | ALLE JSONL-Inhalte anzeigen | Func | Operator | Accepted | Must | A |
 | REQ-2 | File-Event Latenz <50ms p99 | Non-Func | Tech | Accepted | Must | A |
 | REQ-3 | 120Hz bei 1000+ Messages | Non-Func | Tech | Accepted | Must | A |
-| REQ-4 | Bidirektionale Session-Steuerung | Func | Jan | Accepted | Must | A |
-| REQ-5 | API Proxy mit Logging | Func | Jan | Accepted | Must | A |
-| REQ-6 | Multi-Agent Topology Graph | Func | Jan | Accepted | Must | A |
-| REQ-7 | Interactive Gantt | Func | Jan | Accepted | Should | A |
-| REQ-8 | Mobile Layout | Func | Jan | Accepted | Should | A |
+| REQ-4 | Bidirektionale Session-Steuerung | Func | Operator | Accepted | Must | A |
+| REQ-5 | API Proxy mit Logging | Func | Operator | Accepted | Must | A |
+| REQ-6 | Multi-Agent Topology Graph | Func | Operator | Accepted | Must | A |
+| REQ-7 | Interactive Gantt | Func | Operator | Accepted | Should | A |
+| REQ-8 | Mobile Layout | Func | Operator | Accepted | Should | A |
 | REQ-9 | Server <200MB, Browser <500MB | Non-Func | HW | Accepted | Must | A |
 | REQ-10 | Adaptive Quality (RTT) | Func | Mobile | Accepted | Must | A |
 | REQ-11 | eBPF PID-Tracing | Func | Conflict Res. | Accepted | Must | A |
@@ -1824,15 +1824,15 @@ _Noch keine Lessons — werden waehrend VERIFY geschrieben und hier referenziert
 
 | ID | Aenderung | Begruendung | Impact | Status | Entscheidung |
 |----|---------|-----------|--------|--------|-------------|
-| CHG-1 | Event-Ordering Protokoll hinzufuegen | Peer-Review Codex: Race Conditions | C.2, alle WPs | Accepted | 2026-02-20, Jan |
-| CHG-2 | Backpressure-Strategie hinzufuegen | Peer-Review Codex: Queue Overflow | C.2, WP-6, WP-7 | Accepted | 2026-02-20, Jan |
-| CHG-3 | COOP/COEP + Self-hosted Fonts | Peer-Review Codex: SharedArrayBuffer | C.4, WP-0 | Accepted | 2026-02-20, Jan |
-| CHG-4 | mkcert fuer WebTransport TLS | Peer-Review Gemini: Cert Rejection | C.4, WP-0 | Accepted | 2026-02-20, Jan |
-| CHG-5 | Breathing Orb Dual-Source | Peer-Review Gemini: Status-Quelle | WP-9 | Accepted | 2026-02-20, Jan |
-| CHG-6 | Conflict Resolution OT Buffer | Peer-Review Gemini+Claude: Concurrent Edits | WP-10 | Accepted | 2026-02-20, Jan |
-| CHG-7 | TOGAF ADM Format Migration | Skill-Update /impl-plan v2.0 | Plan-Struktur | Accepted | 2026-02-20, Jan |
-| CHG-8 | Peer-Review Fixes (10 Items) | Codex+Gemini Review v2.0 | 8 Sektionen (P.2,P.4,A.4,B.3,C.3,F.1,G.3,RM.3 + 3 WPs) | Accepted | 2026-02-20, Jan |
-| CHG-9 | Living Document Policy | HTML-Dashboard muss lebendes Dokument sein | P.2 (Prinzip), G.5 (Update-Policy) | Accepted | 2026-02-20, Jan |
+| CHG-1 | Event-Ordering Protokoll hinzufuegen | Peer-Review Codex: Race Conditions | C.2, alle WPs | Accepted | 2026-02-20, Operator |
+| CHG-2 | Backpressure-Strategie hinzufuegen | Peer-Review Codex: Queue Overflow | C.2, WP-6, WP-7 | Accepted | 2026-02-20, Operator |
+| CHG-3 | COOP/COEP + Self-hosted Fonts | Peer-Review Codex: SharedArrayBuffer | C.4, WP-0 | Accepted | 2026-02-20, Operator |
+| CHG-4 | mkcert fuer WebTransport TLS | Peer-Review Gemini: Cert Rejection | C.4, WP-0 | Accepted | 2026-02-20, Operator |
+| CHG-5 | Breathing Orb Dual-Source | Peer-Review Gemini: Status-Quelle | WP-9 | Accepted | 2026-02-20, Operator |
+| CHG-6 | Conflict Resolution OT Buffer | Peer-Review Gemini+Claude: Concurrent Edits | WP-10 | Accepted | 2026-02-20, Operator |
+| CHG-7 | TOGAF ADM Format Migration | Skill-Update /impl-plan v2.0 | Plan-Struktur | Accepted | 2026-02-20, Operator |
+| CHG-8 | Peer-Review Fixes (10 Items) | Codex+Gemini Review v2.0 | 8 Sektionen (P.2,P.4,A.4,B.3,C.3,F.1,G.3,RM.3 + 3 WPs) | Accepted | 2026-02-20, Operator |
+| CHG-9 | Living Document Policy | HTML-Dashboard muss lebendes Dokument sein | P.2 (Prinzip), G.5 (Update-Policy) | Accepted | 2026-02-20, Operator |
 
 ---
 
