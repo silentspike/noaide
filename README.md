@@ -6,6 +6,12 @@
 
 Browser-based real-time IDE: observe Codex / Claude Code / Gemini CLI sessions, inspect API and tool activity, gate risky requests, and export evidence.
 
+> In a Codex rollout, noaide shows what the agent saw, what it changed,
+> what it sent to the provider, what was approved, and what evidence
+> remains for review. The same supervision pattern works for Claude Code
+> and Gemini CLI sessions; provider-specific transcript artifacts are
+> surfaced where available.
+
 <br>
 
 [![CI](https://github.com/silentspike/noaide/actions/workflows/ci.yml/badge.svg)](https://github.com/silentspike/noaide/actions/workflows/ci.yml)
@@ -120,6 +126,9 @@ network requests, and export the audit trail as NDJSON.
 
 Full walkthrough: [`docs/workshop-ai-coding-rollout.md`](docs/workshop-ai-coding-rollout.md).
 
+> 📖 **Customer enablement workshop:** [`docs/workshop-ai-coding-rollout.md`](docs/workshop-ai-coding-rollout.md)
+> — 45-minute hands-on agenda for engineering leadership and DevSecOps teams.
+
 ## Status
 
 What works today versus what is on the roadmap. Pre-alpha — the buckets
@@ -214,108 +223,11 @@ will move as the project matures.
 </tr>
 </table>
 
-## UI Layout
-
-```
- Session        Chat / Editor / Network / Teams             Files
- Sidebar        (tabbed center panel)                       & Tools
-
- ┌─────────┬──────────────────────────────────────┬────────────────┐
- │         │                                      │                │
- │  ● Sess │  user                                │  project/      │
- │    Proj │  > Fix the auth bug in login.ts      │  ├── src/      │
- │    4.5  │                                      │  │   ├── ...   │
- │    12m  │  assistant                    ◉ 4.5  │  │   └── ...   │
- │         │  I'll fix the authentication bug.    │  ├── tests/    │
- │  ○ Sess │  Let me read the file first.         │  └── ...       │
- │    Proj │                                      │                │
- │    4.5  │  ┌─ Read login.ts ──────────────┐    │ ────────────── │
- │    1h   │  │  export function login() {   │    │                │
- │         │  │    const token = getToken(); │    │  Token Budget  │
- │  ◌ Arch │  │    ...                       │    │  ████████░░░   │
- │    Proj │  └──────────────────────────────┘    │  45k / 200k    │
- │         │                                      │                │
- │         │  ┌─ Edit login.ts ──────────────┐    │  Model         │
- │         │  │  - const token = getToken(); │    │  claude-4.5    │
- │         │  │  + const token = await       │    │                │
- │         │  │  +   getToken(credentials);  │    │  Cost          │
- │         │  └──────────────────────────────┘    │  $0.42         │
- │         │                                      │                │
- │         │  ┌─ system-reminder ────────────┐    │                │
- │  [+ New │  │  SessionStart hook success   │    │                │
- │ Session]│  └──────────────────────────────┘    │                │
- │         │                                      │                │
- │         │  ▌                              ◉    │                │
- ├─────────┴──────────────────────────────────────┴────────────────┤
- │ [Chat] [Files] [Network] [Teams] [Tasks] [Settings]  Cmd+K     │
- └─────────────────────────────────────────────────────────────────┘
-```
-
-<sup>Three resizable panels. Left: session list with breathing orbs. Center: tabbed views (chat, editor,
-network, teams). Right: file tree, token budget, model info. Bottom bar for quick navigation and
-command palette.</sup>
-
 ## Architecture
 
-```
-                  ┌─────────────────────────────────────────────────┐
-                  │            Browser  (SolidJS + WASM)            │
-                  │                                                 │
-                  │  Chat ─── Editor ─── Network ─── Teams ─── Gantt│
-                  │    │         │          │          │         │   │
-                  │    └─────────┴──────────┴──────────┴─────────┘   │
-                  │                      │                           │
-                  │          WebTransport Client (codec.ts)          │
-                  └──────────────────────┬──────────────────────────┘
-                                         │
-                                         │
-                  ┌──────────────────────┴──────────────────────────┐
-                  │             Rust Server  (tokio + io_uring)     │
-                  │                                                 │
-                  │  ┌────────────┐  ┌────────────┐  ┌───────────┐ │
-                  │  │eBPF Watcher│  │JSONL Parser│  │PTY Session│ │
-                  │  │ PID attrib.│  │ streaming  │  │ mgr + tmux│ │
-                  │  └─────┬──────┘  └─────┬──────┘  └─────┬─────┘ │
-                  │        │               │               │       │
-                  │        └───────────────┼───────────────┘       │
-                  │                        │                       │
-                  │              ┌─────────┴─────────┐             │
-                  │              │  Zenoh Event Bus   │             │
-                  │              │  SHM (~1us)        │             │
-                  │              └─────────┬─────────┘             │
-                  │                        │                       │
-                  │         ┌──────────────┼──────────────┐        │
-                  │         │              │              │        │
-                  │    ┌────┴────┐   ┌─────┴─────┐  ┌────┴─────┐  │
-                  │    │hecs ECS │   │ Limbo DB  │  │API Proxy │  │
-                  │    │  SoA    │   │ io_uring  │  │ redaction│  │
-                  │    │  state  │   │ FTS5      │  │ logging  │  │
-                  │    └─────────┘   └───────────┘  └──────────┘  │
-                  └─────────────────────────────────────────────────┘
-
-  Data flow:  File Change ──▸ Watcher ──▸ Parser ──▸ ECS ──▸ Bus ──▸ Transport ──▸ Browser
-  Input flow: Browser ──▸ WebTransport ──▸ Session Manager ──▸ PTY stdin / tmux send-keys
-  Proxy flow: Claude Code ──▸ ANTHROPIC_BASE_URL ──▸ Proxy ──▸ api.anthropic.com
-```
-
-## Tech Stack
-
-<table>
-<tr><th align="left">Layer</th><th align="left">Choice</th><th align="left">Rationale</th></tr>
-<tr><td><b>Backend</b></td><td>Rust + tokio + io_uring</td><td>Zero-cost abstractions, memory safety, async I/O</td></tr>
-<tr><td><b>Frontend</b></td><td>SolidJS + Vite 6</td><td>Fine-grained reactivity without Virtual DOM overhead</td></tr>
-<tr><td><b>Transport</b></td><td>WebTransport (HTTP/3, QUIC)</td><td>0-RTT reconnect, multiplexed streams, connection migration. Requires a Chromium-based browser. Production deployment is documented in <a href="docs/adr/001-production-deployment.md">ADR-001</a>.</td></tr>
-<tr><td><b>State</b></td><td>hecs ECS (struct-of-arrays)</td><td>Cache-friendly iteration over 100+ concurrent entities</td></tr>
-<tr><td><b>Database</b></td><td>Limbo (async SQLite, io_uring)</td><td>FTS5 full-text search, JSONL remains source of truth</td></tr>
-<tr><td><b>File Watch</b></td><td>eBPF via aya</td><td>Kernel-level PID attribution for conflict detection</td></tr>
-<tr><td><b>Event Bus</b></td><td>Zenoh + shared memory</td><td>~1us inter-component latency, zero-copy IPC</td></tr>
-<tr><td><b>Editor</b></td><td>CodeMirror 6</td><td>500 KB (vs Monaco 5 MB), built-in MergeView</td></tr>
-<tr><td><b>Wire Format</b></td><td>FlatBuffers + MessagePack + Zstd</td><td>Zero-copy hot path, flexible cold path, ~70% compression</td></tr>
-<tr><td><b>WASM</b></td><td>jsonl-parser, markdown, compress</td><td>Off-main-thread heavy computation via Web Workers</td></tr>
-<tr><td><b>Theme</b></td><td>Catppuccin Mocha</td><td>14 harmonious dark colors, community standard</td></tr>
-</table>
-
-Architectural decisions are documented as [11 ADRs in llms.txt](llms.txt). Each records the context, decision, alternatives considered, and trade-offs accepted.
+The component map, three-panel UI layout, ASCII data-flow diagram, and
+the tech-stack table live in [`docs/architecture.md`](docs/architecture.md).
+Architectural decisions (11 ADRs) are in [`llms.txt`](llms.txt).
 
 ## Performance
 
@@ -412,145 +324,18 @@ docker compose -f docker-compose.prod.yml up -d --build
 5. The bottom tab bar switches between Chat, Files, Network, Teams,
    Tasks, Plan, Git, Cost, and Settings.
 
-<details>
-<summary><b>Alternative: native (no Docker) workflow</b></summary>
+Native (non-Docker) workflow, every `just` recipe, and the optional
+Whisper voice-input sidecar are documented in
+[`justfile`](justfile), [`docs/architecture.md`](docs/architecture.md),
+and [`docs/voice-setup.md`](docs/voice-setup.md) respectively.
 
-```bash
-# Generate certificates
-just certs
+## Configuration & development
 
-# Build the WASM modules
-just wasm
-
-# Run the backend natively
-just dev-backend-native
-
-# Run the frontend natively in a second terminal
-just dev-front-native
-```
-
-All recipes are in [`justfile`](justfile); a `Makefile` mirror exists
-for users without `just`.
-
-</details>
-
-<details>
-<summary><b>Optional: voice input (Whisper sidecar)</b></summary>
-
-The microphone button in the chat input is wired to a local Whisper
-sidecar that runs as a separate Python process. It is **opt-in**;
-nothing else in noaide depends on it. Setup, env vars, and disable
-flags are documented in [docs/voice-setup.md](docs/voice-setup.md).
-
-</details>
-
-<details>
-<summary><b>All available tasks</b></summary>
-
-Run `just` (or `just -l`) to list every recipe. The most common ones:
-
-| Task | Description |
-|------|-------------|
-| `just dev` | Start the backend via `docker compose up` |
-| `just dev-front` | Start the frontend dev server (HMR) |
-| `just test` | `cargo test --workspace` + `pnpm test` |
-| `just test-e2e` | Playwright smoke suite |
-| `just fmt` / `just lint` | Formatters and linters |
-| `just audit` | `cargo audit` + `pnpm audit --audit-level=high` |
-| `just bench` | `cargo bench` — performance design goals |
-| `just wasm` | Build all three WASM modules |
-| `just certs` | Generate local TLS certificates |
-| `just demo` | Start everything + seed fixtures + open browser |
-
-</details>
-
-## Configuration
-
-<details>
-<summary><b>Environment variables</b></summary>
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NOAIDE_PORT` | `4433` | WebTransport/QUIC port |
-| `NOAIDE_HTTP_PORT` | `8080` | HTTP port (health endpoint, API proxy) |
-| `NOAIDE_DB_PATH` | `./data/noaide/ide.db` | Limbo database path |
-| `NOAIDE_WATCH_PATHS` | `~/.claude/` | Directories to watch for JSONL changes |
-| `NOAIDE_TLS_CERT` | `./certs/cert.pem` | TLS certificate path |
-| `NOAIDE_TLS_KEY` | `./certs/key.pem` | TLS private key path |
-| `NOAIDE_LOG_LEVEL` | `info` | Log verbosity (trace/debug/info/warn/error) |
-
-</details>
-
-<details>
-<summary><b>Feature flags</b></summary>
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `ENABLE_EBPF` | `true` | eBPF file watching (false = inotify fallback) |
-| `ENABLE_SHM` | `true` | Zenoh shared memory (false = TCP transport) |
-| `ENABLE_WASM_PARSER` | `true` | WASM JSONL parser (false = JavaScript fallback) |
-| `ENABLE_API_PROXY` | `true` | Anthropic API proxy and Network tab |
-| `ENABLE_PROFILER` | `false` | Performance profiler panel |
-| `ENABLE_AUDIO` | `false` | UI notification sounds |
-
-</details>
-
-## Development
-
-```bash
-# ── Backend ──────────────────────────────────
-cargo build                              # dev build
-cargo test                               # unit + integration tests
-cargo clippy -- -D warnings              # lint
-cargo bench                              # performance benchmarks
-
-# ── Frontend ─────────────────────────────────
-cd frontend
-pnpm dev                                 # Vite dev server with HMR
-pnpm build                               # production build
-pnpm lint                                # ESLint
-
-# ── WASM ─────────────────────────────────────
-wasm-pack build wasm/jsonl-parser --target web
-wasm-pack build wasm/markdown --target web
-wasm-pack build wasm/compress --target web
-
-# ── FlatBuffers ──────────────────────────────
-flatc --rust --ts -o generated/ schemas/messages.fbs
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, commit style, and PR process.
-See [TESTING.md](TESTING.md) for the full test gate matrix and benchmark commands.
-
-## Features
-
-Each row points to the primary module that implements it, so the
-description is easy to cross-check against the code.
-
-| Feature | Source | Description |
-|---------|--------|-------------|
-| **Message Cache** | [`server/src/cache/mod.rs`](server/src/cache/mod.rs) | ECS-backed in-memory cache with incremental JSONL parsing. Designed for <5 ms cached responses (see [docs/performance.md](docs/performance.md)). |
-| **Pagination** | [`server/src/cache/mod.rs`](server/src/cache/mod.rs) + [`VirtualScroller.tsx`](frontend/src/components/chat/VirtualScroller.tsx) | Infinite scroll with scroll-anchor preservation. Loads 200 messages at a time. |
-| **Thinking Blocks** | [`components/chat/ThinkingBlock.tsx`](frontend/src/components/chat/ThinkingBlock.tsx) | Animated collapse/expand with measured `scrollHeight`. Token count estimate. |
-| **Session Pinning** | [`stores/session.ts`](frontend/src/stores/session.ts) + [`components/sessions/SessionList.tsx`](frontend/src/components/sessions/SessionList.tsx) | Star sessions, sorted pinned-first. Persisted in localStorage. |
-| **Profiler Metrics** | [`components/profiler/ProfilerPanel.tsx`](frontend/src/components/profiler/ProfilerPanel.tsx) | Real-time FPS, heap usage, events/sec, render time, DOM nodes, transport RTT. |
-| **Command Palette** | [`components/shared/CommandPalette.tsx`](frontend/src/components/shared/CommandPalette.tsx) | Cmd+K with scope prefixes (`>` commands, `#` sessions, `@` tabs). Fuzzy matching with highlights. |
-| **Session Search** | [`components/chat/SearchBar.tsx`](frontend/src/components/chat/SearchBar.tsx) | Cmd+F in-chat search with match counter and prev/next navigation. |
-| **Notifications** | [`lib/notifications.ts`](frontend/src/lib/notifications.ts) | Toasts, Browser Notification API, optional Web Audio cues (gated by `ENABLE_AUDIO`). |
-| **Cost Dashboard** | [`components/cost/CostDashboard.tsx`](frontend/src/components/cost/CostDashboard.tsx) | Per-model token breakdown, cost bars, session ranking, input/output/cache ratios. |
-| **Export** | [`lib/export.ts`](frontend/src/lib/export.ts) + [`components/shared/ExportDialog.tsx`](frontend/src/components/shared/ExportDialog.tsx) | Markdown, JSON, or HTML export with configurable options. Mobile Web Share API support. |
-| **Session Stats API** | [`server/src/main.rs`](server/src/main.rs) | HTTP endpoint with token counts, model breakdown, duration. |
-| **Subagent Tree** | [`components/teams/SubagentTree.tsx`](frontend/src/components/teams/SubagentTree.tsx) | Tree visualization of `agentId`/`parentUuid` hierarchies in the Teams panel. |
-
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd/Ctrl + K` | Open command palette |
-| `Cmd/Ctrl + F` | Search in chat |
-| `Cmd/Ctrl + 1-8` | Switch tabs (Chat, Network, Teams, Gallery, Tasks, Git, Cost, Settings) |
-| `Escape` | Close overlay / search |
-| `Tab` (in palette) | Cycle scope prefixes |
+Environment variables, feature flags, the build/test/bench command
+reference, the feature → source map, and keyboard shortcuts live in
+[`docs/architecture.md`](docs/architecture.md). Branch conventions and
+PR process are in [`CONTRIBUTING.md`](CONTRIBUTING.md); the test gate
+matrix is in [`TESTING.md`](TESTING.md).
 
 ## Project Status
 
@@ -608,41 +393,12 @@ The JSONL parser and session manager use pluggable format adapters. Core UI comp
 
 ## Operating an Agent
 
-These four short sections describe the supervisor experience. For the
-full contract between the supervisor, the agent, and noaide, see
-[AGENTS.md](AGENTS.md).
-
-### Agent Operating Model
-
-noaide watches agents — it does not run them. The agent (Claude Code,
-Gemini CLI, Codex) is a separate process. noaide reads its JSONL log,
-watches the filesystem with eBPF, hosts its PTY, and proxies its API
-calls. See [AGENTS.md §1](AGENTS.md#1-operating-model).
-
-### Supervision Boundaries
-
-The supervisor controls session lifecycle, keyboard/text input, tool
-approval, the API proxy gate (auto vs. manual), and file-edit locks
-during 3-way merges. noaide enforces an API whitelist, redacts secrets,
-and never spawns shells for PTY input. See
-[AGENTS.md §2](AGENTS.md#2-supervision-boundaries).
-
-### Evidence and Audit Loop
-
-Every event crossing a component boundary is wrapped in an envelope
-carrying a Lamport clock, source, PID, and session ID. JSONL is the
-source of truth; the Limbo DB and ECS world are regeneratable caches.
-Network, file, and git activity are rendered in place so they can be
-correlated with the conversation. See
-[AGENTS.md §3](AGENTS.md#3-evidence-and-audit-loop).
-
-### Agent Contract
-
-Agents integrate by (1) writing JSONL as they run, (2) honouring the
-configured base-URL override when the supervisor enables the proxy, and
-(3) accepting PTY or tmux send-keys input. See
-[AGENTS.md §4](AGENTS.md#4-agent-contract) for per-agent integration
-paths.
+The supervisor contract — operating model (noaide watches, never runs),
+supervision boundaries (lifecycle, input, tool approval, proxy gate,
+file-edit locks), evidence loop (Lamport-clock envelopes, JSONL as
+source of truth), and per-agent integration paths — lives in
+[AGENTS.md](AGENTS.md). The four sections there map 1:1 onto the
+operator surface; the README intentionally does not duplicate them.
 
 ## Documentation
 
