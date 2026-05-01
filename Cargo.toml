@@ -78,7 +78,7 @@ anyhow = "1"
 zstd = "0.13"
 
 # WebSocket client (Codex + other WSS upstreams)
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
 
 # TLS MITM (CONNECT proxy)
 rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
