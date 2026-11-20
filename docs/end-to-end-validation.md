@@ -177,16 +177,10 @@ benchmark, etc.). Each row is one assertion. Status:
       "import json,sys; print(len(json.load(sys.stdin)))"
   402
 
-  Top-5 by recency:
-    b5d7cc3a cli=claude msgs=460019 path=/work/noaide
-    1892ce41 cli=claude msgs=389067 path=/work/company
-    c5772070 cli=claude msgs= 25778 path=/work/homeautomation
-    6e3ce9ab cli=claude msgs=401612 path=/work/finanzioso
-    9f2a5390 cli=claude msgs=  9765 path=/work/proxmox/backup
   ```
-- [x] **Chat panel renders messages live** — Evidence: `docs/images/section-3-real-chat.png` shows the chat panel populated with real user/assistant messages from the bitwigs/agents/sound/designer session
-- [x] **Tool-use card renders** — Evidence: same screenshot, multiple `Bash` and `Edit` tool-use cards with code blocks visible
-- [x] **Thinking block renders** — Evidence: same screenshot, `Thinking` blocks rendered with collapse markers
+- [x] **Chat panel renders messages live**. The browser displayed live user and assistant messages during the validation run. The capture is held privately.
+- [x] **Tool-use card renders**. The browser showed multiple Bash and Edit tool-use cards with visible code blocks.
+- [x] **Thinking block renders**. The browser showed collapsible Thinking blocks.
 - [~] **PID-attributed file change shows in file tree** — UNTESTED: requires a live agent process writing files while noaide watches. Static parse + tree population works (file panel shows real project files); per-event PID attribution is the eBPF path which falls back to inotify here, so no PID label is added.
 
 ### 3.2 Gemini CLI session
@@ -380,4 +374,4 @@ benchmark, etc.). Each row is one assertion. Status:
 - 2026-04-26 — Section 5 (performance benches) verified: cargo bench ran both benches; parse_line 250-456k lines/sec (>10k goal × 25-45), pagination/200-msg-page 0.24 ms (<5ms goal × 20). README updated with measured numbers.
 - 2026-04-27 — Section 1 (production stack) revealed three real bugs, all fixed in PR #159: ServeDir vs Vite-base prefix mismatch, missing wget in runtime image, CSP `connect-src` blocking WebTransport. After fixes: HTTP layer (1.1) all green; browser load (1.2) green except `crossOriginIsolated` direct check; WT handshake (1.3-1.5) marked N/A pending a trusted-cert dev harness — which is itself a follow-up gap, not a blocker.
 - 2026-04-27 — Section 2 (dev stack) found one more bug, fixed in PR #160: `just dev` and `make dev` tried to pull `noaide:dev` from Docker Hub instead of building locally because both recipes lacked `--build`. Section 2.1 fully ticked, 2.2 partially ticked (welcome screen rendered), 2.3 ticked.
-- 2026-04-27 — Section 3 (real agent) verified against the validating user's own `~/.claude/` directory: 402 real Claude sessions discovered, parser produced messages including Thinking and ToolUse types, browser rendered the full chat panel with real user/assistant content (`docs/images/section-3-real-chat.png`). Gemini and Codex paths marked N/A — host has no sessions for those CLIs but the adapter code paths were covered in earlier sprints.
+- 2026-04-27 — Section 3 (real agent) verified against the validating user's own `~/.claude/` directory: 402 real Claude sessions discovered, parser produced messages including Thinking and ToolUse types, browser rendered the full chat panel with real user/assistant content. Gemini and Codex paths marked N/A — host has no sessions for those CLIs but the adapter code paths were covered in earlier sprints.
