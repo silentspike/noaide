@@ -85,7 +85,7 @@ noaide/
 ### `plan`
 - **Owns**: TOGAF `plan.json` and `plan-edits.json` round-trip handlers.
 - **Publishes**: `plan.changed` events on every edit.
-- **Config**: `NOAIDE_PLAN_DIR` (default `./plans/` on production, fixture path in CI).
+- **Config**: `NOAIDE_PLAN_DIR` defaults to `./plans/` relative to the server working directory. Set it in the private service environment to keep using an existing plans directory. CI passes a fixture path.
 
 ### `proxy`
 - **Owns**: the per-session reverse proxy, intercept gate, audit log, body redaction, key rotation (AES-256-GCM).

@@ -37,7 +37,7 @@ export function usePlan(): PlanStore {
 interface StandaloneProps extends ParentProps {
   /** URL to plan.json (relative or absolute) */
   planUrl: string;
-  /** Plan name (directory name in /work/plan/) — used for write-back */
+  /** Plan name (directory name in $NOAIDE_PLAN_DIR/) — used for write-back */
   planName?: string;
   /** Polling interval in ms (default: 2000) */
   pollIntervalMs?: number;

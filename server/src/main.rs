@@ -58,7 +58,7 @@ struct AppState {
     /// Maps session UUID → watched project root path (WP-10: File Browser).
     /// Used by the watcher to publish FILE_CHANGES events for project files.
     project_watches: Arc<RwLock<HashMap<Uuid, PathBuf>>>,
-    /// Base directory for TOGAF plans (/work/plan/).
+    /// Base directory for TOGAF plans (the configured plan directory/).
     plan_base_dir: Arc<PathBuf>,
     /// Maps session UUID → plan name (for auto-selecting plan in Plan tab).
     session_plan_mapping: Arc<RwLock<HashMap<Uuid, String>>>,
@@ -406,9 +406,11 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(RwLock::new(HashMap::new()));
 
     // TOGAF Plan base directory (contains {name}/plan.json files)
-    let plan_base_dir = Arc::new(PathBuf::from(
-        std::env::var("NOAIDE_PLAN_DIR").unwrap_or_else(|_| "/work/plan".to_string()),
-    ));
+    let plan_base_dir = Arc::new(
+        std::env::var_os("NOAIDE_PLAN_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("plans")),
+    );
     info!(dir = %plan_base_dir.display(), "TOGAF plan base directory");
 
     // Restore managed session→plan mappings from previous run (if available)
@@ -1041,7 +1043,7 @@ async fn main() -> anyhow::Result<()> {
                             "watcher event"
                         );
                     }
-                    // (Plan watcher removed — plans are served via nginx from /work/plan/)
+                    // (Plan watcher removed — plans are served via nginx from the configured plan directory/)
 
                     if ext != "jsonl" && ext != "json" {
                         // ── Project file change → FILE_CHANGES bus (WP-10) ────────
@@ -2341,7 +2343,7 @@ async fn api_get_session_stats(
 
 // ═══════════════════════════════════════════════════════════════
 // TOGAF Plan API Endpoints
-// Plans live in /work/plan/{name}/ — nginx serves plan.json,
+// Plans live in the configured plan directory/{name}/ — nginx serves plan.json,
 // the server only provides discovery and edit-write-back.
 // ═══════════════════════════════════════════════════════════════
 
@@ -2402,7 +2404,7 @@ async fn api_plan_for_session(
     }
 }
 
-/// GET /api/plans/{name}/plan.json — Serve plan.json from /work/plan/{name}/.
+/// GET /api/plans/{name}/plan.json — Serve plan.json from the configured plan directory/{name}/.
 async fn api_get_plan_json(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -2947,7 +2949,7 @@ async fn api_create_managed_session(
                 }
                 watches.insert(sid, project_root);
             }
-            // Auto-detect plan: scan /work/plan/ for a plan whose IMPL-PLAN.md
+            // Auto-detect plan: scan the configured plan directory/ for a plan whose IMPL-PLAN.md
             // symlinks or matches the session working directory
             {
                 let base = &*state.plan_base_dir;

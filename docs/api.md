@@ -75,7 +75,7 @@ The plan subsystem backs the TOGAF panel.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/plans` | List available plans under `/work/plan/` |
+| GET | `/api/plans` | List available plans under `$NOAIDE_PLAN_DIR/` |
 | GET | `/api/plans/{name}/plan.json` | The raw plan JSON |
 | POST | `/api/plans/{name}/edits` | Append an edit to `plan-edits.json` |
 

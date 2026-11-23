@@ -1,6 +1,6 @@
 // ============================================================
 // TOGAF Standard, 10th Edition — Phase Definitions
-// Portiert aus /work/plan/togaf-template.html (TOGAF_PHASES)
+// Portiert aus $NOAIDE_PLAN_DIR/togaf-template.html (TOGAF_PHASES)
 // ============================================================
 
 import type { TailoringLevel } from "./plan";

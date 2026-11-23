@@ -29,7 +29,7 @@ interface PlanSelectorProps {
 }
 
 /**
- * PlanSelector — scans /work/plan/ for available plans,
+ * PlanSelector — scans $NOAIDE_PLAN_DIR/ for available plans,
  * shows a dropdown, and wraps TOGAFDashboard in a PlanProvider
  * pointing at the selected plan's plan.json via nginx.
  */
