@@ -29,6 +29,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
       ci: ${{ steps.filter.outputs.ci }}
+      ci-workflow: ${{ steps.filter.outputs.ci-workflow }}
       has-cargo: ${{ steps.manifests.outputs.has-cargo }}
       has-frontend: ${{ steps.manifests.outputs.has-frontend }}
     steps:
@@ -54,6 +55,8 @@ jobs:
               - 'schemas/**'
             ci:
               - '.github/**'
+            ci-workflow:
+              - '.github/workflows/ci.yml'
 
       - name: Check for project manifests
         id: manifests
@@ -424,13 +427,16 @@ jobs:
         run: cargo test --test integration
 
   # ──────────────────────────────────────────────────────────────
-  # E2E Smoke Tests: Main Gate (only on push to main)
+  # E2E Smoke Tests: pushes to main and PRs editing this workflow
   # ──────────────────────────────────────────────────────────────
   e2e-smoke:
     name: E2E Smoke Tests
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build
+    # The locked Playwright browser installer supports Ubuntu 24.04.
+    runs-on: ubuntu-24.04
+    needs: [paths-filter, build]
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && needs.paths-filter.outputs.ci-workflow == 'true')
     steps:
       - uses: actions/checkout@v6
 
