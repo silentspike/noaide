@@ -17,8 +17,8 @@ RUN cargo build --release -p noaide-server && \
 FROM node:22-slim AS frontend-builder
 WORKDIR /build
 RUN corepack enable
-COPY frontend/package.json frontend/pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
 
