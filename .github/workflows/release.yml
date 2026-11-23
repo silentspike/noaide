@@ -16,7 +16,7 @@ jobs:
       has-cargo: ${{ steps.check.outputs.has-cargo }}
       has-frontend: ${{ steps.check.outputs.has-frontend }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Check for project manifests
         id: check
         run: |
@@ -29,7 +29,7 @@ jobs:
     needs: check-manifests
     if: needs.check-manifests.outputs.has-cargo == 'true' && needs.check-manifests.outputs.has-frontend == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
